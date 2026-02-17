@@ -1,1 +1,29 @@
 .DS_Store
+node_modules
+.next
+out
+coverage
+.vercel
+*.log
+.env.local
+.env.*.local
+
+# Env files
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# TS / build cache
+*.tsbuildinfo
+
+# Firebase local artifacts
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Common key files
+*.pem
+*.p12
+*service-account*.json

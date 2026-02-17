@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function boardDocPath(boardId) {
+      return /databases/$(database)/documents/boards/$(boardId);
+    }
+
+    function boardExists(boardId) {
+      return exists(boardDocPath(boardId));
+    }
+
+    function boardData(boardId) {
+      return get(boardDocPath(boardId)).data;
+    }
+
+    function uidInList(candidateList) {
+      return candidateList is list && candidateList.hasAny([request.auth.uid]);
+    }
+
+    function canReadBoard(boardId) {
+      return isSignedIn()
+        && boardExists(boardId)
+        && (
+          boardData(boardId).openRead == true
+          || boardData(boardId).openEdit == true
+          || boardData(boardId).ownerId == request.auth.uid
+          || uidInList(boardData(boardId).readerIds)
+          || uidInList(boardData(boardId).editorIds)
+        );
+    }
+
+    function canEditBoard(boardId) {
+      return isSignedIn()
+        && boardExists(boardId)
+        && (
+          boardData(boardId).openEdit == true
+          || boardData(boardId).ownerId == request.auth.uid
+          || uidInList(boardData(boardId).editorIds)
+        );
+    }
+
+    match /users/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /boards/{boardId} {
+      // Note: owner board count limits (max 3) should be enforced server-side.
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.openEdit is bool;
+
+      allow get, list: if canReadBoard(boardId);
+      allow update, delete: if isSignedIn() && boardData(boardId).ownerId == request.auth.uid;
+    }
+
+    match /boards/{boardId}/objects/{objectId} {
+      allow read: if canReadBoard(boardId);
+      allow create, update, delete: if canEditBoard(boardId);
+    }
+
+    match /boards/{boardId}/presence/{userId} {
+      allow read: if canReadBoard(boardId);
+
+      allow create, update, delete: if canReadBoard(boardId)
+        && isSignedIn()
+        && request.auth.uid == userId;
+    }
+  }
+}

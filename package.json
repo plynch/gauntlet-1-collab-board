@@ -1,0 +1,30 @@
+{
+  "name": "collab-board",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "firebase:emulators": "npx firebase-tools emulators:start --only auth,firestore",
+    "firebase:emulators:ui": "npx firebase-tools emulators:start --only auth,firestore --ui"
+  },
+  "dependencies": {
+    "firebase": "^12.9.0",
+    "firebase-admin": "^13.6.1",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "eslint": "latest",
+    "eslint-config-next": "latest",
+    "prettier": "latest",
+    "typescript": "latest"
+  }
+}

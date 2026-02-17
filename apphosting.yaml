@@ -1,0 +1,24 @@
+env:
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: "AIzaSyD0B87rze2jkocjWxxsIwnj_H60jkxkV78"
+    availability: [BUILD, RUNTIME]
+
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: "gauntlet-1-collab-board.firebaseapp.com"
+    availability: [BUILD, RUNTIME]
+
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: "gauntlet-1-collab-board"
+    availability: [BUILD, RUNTIME]
+
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: "gauntlet-1-collab-board.firebasestorage.app"
+    availability: [BUILD, RUNTIME]
+
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "140515205560"
+    availability: [BUILD, RUNTIME]
+
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: "1:140515205560:web:b182dabdc9cdafbcb32f4d"
+    availability: [BUILD, RUNTIME]

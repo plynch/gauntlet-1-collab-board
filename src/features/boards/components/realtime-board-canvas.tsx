@@ -31,7 +31,7 @@ import type {
 import { getFirebaseClientDb } from "@/lib/firebase/client";
 
 const CURSOR_THROTTLE_MS = 100;
-const DRAG_THROTTLE_MS = 60;
+const DRAG_THROTTLE_MS = 40;
 const DRAG_CLICK_SLOP_PX = 3;
 const STICKY_TEXT_SYNC_THROTTLE_MS = 120;
 const PRESENCE_HEARTBEAT_MS = 10_000;
@@ -168,8 +168,8 @@ const INITIAL_TOOL_PANEL_POSITION: ToolPanelPosition = {
   x: 12,
   y: 12
 };
-const RESIZE_THROTTLE_MS = 60;
-const ROTATE_THROTTLE_MS = 60;
+const RESIZE_THROTTLE_MS = 45;
+const ROTATE_THROTTLE_MS = 45;
 const RESIZE_HANDLE_SIZE = 10;
 const LINE_MIN_LENGTH = 40;
 const SELECTED_OBJECT_HALO = "0 0 0 2px rgba(59, 130, 246, 0.45), 0 8px 14px rgba(0,0,0,0.14)";
@@ -1139,7 +1139,10 @@ export default function RealtimeBoardCanvas({
   );
 
   const updateObjectPositionsBatch = useCallback(
-    async (nextPositionsById: Record<string, BoardPoint>) => {
+    async (
+      nextPositionsById: Record<string, BoardPoint>,
+      includeUpdatedAt: boolean
+    ) => {
       if (!canEditRef.current) {
         return;
       }
@@ -1151,23 +1154,18 @@ export default function RealtimeBoardCanvas({
 
       try {
         const batch = writeBatch(db);
-        const updatedAt = serverTimestamp();
         let hasWrites = false;
 
         entries.forEach(([objectId, position]) => {
-          const geometry = getCurrentObjectGeometry(objectId);
-          if (!geometry) {
-            return;
+          const updatePayload: Record<string, unknown> = {
+            x: position.x,
+            y: position.y
+          };
+          if (includeUpdatedAt) {
+            updatePayload.updatedAt = serverTimestamp();
           }
 
-          batch.update(doc(db, `boards/${boardId}/objects/${objectId}`), {
-            x: position.x,
-            y: position.y,
-            width: geometry.width,
-            height: geometry.height,
-            rotationDeg: geometry.rotationDeg,
-            updatedAt
-          });
+          batch.update(doc(db, `boards/${boardId}/objects/${objectId}`), updatePayload);
           hasWrites = true;
         });
 
@@ -1181,7 +1179,7 @@ export default function RealtimeBoardCanvas({
         setBoardError(toBoardErrorMessage(error, "Failed to update object positions."));
       }
     },
-    [boardId, db, getCurrentObjectGeometry]
+    [boardId, db]
   );
 
   const getObjectSelectionBounds = useCallback(
@@ -1555,7 +1553,7 @@ export default function RealtimeBoardCanvas({
         const now = Date.now();
         if (canEditRef.current && now - dragState.lastSentAt >= DRAG_THROTTLE_MS) {
           dragState.lastSentAt = now;
-          void updateObjectPositionsBatch(nextPositionsById);
+          void updateObjectPositionsBatch(nextPositionsById, false);
         }
       }
     };
@@ -1675,7 +1673,7 @@ export default function RealtimeBoardCanvas({
           };
         });
 
-        void updateObjectPositionsBatch(nextPositionsById);
+        void updateObjectPositionsBatch(nextPositionsById, true);
       } else {
         dragState.objectIds.forEach((objectId) => {
           clearDraftGeometry(objectId);
@@ -2947,6 +2945,7 @@ export default function RealtimeBoardCanvas({
           >
             {objects.map((objectItem) => {
               const draftGeometry = draftGeometryById[objectItem.id];
+              const hasDraftGeometry = Boolean(draftGeometry);
               const objectX = draftGeometry?.x ?? objectItem.x;
               const objectY = draftGeometry?.y ?? objectItem.y;
               const objectWidth = draftGeometry?.width ?? objectItem.width;
@@ -2998,7 +2997,10 @@ export default function RealtimeBoardCanvas({
                         : "0 4px 12px rgba(0,0,0,0.08)",
                       overflow: "visible",
                       transform: `rotate(${objectRotationDeg}deg)`,
-                      transformOrigin: "center center"
+                      transformOrigin: "center center",
+                      transition: hasDraftGeometry
+                        ? "none"
+                        : "left 55ms linear, top 55ms linear, width 55ms linear, height 55ms linear, transform 55ms linear"
                     }}
                   >
                     <div
@@ -3165,7 +3167,10 @@ export default function RealtimeBoardCanvas({
                       objectItem.type === "line"
                         ? "none"
                         : `rotate(${objectRotationDeg}deg)`,
-                    transformOrigin: "center center"
+                    transformOrigin: "center center",
+                    transition: hasDraftGeometry
+                      ? "none"
+                      : "left 55ms linear, top 55ms linear, width 55ms linear, height 55ms linear, transform 55ms linear"
                   }}
                 >
                   <div

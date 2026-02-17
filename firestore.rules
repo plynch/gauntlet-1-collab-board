@@ -21,26 +21,59 @@ service cloud.firestore {
       return candidateList is list && candidateList.hasAny([request.auth.uid]);
     }
 
+    function canReadBoardDoc(board) {
+      return board.openRead == true
+        || board.openEdit == true
+        || board.ownerId == request.auth.uid
+        || uidInList(board.readerIds)
+        || uidInList(board.editorIds);
+    }
+
+    function canEditBoardDoc(board) {
+      return board.openEdit == true
+        || board.ownerId == request.auth.uid
+        || uidInList(board.editorIds);
+    }
+
+    function hasValidBoardFieldSet(board) {
+      return board.keys().hasOnly([
+        "title",
+        "ownerId",
+        "openEdit",
+        "openRead",
+        "editorIds",
+        "readerIds",
+        "createdAt",
+        "updatedAt"
+      ]);
+    }
+
+    function hasValidBoardFieldTypes(board) {
+      return board.title is string
+        && board.ownerId is string
+        && board.openEdit is bool
+        && board.openRead is bool
+        && board.editorIds is list
+        && board.readerIds is list;
+    }
+
+    function isBoardUpdateSafe() {
+      return request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && hasValidBoardFieldSet(request.resource.data)
+        && hasValidBoardFieldTypes(request.resource.data);
+    }
+
     function canReadBoard(boardId) {
       return isSignedIn()
         && boardExists(boardId)
-        && (
-          boardData(boardId).openRead == true
-          || boardData(boardId).openEdit == true
-          || boardData(boardId).ownerId == request.auth.uid
-          || uidInList(boardData(boardId).readerIds)
-          || uidInList(boardData(boardId).editorIds)
-        );
+        && canReadBoardDoc(boardData(boardId));
     }
 
     function canEditBoard(boardId) {
       return isSignedIn()
         && boardExists(boardId)
-        && (
-          boardData(boardId).openEdit == true
-          || boardData(boardId).ownerId == request.auth.uid
-          || uidInList(boardData(boardId).editorIds)
-        );
+        && canEditBoardDoc(boardData(boardId));
     }
 
     match /users/{userId} {
@@ -51,10 +84,16 @@ service cloud.firestore {
       // Note: owner board count limits (max 3) should be enforced server-side.
       allow create: if isSignedIn()
         && request.resource.data.ownerId == request.auth.uid
-        && request.resource.data.openEdit is bool;
+        && request.resource.data.openEdit is bool
+        && request.resource.data.openRead is bool
+        && hasValidBoardFieldSet(request.resource.data)
+        && hasValidBoardFieldTypes(request.resource.data);
 
-      allow get, list: if canReadBoard(boardId);
-      allow update, delete: if isSignedIn() && boardData(boardId).ownerId == request.auth.uid;
+      allow get, list: if isSignedIn() && canReadBoardDoc(resource.data);
+      allow update: if isSignedIn()
+        && resource.data.ownerId == request.auth.uid
+        && isBoardUpdateSafe();
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
     }
 
     match /boards/{boardId}/objects/{objectId} {

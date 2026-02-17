@@ -1,149 +1,51 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  GoogleAuthProvider,
-  onIdTokenChanged,
-  signInWithPopup,
-  signOut,
-  type User
-} from "firebase/auth";
+import { useCallback, useMemo, useState } from "react";
 
-import type { BoardDetail, BoardPermissions } from "@/features/boards/types";
-import {
-  getFirebaseClientAuth,
-  isFirebaseClientConfigured
-} from "@/lib/firebase/client";
+import { useAuthSession } from "@/features/auth/hooks/use-auth-session";
+import { useBoardLive } from "@/features/boards/hooks/use-board-live";
 import RealtimeBoardCanvas from "@/features/boards/components/realtime-board-canvas";
-
-type BoardDetailsResponse = {
-  board: BoardDetail;
-  permissions: BoardPermissions;
-  error?: string;
-  debug?: string;
-};
 
 type BoardWorkspaceProps = {
   boardId: string;
 };
 
-function getErrorMessage(payload: unknown, fallback: string): string {
-  if (typeof payload === "object" && payload !== null) {
-    const candidate = payload as { error?: unknown; debug?: unknown };
-
-    if (typeof candidate.error === "string" && candidate.error.length > 0) {
-      if (typeof candidate.debug === "string" && candidate.debug.length > 0) {
-        return `${candidate.error} (${candidate.debug})`;
-      }
-
-      return candidate.error;
-    }
-  }
-
-  return fallback;
-}
-
 export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
-  const [user, setUser] = useState<User | null>(null);
-  const [idToken, setIdToken] = useState<string | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [boardLoading, setBoardLoading] = useState(false);
-  const [board, setBoard] = useState<BoardDetail | null>(null);
-  const [permissions, setPermissions] = useState<BoardPermissions | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const firebaseIsConfigured = isFirebaseClientConfigured();
-  const auth = useMemo(
-    () => (firebaseIsConfigured ? getFirebaseClientAuth() : null),
-    [firebaseIsConfigured]
+  const {
+    firebaseIsConfigured,
+    user,
+    authLoading,
+    signInWithGoogle,
+    signOutCurrentUser
+  } = useAuthSession();
+  const { board, permissions, boardLoading, boardError } = useBoardLive(
+    boardId,
+    user?.uid ?? null
   );
 
-  const loadBoard = useCallback(async (token: string) => {
-    setBoardLoading(true);
-    setErrorMessage(null);
-
-    try {
-      const response = await fetch(`/api/boards/${boardId}`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`
-        },
-        cache: "no-store"
-      });
-
-      const payload = (await response.json()) as BoardDetailsResponse;
-      if (!response.ok) {
-        throw new Error(getErrorMessage(payload, "Failed to load board."));
-      }
-
-      setBoard(payload.board);
-      setPermissions(payload.permissions);
-    } catch (error) {
-      setBoard(null);
-      setPermissions(null);
-      setErrorMessage(error instanceof Error ? error.message : "Failed to load board.");
-    } finally {
-      setBoardLoading(false);
-    }
-  }, [boardId]);
-
-  useEffect(() => {
-    if (!auth) {
-      setAuthLoading(false);
-      return;
-    }
-
-    const unsubscribe = onIdTokenChanged(auth, async (nextUser) => {
-      setUser(nextUser);
-
-      if (!nextUser) {
-        setIdToken(null);
-        setBoard(null);
-        setPermissions(null);
-        setErrorMessage(null);
-        setAuthLoading(false);
-        return;
-      }
-
-      const token = await nextUser.getIdToken();
-      setIdToken(token);
-      setAuthLoading(false);
-    });
-
-    return unsubscribe;
-  }, [auth]);
-
-  useEffect(() => {
-    if (!idToken) {
-      return;
-    }
-
-    void loadBoard(idToken);
-  }, [idToken, loadBoard]);
-
   const handleSignIn = useCallback(async () => {
-    if (!auth) {
-      return;
-    }
-
-    const provider = new GoogleAuthProvider();
     setErrorMessage(null);
 
     try {
-      await signInWithPopup(auth, provider);
+      await signInWithGoogle();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Sign in failed.");
     }
-  }, [auth]);
+  }, [signInWithGoogle]);
 
   const handleSignOut = useCallback(async () => {
-    if (!auth) {
-      return;
+    await signOutCurrentUser();
+  }, [signOutCurrentUser]);
+
+  const combinedErrorMessage = useMemo(() => {
+    if (errorMessage) {
+      return errorMessage;
     }
 
-    await signOut(auth);
-  }, [auth]);
+    return boardError;
+  }, [boardError, errorMessage]);
 
   if (!firebaseIsConfigured) {
     return (
@@ -224,15 +126,15 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
           </section>
         ) : null}
 
-        {errorMessage ? (
-          <p style={{ color: "#b91c1c", marginTop: "1rem" }}>{errorMessage}</p>
+        {combinedErrorMessage ? (
+          <p style={{ color: "#b91c1c", marginTop: "1rem" }}>{combinedErrorMessage}</p>
         ) : null}
 
         {!authLoading && user ? (
           <>
             {boardLoading ? <p>Loading board...</p> : null}
 
-            {!boardLoading && board && permissions ? (
+            {!boardLoading && board && permissions?.canRead ? (
               <div style={{ height: "100%", minHeight: 0 }}>
                 <RealtimeBoardCanvas
                   boardId={boardId}
@@ -240,6 +142,10 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
                   permissions={permissions}
                 />
               </div>
+            ) : null}
+
+            {!boardLoading && board && permissions && !permissions.canRead ? (
+              <p>You do not have access to this board.</p>
             ) : null}
           </>
         ) : null}

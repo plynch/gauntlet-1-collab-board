@@ -2,19 +2,13 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  GoogleAuthProvider,
-  onIdTokenChanged,
-  signInWithPopup,
-  signOut,
-  type User
-} from "firebase/auth";
-
-import type { BoardDetail, BoardEditorProfile, BoardPermissions } from "@/features/boards/types";
-import {
-  getFirebaseClientAuth,
-  isFirebaseClientConfigured
-} from "@/lib/firebase/client";
+import type {
+  BoardDetail,
+  BoardEditorProfile,
+  BoardPermissions
+} from "@/features/boards/types";
+import { useAuthSession } from "@/features/auth/hooks/use-auth-session";
+import { useBoardLive } from "@/features/boards/hooks/use-board-live";
 
 type BoardDetailsResponse = {
   board: BoardDetail;
@@ -54,110 +48,107 @@ function getProfileLabel(profile: BoardEditorProfile): string {
 }
 
 export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspaceProps) {
-  const [user, setUser] = useState<User | null>(null);
-  const [idToken, setIdToken] = useState<string | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [boardLoading, setBoardLoading] = useState(false);
   const [savingAccess, setSavingAccess] = useState(false);
-  const [board, setBoard] = useState<BoardDetail | null>(null);
-  const [permissions, setPermissions] = useState<BoardPermissions | null>(null);
   const [newEditorEmail, setNewEditorEmail] = useState("");
   const [newReaderEmail, setNewReaderEmail] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [profileErrorMessage, setProfileErrorMessage] = useState<string | null>(null);
+  const [editorProfiles, setEditorProfiles] = useState<BoardEditorProfile[]>([]);
+  const [readerProfiles, setReaderProfiles] = useState<BoardEditorProfile[]>([]);
+  const [profilesLoading, setProfilesLoading] = useState(false);
 
-  const firebaseIsConfigured = isFirebaseClientConfigured();
-  const auth = useMemo(
-    () => (firebaseIsConfigured ? getFirebaseClientAuth() : null),
-    [firebaseIsConfigured]
+  const {
+    firebaseIsConfigured,
+    user,
+    idToken,
+    authLoading,
+    signInWithGoogle,
+    signOutCurrentUser
+  } = useAuthSession();
+  const { board, permissions, boardLoading, boardError } = useBoardLive(
+    boardId,
+    user?.uid ?? null
   );
 
-  const loadBoard = useCallback(async (token: string) => {
-    setBoardLoading(true);
-    setErrorMessage(null);
-
-    try {
-      const response = await fetch(`/api/boards/${boardId}`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`
-        },
-        cache: "no-store"
-      });
-
-      const payload = (await response.json()) as BoardDetailsResponse;
-      if (!response.ok) {
-        throw new Error(getErrorMessage(payload, "Failed to load board settings."));
-      }
-
-      setBoard(payload.board);
-      setPermissions(payload.permissions);
-    } catch (error) {
-      setBoard(null);
-      setPermissions(null);
-      setErrorMessage(
-        error instanceof Error ? error.message : "Failed to load board settings."
-      );
-    } finally {
-      setBoardLoading(false);
-    }
-  }, [boardId]);
+  const editorIdsKey = useMemo(
+    () => (board ? [...board.editorIds].sort().join(",") : ""),
+    [board]
+  );
+  const readerIdsKey = useMemo(
+    () => (board ? [...board.readerIds].sort().join(",") : ""),
+    [board]
+  );
 
   useEffect(() => {
-    if (!auth) {
-      setAuthLoading(false);
+    if (!permissions?.isOwner || !idToken) {
+      setEditorProfiles([]);
+      setReaderProfiles([]);
+      setProfilesLoading(false);
+      setProfileErrorMessage(null);
       return;
     }
 
-    const unsubscribe = onIdTokenChanged(auth, async (nextUser) => {
-      setUser(nextUser);
+    let isCancelled = false;
 
-      if (!nextUser) {
-        setIdToken(null);
-        setBoard(null);
-        setPermissions(null);
-        setErrorMessage(null);
-        setAuthLoading(false);
-        return;
+    const loadProfiles = async () => {
+      setProfilesLoading(true);
+      setProfileErrorMessage(null);
+
+      try {
+        const response = await fetch(`/api/boards/${boardId}`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${idToken}`
+          },
+          cache: "no-store"
+        });
+
+        const payload = (await response.json()) as BoardDetailsResponse;
+        if (!response.ok) {
+          throw new Error(getErrorMessage(payload, "Failed to sync board profiles."));
+        }
+
+        if (isCancelled) {
+          return;
+        }
+
+        setEditorProfiles(payload.board.editors);
+        setReaderProfiles(payload.board.readers);
+      } catch (error) {
+        if (isCancelled) {
+          return;
+        }
+
+        setProfileErrorMessage(
+          error instanceof Error ? error.message : "Failed to sync board profiles."
+        );
+      } finally {
+        if (!isCancelled) {
+          setProfilesLoading(false);
+        }
       }
+    };
 
-      const token = await nextUser.getIdToken();
-      setIdToken(token);
-      setAuthLoading(false);
-    });
+    void loadProfiles();
 
-    return unsubscribe;
-  }, [auth]);
-
-  useEffect(() => {
-    if (!idToken) {
-      return;
-    }
-
-    void loadBoard(idToken);
-  }, [idToken, loadBoard]);
+    return () => {
+      isCancelled = true;
+    };
+  }, [boardId, editorIdsKey, idToken, permissions?.isOwner, readerIdsKey]);
 
   const handleSignIn = useCallback(async () => {
-    if (!auth) {
-      return;
-    }
-
-    const provider = new GoogleAuthProvider();
     setErrorMessage(null);
 
     try {
-      await signInWithPopup(auth, provider);
+      await signInWithGoogle();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Sign in failed.");
     }
-  }, [auth]);
+  }, [signInWithGoogle]);
 
   const handleSignOut = useCallback(async () => {
-    if (!auth) {
-      return;
-    }
-
-    await signOut(auth);
-  }, [auth]);
+    await signOutCurrentUser();
+  }, [signOutCurrentUser]);
 
   const updateAccess = useCallback(
     async (payload: object): Promise<BoardDetail | null> => {
@@ -183,7 +174,9 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
           throw new Error(getErrorMessage(result, "Failed to update board access."));
         }
 
-        setBoard(result.board);
+        setEditorProfiles(result.board.editors);
+        setReaderProfiles(result.board.readers);
+        setProfileErrorMessage(null);
         return result.board;
       } catch (error) {
         setErrorMessage(
@@ -196,6 +189,18 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
     },
     [boardId, idToken]
   );
+
+  const combinedErrorMessage = useMemo(() => {
+    if (errorMessage) {
+      return errorMessage;
+    }
+
+    if (boardError) {
+      return boardError;
+    }
+
+    return profileErrorMessage;
+  }, [boardError, errorMessage, profileErrorMessage]);
 
   const handleToggleOpenEdit = useCallback(
     async (nextOpenEdit: boolean) => {
@@ -322,7 +327,7 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
         </section>
       ) : null}
 
-      {errorMessage ? <p style={{ color: "#b91c1c" }}>{errorMessage}</p> : null}
+      {combinedErrorMessage ? <p style={{ color: "#b91c1c" }}>{combinedErrorMessage}</p> : null}
 
       {!authLoading && user ? (
         <>
@@ -403,7 +408,7 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
                     gap: "0.5rem"
                   }}
                 >
-                  {board.editors.map((editor) => (
+                  {editorProfiles.map((editor) => (
                     <li
                       key={editor.uid}
                       style={{
@@ -427,7 +432,7 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
                       </button>
                     </li>
                   ))}
-                  {board.editors.length === 0 ? (
+                  {editorProfiles.length === 0 ? (
                     <li style={{ color: "#6b7280" }}>No editors in allowlist.</li>
                   ) : null}
                 </ul>
@@ -488,7 +493,7 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
                     gap: "0.5rem"
                   }}
                 >
-                  {board.readers.map((reader) => (
+                  {readerProfiles.map((reader) => (
                     <li
                       key={reader.uid}
                       style={{
@@ -512,12 +517,16 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
                       </button>
                     </li>
                   ))}
-                  {board.readers.length === 0 ? (
+                  {readerProfiles.length === 0 ? (
                     <li style={{ color: "#6b7280" }}>No readers in allowlist.</li>
                   ) : null}
                 </ul>
               </section>
             </section>
+          ) : null}
+
+          {!boardLoading && board && permissions?.isOwner && profilesLoading ? (
+            <p style={{ color: "#6b7280" }}>Refreshing access profiles...</p>
           ) : null}
         </>
       ) : null}

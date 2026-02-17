@@ -1,25 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  GoogleAuthProvider,
-  onIdTokenChanged,
-  signInWithPopup,
-  signOut,
-  type User
-} from "firebase/auth";
+import { useCallback, useMemo, useState } from "react";
 
 import { MAX_OWNED_BOARDS, type BoardSummary } from "@/features/boards/types";
-import {
-  getFirebaseClientAuth,
-  isFirebaseClientConfigured
-} from "@/lib/firebase/client";
-
-type ListBoardsResponse = {
-  boards: BoardSummary[];
-  maxOwnedBoards: number;
-};
+import { useAuthSession } from "@/features/auth/hooks/use-auth-session";
+import { useOwnedBoardsLive } from "@/features/boards/hooks/use-owned-boards-live";
 
 type CreateBoardResponse = {
   board: BoardSummary;
@@ -37,108 +23,33 @@ function getErrorMessage(payload: unknown, fallback: string): string {
 }
 
 export default function BoardsPage() {
-  const [user, setUser] = useState<User | null>(null);
-  const [idToken, setIdToken] = useState<string | null>(null);
-  const [boards, setBoards] = useState<BoardSummary[]>([]);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [boardsLoading, setBoardsLoading] = useState(false);
   const [creatingBoard, setCreatingBoard] = useState(false);
   const [deletingBoardId, setDeletingBoardId] = useState<string | null>(null);
   const [titleInput, setTitleInput] = useState("");
-  const [maxOwnedBoards, setMaxOwnedBoards] = useState(MAX_OWNED_BOARDS);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const firebaseIsConfigured = isFirebaseClientConfigured();
-  const auth = useMemo(
-    () => (firebaseIsConfigured ? getFirebaseClientAuth() : null),
-    [firebaseIsConfigured]
-  );
-
-  const fetchBoards = useCallback(
-    async (token: string) => {
-      setBoardsLoading(true);
-      setErrorMessage(null);
-
-      try {
-        const response = await fetch("/api/boards", {
-          headers: {
-            Authorization: `Bearer ${token}`
-          },
-          cache: "no-store"
-        });
-
-        const payload = (await response.json()) as ListBoardsResponse | { error?: string };
-        if (!response.ok) {
-          throw new Error(getErrorMessage(payload, "Failed to load boards."));
-        }
-
-        setBoards((payload as ListBoardsResponse).boards);
-        setMaxOwnedBoards((payload as ListBoardsResponse).maxOwnedBoards);
-      } catch (error) {
-        setBoards([]);
-        setErrorMessage(error instanceof Error ? error.message : "Failed to load boards.");
-      } finally {
-        setBoardsLoading(false);
-      }
-    },
-    []
-  );
-
-  useEffect(() => {
-    if (!auth) {
-      setAuthLoading(false);
-      return;
-    }
-
-    const unsubscribe = onIdTokenChanged(auth, async (nextUser) => {
-      setUser(nextUser);
-
-      if (!nextUser) {
-        setIdToken(null);
-        setBoards([]);
-        setErrorMessage(null);
-        setAuthLoading(false);
-        return;
-      }
-
-      const token = await nextUser.getIdToken();
-      setIdToken(token);
-      setAuthLoading(false);
-    });
-
-    return unsubscribe;
-  }, [auth]);
-
-  useEffect(() => {
-    if (!idToken) {
-      return;
-    }
-
-    void fetchBoards(idToken);
-  }, [fetchBoards, idToken]);
+  const {
+    firebaseIsConfigured,
+    user,
+    idToken,
+    authLoading,
+    signInWithGoogle,
+    signOutCurrentUser
+  } = useAuthSession();
+  const { boards, boardsLoading, boardsError } = useOwnedBoardsLive(user?.uid ?? null);
 
   const handleSignIn = useCallback(async () => {
-    if (!auth) {
-      return;
-    }
-
-    const provider = new GoogleAuthProvider();
     setErrorMessage(null);
 
     try {
-      await signInWithPopup(auth, provider);
+      await signInWithGoogle();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Sign in failed.");
     }
-  }, [auth]);
+  }, [signInWithGoogle]);
 
   const handleSignOut = useCallback(async () => {
-    if (!auth) {
-      return;
-    }
-
-    await signOut(auth);
-  }, [auth]);
+    await signOutCurrentUser();
+  }, [signOutCurrentUser]);
 
   const handleCreateBoard = useCallback(async () => {
     if (!idToken) {
@@ -168,7 +79,6 @@ export default function BoardsPage() {
       }
 
       setTitleInput("");
-      setBoards((previous) => [payload.board, ...previous]);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to create board.");
     } finally {
@@ -201,8 +111,6 @@ export default function BoardsPage() {
         if (!response.ok) {
           throw new Error(getErrorMessage(payload, "Failed to delete board."));
         }
-
-        setBoards((previous) => previous.filter((board) => board.id !== boardId));
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : "Failed to delete board.");
       } finally {
@@ -211,6 +119,14 @@ export default function BoardsPage() {
     },
     [idToken]
   );
+
+  const combinedErrorMessage = useMemo(() => {
+    if (errorMessage) {
+      return errorMessage;
+    }
+
+    return boardsError;
+  }, [boardsError, errorMessage]);
 
   if (!firebaseIsConfigured) {
     return (
@@ -277,7 +193,7 @@ export default function BoardsPage() {
           >
             <h2 style={{ marginTop: 0 }}>Create board</h2>
             <p style={{ marginTop: 0 }}>
-              You own {boards.length} / {maxOwnedBoards} boards.
+              You own {boards.length} / {MAX_OWNED_BOARDS} boards.
             </p>
 
             <div
@@ -295,7 +211,7 @@ export default function BoardsPage() {
               />
               <button
                 type="button"
-                disabled={creatingBoard || boards.length >= maxOwnedBoards}
+                disabled={creatingBoard || boards.length >= MAX_OWNED_BOARDS}
                 onClick={() => void handleCreateBoard()}
               >
                 {creatingBoard ? "Creating..." : "Create board"}
@@ -303,7 +219,9 @@ export default function BoardsPage() {
             </div>
           </div>
 
-          {errorMessage ? <p style={{ color: "#b91c1c" }}>{errorMessage}</p> : null}
+          {combinedErrorMessage ? (
+            <p style={{ color: "#b91c1c" }}>{combinedErrorMessage}</p>
+          ) : null}
 
           <h2>Owned boards</h2>
           {boardsLoading ? <p>Loading boards...</p> : null}

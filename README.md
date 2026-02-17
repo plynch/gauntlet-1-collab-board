@@ -32,3 +32,9 @@ Set these in `.env.local`:
 - `npm run start`
 - `npm run lint`
 - `npm run typecheck`
+
+## Realtime Data Policy
+
+- Mutable user-facing data should use Firestore realtime listeners (`onSnapshot`) for reads.
+- Privileged writes (ownership checks, access control updates) should stay in server API routes.
+- Avoid manual refresh UX for first-party pages when data can change in another window/session.

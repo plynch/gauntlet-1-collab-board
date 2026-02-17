@@ -81,22 +81,20 @@ export function canUserEditBoard(board: BoardDoc, userUid: string): boolean {
   );
 }
 
-export async function resolveEditorProfiles(
-  editorIds: string[]
-): Promise<BoardEditorProfile[]> {
-  if (editorIds.length === 0) {
+export async function resolveUserProfiles(userIds: string[]): Promise<BoardEditorProfile[]> {
+  if (userIds.length === 0) {
     return [];
   }
 
   try {
     const auth = getFirebaseAdminAuth();
-    const usersResult = await auth.getUsers(editorIds.map((uid) => ({ uid })));
+    const usersResult = await auth.getUsers(userIds.map((uid) => ({ uid })));
 
     const usersByUid = new Map<string, UserRecord>(
       usersResult.users.map((user) => [user.uid, user])
     );
 
-    return editorIds.map((uid) => {
+    return userIds.map((uid) => {
       const user = usersByUid.get(uid);
       return {
         uid,
@@ -105,10 +103,16 @@ export async function resolveEditorProfiles(
       };
     });
   } catch {
-    return editorIds.map((uid) => ({
+    return userIds.map((uid) => ({
       uid,
       email: null,
       displayName: null
     }));
   }
+}
+
+export async function resolveEditorProfiles(
+  editorIds: string[]
+): Promise<BoardEditorProfile[]> {
+  return resolveUserProfiles(editorIds);
 }

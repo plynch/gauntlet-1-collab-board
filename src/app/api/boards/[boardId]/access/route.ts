@@ -6,7 +6,7 @@ import { getFirebaseAdminAuth, getFirebaseAdminDb } from "@/lib/firebase/admin";
 import { AuthError, requireUser } from "@/server/auth/require-user";
 import {
   parseBoardDoc,
-  resolveEditorProfiles,
+  resolveUserProfiles,
   toIsoDate,
   type BoardDoc
 } from "@/server/boards/board-access";
@@ -25,6 +25,11 @@ type SetOpenEditAction = {
   openEdit: boolean;
 };
 
+type SetOpenReadAction = {
+  action: "set-open-read";
+  openRead: boolean;
+};
+
 type AddEditorAction = {
   action: "add-editor";
   editorEmail: string;
@@ -35,7 +40,23 @@ type RemoveEditorAction = {
   editorUid: string;
 };
 
-type AccessAction = SetOpenEditAction | AddEditorAction | RemoveEditorAction;
+type AddReaderAction = {
+  action: "add-reader";
+  readerEmail: string;
+};
+
+type RemoveReaderAction = {
+  action: "remove-reader";
+  readerUid: string;
+};
+
+type AccessAction =
+  | SetOpenEditAction
+  | SetOpenReadAction
+  | AddEditorAction
+  | RemoveEditorAction
+  | AddReaderAction
+  | RemoveReaderAction;
 
 function getDebugMessage(error: unknown): string | undefined {
   if (process.env.NODE_ENV === "production") {
@@ -56,7 +77,8 @@ function getDebugMessage(error: unknown): string | undefined {
 function toBoardDetail(
   boardId: string,
   board: BoardDoc,
-  editors: Awaited<ReturnType<typeof resolveEditorProfiles>>
+  editors: Awaited<ReturnType<typeof resolveUserProfiles>>,
+  readers: Awaited<ReturnType<typeof resolveUserProfiles>>
 ): BoardDetail {
   return {
     id: boardId,
@@ -67,6 +89,7 @@ function toBoardDetail(
     editorIds: board.editorIds,
     readerIds: board.readerIds,
     editors,
+    readers,
     createdAt: toIsoDate(board.createdAt),
     updatedAt: toIsoDate(board.updatedAt)
   };
@@ -80,8 +103,11 @@ function isAccessAction(input: unknown): input is AccessAction {
   const action = (input as { action?: unknown }).action;
   return (
     action === "set-open-edit" ||
+    action === "set-open-read" ||
     action === "add-editor" ||
-    action === "remove-editor"
+    action === "remove-editor" ||
+    action === "add-reader" ||
+    action === "remove-reader"
   );
 }
 
@@ -134,6 +160,13 @@ export async function PATCH(request: NextRequest, context: BoardAccessRouteConte
       });
     }
 
+    if (payload.action === "set-open-read") {
+      await boardRef.update({
+        openRead: payload.openRead,
+        updatedAt: FieldValue.serverTimestamp()
+      });
+    }
+
     if (payload.action === "add-editor") {
       const email = normalizeEmail(payload.editorEmail);
       if (!email) {
@@ -163,6 +196,7 @@ export async function PATCH(request: NextRequest, context: BoardAccessRouteConte
 
       await boardRef.update({
         editorIds: FieldValue.arrayUnion(editorUser.uid),
+        readerIds: FieldValue.arrayRemove(editorUser.uid),
         updatedAt: FieldValue.serverTimestamp()
       });
     }
@@ -186,6 +220,65 @@ export async function PATCH(request: NextRequest, context: BoardAccessRouteConte
       });
     }
 
+    if (payload.action === "add-reader") {
+      const email = normalizeEmail(payload.readerEmail);
+      if (!email) {
+        return NextResponse.json({ error: "Reader email is required." }, { status: 400 });
+      }
+
+      const readerUser = await getFirebaseAdminAuth()
+        .getUserByEmail(email)
+        .catch(() => null);
+
+      if (!readerUser) {
+        return NextResponse.json(
+          {
+            error:
+              "No Firebase user found for that email. They must sign in at least once first."
+          },
+          { status: 404 }
+        );
+      }
+
+      if (readerUser.uid === board.ownerId) {
+        return NextResponse.json(
+          { error: "Owner does not need to be added as a reader." },
+          { status: 400 }
+        );
+      }
+
+      if (board.editorIds.includes(readerUser.uid)) {
+        return NextResponse.json(
+          { error: "User already has edit access. Remove edit access before adding reader access." },
+          { status: 409 }
+        );
+      }
+
+      await boardRef.update({
+        readerIds: FieldValue.arrayUnion(readerUser.uid),
+        updatedAt: FieldValue.serverTimestamp()
+      });
+    }
+
+    if (payload.action === "remove-reader") {
+      const readerUid = payload.readerUid.trim();
+      if (!readerUid) {
+        return NextResponse.json({ error: "Reader uid is required." }, { status: 400 });
+      }
+
+      if (readerUid === board.ownerId) {
+        return NextResponse.json(
+          { error: "Owner cannot be removed from readers." },
+          { status: 400 }
+        );
+      }
+
+      await boardRef.update({
+        readerIds: FieldValue.arrayRemove(readerUid),
+        updatedAt: FieldValue.serverTimestamp()
+      });
+    }
+
     const updatedSnapshot = await boardRef.get();
     const updatedBoard = parseBoardDoc(updatedSnapshot.data());
 
@@ -193,10 +286,11 @@ export async function PATCH(request: NextRequest, context: BoardAccessRouteConte
       return NextResponse.json({ error: "Updated board data is invalid." }, { status: 500 });
     }
 
-    const editors = await resolveEditorProfiles(updatedBoard.editorIds);
+    const editors = await resolveUserProfiles(updatedBoard.editorIds);
+    const readers = await resolveUserProfiles(updatedBoard.readerIds);
 
     return NextResponse.json({
-      board: toBoardDetail(boardId, updatedBoard, editors)
+      board: toBoardDetail(boardId, updatedBoard, editors, readers)
     });
   } catch (error) {
     if (error instanceof AuthError) {

@@ -338,6 +338,7 @@ export default function BoardsPage() {
                   </div>
                   <div style={{ display: "flex", gap: "0.5rem" }}>
                     <Link href={`/boards/${board.id}`}>Open</Link>
+                    <Link href={`/boards/${board.id}/settings`}>Manage access</Link>
                     <button
                       type="button"
                       onClick={() => void handleDeleteBoard(board.id)}

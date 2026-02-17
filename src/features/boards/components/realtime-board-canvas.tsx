@@ -18,7 +18,8 @@ import {
   onSnapshot,
   serverTimestamp,
   setDoc,
-  updateDoc
+  updateDoc,
+  writeBatch
 } from "firebase/firestore";
 
 import type {
@@ -31,6 +32,7 @@ import { getFirebaseClientDb } from "@/lib/firebase/client";
 
 const CURSOR_THROTTLE_MS = 100;
 const DRAG_THROTTLE_MS = 60;
+const STICKY_TEXT_SYNC_THROTTLE_MS = 120;
 const PRESENCE_HEARTBEAT_MS = 10_000;
 const PRESENCE_TTL_MS = 15_000;
 
@@ -54,11 +56,10 @@ type PanState = {
 };
 
 type DragState = {
-  objectId: string;
+  objectIds: string[];
+  initialGeometries: Record<string, ObjectGeometry>;
   startClientX: number;
   startClientY: number;
-  initialX: number;
-  initialY: number;
   lastSentAt: number;
 };
 
@@ -78,6 +79,14 @@ type ToolPanelDragState = {
 type BoardPoint = {
   x: number;
   y: number;
+};
+
+type MarqueeSelectionMode = "add" | "remove";
+
+type MarqueeSelectionState = {
+  startPoint: BoardPoint;
+  currentPoint: BoardPoint;
+  mode: MarqueeSelectionMode;
 };
 
 type ResizeCorner = "nw" | "ne" | "sw" | "se";
@@ -109,6 +118,17 @@ type LineEndpointResizeState = {
   lastSentAt: number;
 };
 
+type StickyTextSyncState = {
+  pendingText: string | null;
+  lastSentAt: number;
+  timerId: number | null;
+};
+
+type ColorSwatch = {
+  name: string;
+  value: string;
+};
+
 const BOARD_TOOLS: BoardObjectKind[] = ["sticky", "rect", "circle", "line"];
 const TOOL_PANEL_EDGE_PADDING = 8;
 const TOOL_PANEL_DRAG_THRESHOLD_PX = 5;
@@ -119,6 +139,20 @@ const INITIAL_TOOL_PANEL_POSITION: ToolPanelPosition = {
 const RESIZE_THROTTLE_MS = 60;
 const RESIZE_HANDLE_SIZE = 10;
 const LINE_MIN_LENGTH = 40;
+const SELECTED_OBJECT_HALO = "0 0 0 2px rgba(59, 130, 246, 0.45), 0 8px 14px rgba(0,0,0,0.14)";
+const OBJECT_SPAWN_STEP_PX = 20;
+const BOARD_COLOR_SWATCHES: ColorSwatch[] = [
+  { name: "Yellow", value: "#fde68a" },
+  { name: "Orange", value: "#fdba74" },
+  { name: "Red", value: "#fca5a5" },
+  { name: "Pink", value: "#f9a8d4" },
+  { name: "Purple", value: "#c4b5fd" },
+  { name: "Blue", value: "#93c5fd" },
+  { name: "Teal", value: "#99f6e4" },
+  { name: "Green", value: "#86efac" },
+  { name: "Gray", value: "#d1d5db" },
+  { name: "Tan", value: "#d2b48c" }
+];
 
 const INITIAL_VIEWPORT: ViewportState = {
   x: 120,
@@ -128,6 +162,56 @@ const INITIAL_VIEWPORT: ViewportState = {
 
 function clampScale(nextScale: number): number {
   return Math.min(2.5, Math.max(0.3, nextScale));
+}
+
+function toNormalizedRect(start: BoardPoint, end: BoardPoint): {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+} {
+  return {
+    left: Math.min(start.x, end.x),
+    right: Math.max(start.x, end.x),
+    top: Math.min(start.y, end.y),
+    bottom: Math.max(start.y, end.y)
+  };
+}
+
+function getSpawnOffset(index: number, step: number): BoardPoint {
+  if (index <= 0) {
+    return { x: 0, y: 0 };
+  }
+
+  const ring = Math.ceil((Math.sqrt(index + 1) - 1) / 2);
+  const sideLength = ring * 2;
+  const maxValueInRing = (ring * 2 + 1) ** 2 - 1;
+  const delta = maxValueInRing - index;
+
+  let gridX = 0;
+  let gridY = 0;
+
+  if (delta < sideLength) {
+    gridX = ring - delta;
+    gridY = -ring;
+  } else if (delta < sideLength * 2) {
+    const localDelta = delta - sideLength;
+    gridX = -ring;
+    gridY = -ring + localDelta;
+  } else if (delta < sideLength * 3) {
+    const localDelta = delta - sideLength * 2;
+    gridX = -ring + localDelta;
+    gridY = ring;
+  } else {
+    const localDelta = delta - sideLength * 3;
+    gridX = ring;
+    gridY = ring - localDelta;
+  }
+
+  return {
+    x: gridX * step,
+    y: gridY * step
+  };
 }
 
 function getString(value: unknown, fallback = ""): string {
@@ -340,6 +424,55 @@ function ToolIcon({ kind }: { kind: BoardObjectKind }) {
   );
 }
 
+function ColorSwatchPicker({
+  currentColor,
+  onSelectColor
+}: {
+  currentColor: string;
+  onSelectColor: (nextColor: string) => void;
+}) {
+  const currentColorKey = currentColor.toLowerCase();
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(5, 18px)",
+        gap: 6,
+        padding: "0.35rem",
+        borderRadius: 8,
+        background: "rgba(255,255,255,0.98)",
+        border: "1px solid #d1d5db",
+        boxShadow: "0 6px 14px rgba(0,0,0,0.15)"
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      {BOARD_COLOR_SWATCHES.map((swatch) => {
+        const isSelected = swatch.value.toLowerCase() === currentColorKey;
+
+        return (
+          <button
+            key={swatch.value}
+            type="button"
+            onClick={() => onSelectColor(swatch.value)}
+            title={swatch.name}
+            aria-label={`Set color to ${swatch.name}`}
+            style={{
+              width: 18,
+              height: 18,
+              borderRadius: "50%",
+              border: isSelected ? "2px solid #0f172a" : "1px solid rgba(15, 23, 42, 0.25)",
+              boxSizing: "border-box",
+              background: swatch.value,
+              cursor: "pointer"
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 function TrashIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -390,10 +523,12 @@ function toBoardObject(rawId: string, rawData: Record<string, unknown>): BoardOb
   }
 
   const defaults = getDefaultObjectSize(type);
+  const createdAtMs = getTimestampMillis(rawData.createdAt);
 
   return {
     id: rawId,
     type,
+    zIndex: getNumber(rawData.zIndex, createdAtMs ?? 0),
     x: getNumber(rawData.x, 0),
     y: getNumber(rawData.y, 0),
     width: getNumber(rawData.width, defaults.width),
@@ -474,13 +609,16 @@ export default function RealtimeBoardCanvas({
   const dragStateRef = useRef<DragState | null>(null);
   const cornerResizeStateRef = useRef<CornerResizeState | null>(null);
   const lineEndpointResizeStateRef = useRef<LineEndpointResizeState | null>(null);
+  const marqueeSelectionStateRef = useRef<MarqueeSelectionState | null>(null);
   const toolPanelDragStateRef = useRef<ToolPanelDragState | null>(null);
   const suppressToolPanelClickRef = useRef(false);
   const toolPanelPositionRef = useRef<ToolPanelPosition>(INITIAL_TOOL_PANEL_POSITION);
   const idTokenRef = useRef<string | null>(null);
   const objectsByIdRef = useRef<Map<string, BoardObject>>(new Map());
-  const selectedObjectIdRef = useRef<string | null>(null);
+  const objectSpawnSequenceRef = useRef(0);
+  const selectedObjectIdsRef = useRef<Set<string>>(new Set());
   const draftGeometryByIdRef = useRef<Record<string, ObjectGeometry>>({});
+  const stickyTextSyncStateRef = useRef<Map<string, StickyTextSyncState>>(new Map());
   const sendCursorAtRef = useRef(0);
   const canEditRef = useRef(canEdit);
 
@@ -491,7 +629,9 @@ export default function RealtimeBoardCanvas({
   const [draftGeometryById, setDraftGeometryById] = useState<Record<string, ObjectGeometry>>(
     {}
   );
-  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
+  const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>([]);
+  const [marqueeSelectionState, setMarqueeSelectionState] =
+    useState<MarqueeSelectionState | null>(null);
   const [boardError, setBoardError] = useState<string | null>(null);
   const [presenceClock, setPresenceClock] = useState(() => Date.now());
   const [toolPanelPosition, setToolPanelPosition] = useState<ToolPanelPosition>(
@@ -533,8 +673,21 @@ export default function RealtimeBoardCanvas({
   }, [toolPanelPosition]);
 
   useEffect(() => {
-    selectedObjectIdRef.current = selectedObjectId;
-  }, [selectedObjectId]);
+    selectedObjectIdsRef.current = new Set(selectedObjectIds);
+  }, [selectedObjectIds]);
+
+  useEffect(() => {
+    const syncStates = stickyTextSyncStateRef.current;
+
+    return () => {
+      syncStates.forEach((syncState) => {
+        if (syncState.timerId !== null) {
+          window.clearTimeout(syncState.timerId);
+        }
+      });
+      syncStates.clear();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -626,18 +779,17 @@ export default function RealtimeBoardCanvas({
         });
 
         nextObjects.sort((left, right) => {
-          const leftValue = left.updatedAt ? Date.parse(left.updatedAt) : 0;
-          const rightValue = right.updatedAt ? Date.parse(right.updatedAt) : 0;
-          return leftValue - rightValue;
+          if (left.zIndex !== right.zIndex) {
+            return left.zIndex - right.zIndex;
+          }
+
+          return left.id.localeCompare(right.id);
         });
 
-        const selectedId = selectedObjectIdRef.current;
-        if (
-          selectedId &&
-          !nextObjects.some((objectItem) => objectItem.id === selectedId)
-        ) {
-          setSelectedObjectId(null);
-        }
+        const nextObjectIds = new Set(nextObjects.map((objectItem) => objectItem.id));
+        setSelectedObjectIds((previous) =>
+          previous.filter((objectId) => nextObjectIds.has(objectId))
+        );
 
         setObjects(nextObjects);
       },
@@ -784,20 +936,98 @@ export default function RealtimeBoardCanvas({
     [boardId, db]
   );
 
-  const updateObjectPosition = useCallback(
-    async (objectId: string, nextX: number, nextY: number) => {
-      const geometry = getCurrentObjectGeometry(objectId);
-      if (!geometry) {
+  const updateObjectPositionsBatch = useCallback(
+    async (nextPositionsById: Record<string, BoardPoint>) => {
+      if (!canEditRef.current) {
         return;
       }
 
-      await updateObjectGeometry(objectId, {
-        ...geometry,
-        x: nextX,
-        y: nextY
-      });
+      const entries = Object.entries(nextPositionsById);
+      if (entries.length === 0) {
+        return;
+      }
+
+      try {
+        const batch = writeBatch(db);
+        const updatedAt = serverTimestamp();
+        let hasWrites = false;
+
+        entries.forEach(([objectId, position]) => {
+          const geometry = getCurrentObjectGeometry(objectId);
+          if (!geometry) {
+            return;
+          }
+
+          batch.update(doc(db, `boards/${boardId}/objects/${objectId}`), {
+            x: position.x,
+            y: position.y,
+            width: geometry.width,
+            height: geometry.height,
+            rotationDeg: geometry.rotationDeg,
+            updatedAt
+          });
+          hasWrites = true;
+        });
+
+        if (!hasWrites) {
+          return;
+        }
+
+        await batch.commit();
+      } catch (error) {
+        console.error("Failed to update object positions", error);
+        setBoardError(toBoardErrorMessage(error, "Failed to update object positions."));
+      }
     },
-    [getCurrentObjectGeometry, updateObjectGeometry]
+    [boardId, db, getCurrentObjectGeometry]
+  );
+
+  const getObjectSelectionBounds = useCallback((objectItem: BoardObject) => {
+    if (objectItem.type === "line") {
+      const endpoints = getLineEndpoints({
+        x: objectItem.x,
+        y: objectItem.y,
+        width: objectItem.width,
+        height: objectItem.height,
+        rotationDeg: objectItem.rotationDeg
+      });
+
+      return {
+        left: Math.min(endpoints.start.x, endpoints.end.x),
+        right: Math.max(endpoints.start.x, endpoints.end.x),
+        top: Math.min(endpoints.start.y, endpoints.end.y),
+        bottom: Math.max(endpoints.start.y, endpoints.end.y)
+      };
+    }
+
+    return {
+      left: objectItem.x,
+      right: objectItem.x + objectItem.width,
+      top: objectItem.y,
+      bottom: objectItem.y + objectItem.height
+    };
+  }, []);
+
+  const getObjectsIntersectingRect = useCallback(
+    (rect: { left: number; right: number; top: number; bottom: number }): string[] => {
+      const intersectingObjectIds: string[] = [];
+
+      objectsByIdRef.current.forEach((objectItem) => {
+        const bounds = getObjectSelectionBounds(objectItem);
+        const intersects =
+          bounds.right >= rect.left &&
+          bounds.left <= rect.right &&
+          bounds.bottom >= rect.top &&
+          bounds.top <= rect.bottom;
+
+        if (intersects) {
+          intersectingObjectIds.push(objectItem.id);
+        }
+      });
+
+      return intersectingObjectIds;
+    },
+    [getObjectSelectionBounds]
   );
 
   const clampToolPanelPosition = useCallback((nextPosition: ToolPanelPosition) => {
@@ -1007,6 +1237,29 @@ export default function RealtimeBoardCanvas({
         return;
       }
 
+      const marqueeSelectionState = marqueeSelectionStateRef.current;
+      if (marqueeSelectionState) {
+        const stageElement = stageRef.current;
+        if (!stageElement) {
+          return;
+        }
+
+        const rect = stageElement.getBoundingClientRect();
+        const nextPoint = {
+          x: (event.clientX - rect.left - viewportRef.current.x) / scale,
+          y: (event.clientY - rect.top - viewportRef.current.y) / scale
+        };
+
+        const nextMarqueeState: MarqueeSelectionState = {
+          ...marqueeSelectionState,
+          currentPoint: nextPoint
+        };
+
+        marqueeSelectionStateRef.current = nextMarqueeState;
+        setMarqueeSelectionState(nextMarqueeState);
+        return;
+      }
+
       const panState = panStateRef.current;
       if (panState) {
         const nextX = panState.initialX + (event.clientX - panState.startClientX);
@@ -1020,26 +1273,37 @@ export default function RealtimeBoardCanvas({
 
       const dragState = dragStateRef.current;
       if (dragState) {
-        const nextX =
-          dragState.initialX + (event.clientX - dragState.startClientX) / scale;
-        const nextY =
-          dragState.initialY + (event.clientY - dragState.startClientY) / scale;
+        const deltaX = (event.clientX - dragState.startClientX) / scale;
+        const deltaY = (event.clientY - dragState.startClientY) / scale;
 
-        const currentGeometry = getCurrentObjectGeometry(dragState.objectId);
-        if (!currentGeometry) {
-          return;
-        }
+        const nextPositionsById: Record<string, BoardPoint> = {};
 
-        setDraftGeometry(dragState.objectId, {
-          ...currentGeometry,
-          x: nextX,
-          y: nextY
+        dragState.objectIds.forEach((objectId) => {
+          const initialGeometry = dragState.initialGeometries[objectId];
+          const currentGeometry = getCurrentObjectGeometry(objectId);
+          if (!initialGeometry || !currentGeometry) {
+            return;
+          }
+
+          const nextX = initialGeometry.x + deltaX;
+          const nextY = initialGeometry.y + deltaY;
+
+          nextPositionsById[objectId] = {
+            x: nextX,
+            y: nextY
+          };
+
+          setDraftGeometry(objectId, {
+            ...currentGeometry,
+            x: nextX,
+            y: nextY
+          });
         });
 
         const now = Date.now();
         if (canEditRef.current && now - dragState.lastSentAt >= DRAG_THROTTLE_MS) {
           dragState.lastSentAt = now;
-          void updateObjectPosition(dragState.objectId, nextX, nextY);
+          void updateObjectPositionsBatch(nextPositionsById);
         }
       }
     };
@@ -1080,6 +1344,32 @@ export default function RealtimeBoardCanvas({
         return;
       }
 
+      const marqueeSelectionState = marqueeSelectionStateRef.current;
+      if (marqueeSelectionState) {
+        marqueeSelectionStateRef.current = null;
+        setMarqueeSelectionState(null);
+
+        const rect = toNormalizedRect(
+          marqueeSelectionState.startPoint,
+          marqueeSelectionState.currentPoint
+        );
+        const intersectingObjectIds = getObjectsIntersectingRect(rect);
+
+        if (marqueeSelectionState.mode === "add") {
+          setSelectedObjectIds((previous) => {
+            const next = new Set(previous);
+            intersectingObjectIds.forEach((objectId) => next.add(objectId));
+            return Array.from(next);
+          });
+        } else {
+          const removeSet = new Set(intersectingObjectIds);
+          setSelectedObjectIds((previous) =>
+            previous.filter((objectId) => !removeSet.has(objectId))
+          );
+        }
+        return;
+      }
+
       if (panStateRef.current) {
         panStateRef.current = null;
       }
@@ -1090,14 +1380,31 @@ export default function RealtimeBoardCanvas({
       }
 
       const scale = viewportRef.current.scale;
-      const finalX = dragState.initialX + (event.clientX - dragState.startClientX) / scale;
-      const finalY = dragState.initialY + (event.clientY - dragState.startClientY) / scale;
+      const deltaX = (event.clientX - dragState.startClientX) / scale;
+      const deltaY = (event.clientY - dragState.startClientY) / scale;
 
       dragStateRef.current = null;
-      clearDraftGeometry(dragState.objectId);
 
       if (canEditRef.current) {
-        void updateObjectPosition(dragState.objectId, finalX, finalY);
+        const nextPositionsById: Record<string, BoardPoint> = {};
+        dragState.objectIds.forEach((objectId) => {
+          const initialGeometry = dragState.initialGeometries[objectId];
+          if (!initialGeometry) {
+            return;
+          }
+
+          clearDraftGeometry(objectId);
+          nextPositionsById[objectId] = {
+            x: initialGeometry.x + deltaX,
+            y: initialGeometry.y + deltaY
+          };
+        });
+
+        void updateObjectPositionsBatch(nextPositionsById);
+      } else {
+        dragState.objectIds.forEach((objectId) => {
+          clearDraftGeometry(objectId);
+        });
       }
     };
 
@@ -1111,12 +1418,13 @@ export default function RealtimeBoardCanvas({
   }, [
     clampToolPanelPosition,
     clearDraftGeometry,
+    getObjectsIntersectingRect,
     getCurrentObjectGeometry,
     getLineGeometryFromEndpointDrag,
     getResizedGeometry,
     setDraftGeometry,
     updateObjectGeometry,
-    updateObjectPosition
+    updateObjectPositionsBatch
   ]);
 
   const toBoardCoordinates = useCallback(
@@ -1171,12 +1479,21 @@ export default function RealtimeBoardCanvas({
       const centerX = (rect.width / 2 - viewportRef.current.x) / viewportRef.current.scale;
       const centerY = (rect.height / 2 - viewportRef.current.y) / viewportRef.current.scale;
       const { width, height } = getDefaultObjectSize(kind);
+      const spawnIndex = objectsByIdRef.current.size + objectSpawnSequenceRef.current;
+      objectSpawnSequenceRef.current += 1;
+      const spawnOffset = getSpawnOffset(spawnIndex, OBJECT_SPAWN_STEP_PX);
+      const highestZIndex = Array.from(objectsByIdRef.current.values()).reduce(
+        (maxValue, objectItem) => Math.max(maxValue, objectItem.zIndex),
+        0
+      );
+      const nextZIndex = highestZIndex + 1;
 
       try {
         await addDoc(objectsCollectionRef, {
           type: kind,
-          x: centerX - width / 2,
-          y: centerY - height / 2,
+          zIndex: nextZIndex,
+          x: centerX - width / 2 + spawnOffset.x,
+          y: centerY - height / 2 + spawnOffset.y,
           width,
           height,
           rotationDeg: 0,
@@ -1202,7 +1519,21 @@ export default function RealtimeBoardCanvas({
 
       try {
         await deleteDoc(doc(db, `boards/${boardId}/objects/${objectId}`));
-        setSelectedObjectId((previous) => (previous === objectId ? null : previous));
+        const syncState = stickyTextSyncStateRef.current.get(objectId);
+        if (syncState && syncState.timerId !== null) {
+          window.clearTimeout(syncState.timerId);
+        }
+        stickyTextSyncStateRef.current.delete(objectId);
+        setTextDrafts((previous) => {
+          if (!(objectId in previous)) {
+            return previous;
+          }
+
+          const next = { ...previous };
+          delete next[objectId];
+          return next;
+        });
+        setSelectedObjectIds((previous) => previous.filter((id) => id !== objectId));
       } catch (error) {
         console.error("Failed to delete object", error);
         setBoardError(toBoardErrorMessage(error, "Failed to delete object."));
@@ -1213,7 +1544,7 @@ export default function RealtimeBoardCanvas({
 
   const saveStickyText = useCallback(
     async (objectId: string, nextText: string) => {
-      if (!canEdit) {
+      if (!canEditRef.current) {
         return;
       }
 
@@ -1227,7 +1558,96 @@ export default function RealtimeBoardCanvas({
         setBoardError(toBoardErrorMessage(error, "Failed to update sticky text."));
       }
     },
-    [boardId, canEdit, db]
+    [boardId, db]
+  );
+
+  const flushStickyTextSync = useCallback(
+    (objectId: string) => {
+      const syncState = stickyTextSyncStateRef.current.get(objectId);
+      if (!syncState) {
+        return;
+      }
+
+      if (syncState.timerId !== null) {
+        window.clearTimeout(syncState.timerId);
+        syncState.timerId = null;
+      }
+
+      const pendingText = syncState.pendingText;
+      if (pendingText === null) {
+        return;
+      }
+
+      syncState.pendingText = null;
+      syncState.lastSentAt = Date.now();
+      void saveStickyText(objectId, pendingText);
+    },
+    [saveStickyText]
+  );
+
+  const queueStickyTextSync = useCallback(
+    (objectId: string, nextText: string) => {
+      if (!canEditRef.current) {
+        return;
+      }
+
+      const normalizedText = nextText.slice(0, 1_000);
+      const syncStates = stickyTextSyncStateRef.current;
+      let syncState = syncStates.get(objectId);
+
+      if (!syncState) {
+        syncState = {
+          pendingText: null,
+          lastSentAt: 0,
+          timerId: null
+        };
+        syncStates.set(objectId, syncState);
+      }
+
+      syncState.pendingText = normalizedText;
+
+      const now = Date.now();
+      const elapsed = now - syncState.lastSentAt;
+
+      if (elapsed >= STICKY_TEXT_SYNC_THROTTLE_MS) {
+        if (syncState.timerId !== null) {
+          window.clearTimeout(syncState.timerId);
+          syncState.timerId = null;
+        }
+
+        syncState.lastSentAt = now;
+        const pendingText = syncState.pendingText;
+        syncState.pendingText = null;
+
+        if (pendingText !== null) {
+          void saveStickyText(objectId, pendingText);
+        }
+        return;
+      }
+
+      const delay = STICKY_TEXT_SYNC_THROTTLE_MS - elapsed;
+      if (syncState.timerId !== null) {
+        window.clearTimeout(syncState.timerId);
+      }
+
+      syncState.timerId = window.setTimeout(() => {
+        const latestSyncState = stickyTextSyncStateRef.current.get(objectId);
+        if (!latestSyncState) {
+          return;
+        }
+
+        latestSyncState.timerId = null;
+        const pendingText = latestSyncState.pendingText;
+        if (pendingText === null) {
+          return;
+        }
+
+        latestSyncState.pendingText = null;
+        latestSyncState.lastSentAt = Date.now();
+        void saveStickyText(objectId, pendingText);
+      }, delay);
+    },
+    [saveStickyText]
   );
 
   const saveObjectColor = useCallback(
@@ -1249,13 +1669,30 @@ export default function RealtimeBoardCanvas({
     [boardId, canEdit, db]
   );
 
-  const handleDeleteSelectedObject = useCallback(() => {
-    if (!canEdit || !selectedObjectId) {
+  const selectSingleObject = useCallback((objectId: string) => {
+    setSelectedObjectIds((previous) =>
+      previous.length === 1 && previous[0] === objectId ? previous : [objectId]
+    );
+  }, []);
+
+  const toggleObjectSelection = useCallback((objectId: string) => {
+    setSelectedObjectIds((previous) => {
+      if (previous.includes(objectId)) {
+        return previous.filter((id) => id !== objectId);
+      }
+
+      return [...previous, objectId];
+    });
+  }, []);
+
+  const handleDeleteSelectedObjects = useCallback(() => {
+    if (!canEdit || selectedObjectIds.length === 0) {
       return;
     }
 
-    void deleteObject(selectedObjectId);
-  }, [canEdit, deleteObject, selectedObjectId]);
+    const objectIdsToDelete = [...selectedObjectIds];
+    void Promise.all(objectIdsToDelete.map((objectId) => deleteObject(objectId)));
+  }, [canEdit, deleteObject, selectedObjectIds]);
 
   const consumeSuppressedToolPanelClick = useCallback((): boolean => {
     if (!suppressToolPanelClickRef.current) {
@@ -1299,8 +1736,8 @@ export default function RealtimeBoardCanvas({
       return;
     }
 
-    handleDeleteSelectedObject();
-  }, [consumeSuppressedToolPanelClick, handleDeleteSelectedObject]);
+    handleDeleteSelectedObjects();
+  }, [consumeSuppressedToolPanelClick, handleDeleteSelectedObjects]);
 
   const handleStagePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
@@ -1320,7 +1757,27 @@ export default function RealtimeBoardCanvas({
       return;
     }
 
-    setSelectedObjectId(null);
+    const isRemoveMarquee = event.ctrlKey || event.metaKey;
+    const isAddMarquee = event.shiftKey;
+
+    if (isAddMarquee || isRemoveMarquee) {
+      const startPoint = toBoardCoordinates(event.clientX, event.clientY);
+      if (!startPoint) {
+        return;
+      }
+
+      const nextMarqueeState: MarqueeSelectionState = {
+        startPoint,
+        currentPoint: startPoint,
+        mode: isRemoveMarquee ? "remove" : "add"
+      };
+
+      marqueeSelectionStateRef.current = nextMarqueeState;
+      setMarqueeSelectionState(nextMarqueeState);
+      return;
+    }
+
+    setSelectedObjectIds([]);
 
     panStateRef.current = {
       startClientX: event.clientX,
@@ -1328,7 +1785,7 @@ export default function RealtimeBoardCanvas({
       initialX: viewportRef.current.x,
       initialY: viewportRef.current.y
     };
-  }, []);
+  }, [toBoardCoordinates]);
 
   const handleStagePointerMove = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -1424,23 +1881,45 @@ export default function RealtimeBoardCanvas({
 
       event.preventDefault();
       event.stopPropagation();
-      setSelectedObjectId(objectId);
 
-      const geometry = getCurrentObjectGeometry(objectId);
-      if (!geometry) {
+      if (event.shiftKey) {
+        toggleObjectSelection(objectId);
+        return;
+      }
+
+      const currentSelectedIds = selectedObjectIdsRef.current;
+      const shouldDragCurrentSelection =
+        currentSelectedIds.has(objectId) && currentSelectedIds.size > 1;
+      const dragObjectIds = shouldDragCurrentSelection
+        ? Array.from(currentSelectedIds)
+        : [objectId];
+
+      if (!shouldDragCurrentSelection) {
+        selectSingleObject(objectId);
+      }
+
+      const initialGeometries: Record<string, ObjectGeometry> = {};
+      dragObjectIds.forEach((candidateId) => {
+        const geometry = getCurrentObjectGeometry(candidateId);
+        if (geometry) {
+          initialGeometries[candidateId] = geometry;
+        }
+      });
+
+      const availableObjectIds = Object.keys(initialGeometries);
+      if (availableObjectIds.length === 0) {
         return;
       }
 
       dragStateRef.current = {
-        objectId,
+        objectIds: availableObjectIds,
+        initialGeometries,
         startClientX: event.clientX,
         startClientY: event.clientY,
-        initialX: geometry.x,
-        initialY: geometry.y,
         lastSentAt: 0
       };
     },
-    [canEdit, getCurrentObjectGeometry]
+    [canEdit, getCurrentObjectGeometry, selectSingleObject, toggleObjectSelection]
   );
 
   const startCornerResize = useCallback(
@@ -1466,7 +1945,7 @@ export default function RealtimeBoardCanvas({
         return;
       }
 
-      setSelectedObjectId(objectId);
+      selectSingleObject(objectId);
       cornerResizeStateRef.current = {
         objectId,
         objectType: objectItem.type,
@@ -1477,7 +1956,7 @@ export default function RealtimeBoardCanvas({
         lastSentAt: 0
       };
     },
-    [canEdit, getCurrentObjectGeometry]
+    [canEdit, getCurrentObjectGeometry, selectSingleObject]
   );
 
   const startLineEndpointResize = useCallback(
@@ -1510,7 +1989,7 @@ export default function RealtimeBoardCanvas({
       const endpoints = getLineEndpoints(geometry);
       const fixedPoint = endpoint === "start" ? endpoints.end : endpoints.start;
 
-      setSelectedObjectId(objectId);
+      selectSingleObject(objectId);
       lineEndpointResizeStateRef.current = {
         objectId,
         endpoint,
@@ -1519,7 +1998,7 @@ export default function RealtimeBoardCanvas({
         lastSentAt: 0
       };
     },
-    [canEdit, getCurrentObjectGeometry]
+    [canEdit, getCurrentObjectGeometry, selectSingleObject]
   );
 
   const onlineUsers = useMemo(
@@ -1550,224 +2029,358 @@ export default function RealtimeBoardCanvas({
       ),
     [onlineUsers, user.uid]
   );
+
+  const selectedObjectCount = selectedObjectIds.length;
   const hasDeletableSelection = useMemo(
-    () => canEdit && selectedObjectId !== null && objects.some((item) => item.id === selectedObjectId),
-    [canEdit, objects, selectedObjectId]
+    () =>
+      canEdit &&
+      selectedObjectIds.length > 0 &&
+      objects.some((item) => selectedObjectIds.includes(item.id)),
+    [canEdit, objects, selectedObjectIds]
   );
 
   const zoomPercent = Math.round(viewport.scale * 100);
+  const marqueeRect = marqueeSelectionState
+    ? toNormalizedRect(
+        marqueeSelectionState.startPoint,
+        marqueeSelectionState.currentPoint
+      )
+    : null;
 
   return (
     <section
       style={{
-        border: "1px solid #d1d5db",
-        borderRadius: 10,
-        padding: "1rem",
-        marginBottom: "1rem"
+        height: "100%",
+        minHeight: 0,
+        display: "flex",
+        alignItems: "stretch",
+        gap: "0.75rem"
       }}
     >
-      <h2 style={{ marginTop: 0 }}>Realtime Board</h2>
-      <p style={{ marginTop: 0, color: "#4b5563" }}>
-        {canEdit
-          ? "Create and move objects in real-time. Changes sync across users."
-          : "Read-only mode. You can pan/zoom and see live updates, but edits are disabled."}
-      </p>
-      <p style={{ marginTop: "-0.25rem", color: "#6b7280", fontSize: 13 }}>
-        Select an object to resize. Drag corner handles for notes/shapes. Drag line endpoints
-        to change angle and length.
-      </p>
-
       <div
         style={{
+          flex: 1,
+          minWidth: 0,
+          minHeight: 0,
           display: "flex",
-          flexWrap: "wrap",
-          gap: "0.5rem",
-          alignItems: "center",
-          marginBottom: "0.75rem"
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => setViewport(INITIAL_VIEWPORT)}
-        >
-          Reset view
-        </button>
-        <span style={{ color: "#6b7280" }}>Zoom: {zoomPercent}%</span>
-        <span style={{ color: selectedObjectId ? "#111827" : "#6b7280" }}>
-          Selected: {selectedObjectId ? "1 object" : "None"}
-        </span>
-        <span style={{ marginLeft: "auto", color: "#6b7280" }}>
-          Online: {onlineUsers.length}
-        </span>
-      </div>
-
-      <div
-        style={{
-          marginBottom: "0.75rem",
-          fontSize: 14,
-          color: "#4b5563",
-          display: "flex",
-          flexWrap: "wrap",
+          flexDirection: "column",
           gap: "0.5rem"
         }}
       >
-        {onlineUsers.length > 0 ? (
-          onlineUsers.map((presenceUser) => (
-            <span key={presenceUser.uid}>
-              <span style={{ color: presenceUser.color }}>●</span>{" "}
-              {getPresenceLabel(presenceUser)}
-            </span>
-          ))
-        ) : (
-          <span>No active users yet.</span>
-        )}
-      </div>
-
-      {boardError ? <p style={{ color: "#b91c1c" }}>{boardError}</p> : null}
-
-      <div
-        ref={stageRef}
-        onPointerDown={handleStagePointerDown}
-        onPointerMove={handleStagePointerMove}
-        onPointerLeave={handleStagePointerLeave}
-        style={{
-          position: "relative",
-          height: "70vh",
-          minHeight: 540,
-          border: "1px solid #e5e7eb",
-          borderRadius: 12,
-          overflow: "hidden",
-          backgroundColor: "#f9fafb",
-          backgroundImage:
-            "linear-gradient(#e5e7eb 1px, transparent 1px), linear-gradient(90deg, #e5e7eb 1px, transparent 1px)",
-          backgroundSize: `${40 * viewport.scale}px ${40 * viewport.scale}px`,
-          backgroundPosition: `${viewport.x}px ${viewport.y}px`,
-          touchAction: "none",
-          overscrollBehavior: "contain"
-        }}
-      >
         <div
-          ref={toolPanelRef}
-          data-tool-panel="true"
-          onPointerDown={handleToolPanelPointerDown}
           style={{
-            position: "absolute",
-            left: toolPanelPosition.x,
-            top: toolPanelPosition.y,
-            zIndex: 30,
-            border: "1px solid #d1d5db",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "0.5rem",
+            alignItems: "center"
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setViewport(INITIAL_VIEWPORT)}
+          >
+            Reset view
+          </button>
+          <span style={{ color: "#6b7280" }}>Zoom: {zoomPercent}%</span>
+          <span style={{ color: selectedObjectCount > 0 ? "#111827" : "#6b7280" }}>
+            Selected:{" "}
+            {selectedObjectCount > 0
+              ? `${selectedObjectCount} object${selectedObjectCount === 1 ? "" : "s"}`
+              : "None"}
+          </span>
+        </div>
+
+        {boardError ? <p style={{ color: "#b91c1c", margin: 0 }}>{boardError}</p> : null}
+
+        <div
+          ref={stageRef}
+          onPointerDown={handleStagePointerDown}
+          onPointerMove={handleStagePointerMove}
+          onPointerLeave={handleStagePointerLeave}
+          onContextMenu={(event) => event.preventDefault()}
+          style={{
+            position: "relative",
+            flex: 1,
+            minHeight: 0,
+            border: "1px solid #e5e7eb",
             borderRadius: 12,
-            background: "rgba(255,255,255,0.94)",
-            boxShadow: "0 8px 20px rgba(0,0,0,0.14)",
-            padding: "0.5rem",
-            backdropFilter: "blur(4px)",
-            minWidth: 208,
-            cursor: "grab"
+            overflow: "hidden",
+            backgroundColor: "#f9fafb",
+            backgroundImage:
+              "linear-gradient(#e5e7eb 1px, transparent 1px), linear-gradient(90deg, #e5e7eb 1px, transparent 1px)",
+            backgroundSize: `${40 * viewport.scale}px ${40 * viewport.scale}px`,
+            backgroundPosition: `${viewport.x}px ${viewport.y}px`,
+            touchAction: "none",
+            overscrollBehavior: "contain"
           }}
         >
           <div
+            ref={toolPanelRef}
+            data-tool-panel="true"
+            onPointerDown={handleToolPanelPointerDown}
             style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "0.5rem",
-              marginBottom: "0.4rem"
+              position: "absolute",
+              left: toolPanelPosition.x,
+              top: toolPanelPosition.y,
+              zIndex: 30,
+              border: "1px solid #d1d5db",
+              borderRadius: 12,
+              background: "rgba(255,255,255,0.94)",
+              boxShadow: "0 8px 20px rgba(0,0,0,0.14)",
+              padding: "0.5rem",
+              backdropFilter: "blur(4px)",
+              minWidth: 208,
+              cursor: "grab"
             }}
           >
-            <strong style={{ fontSize: 12, color: "#374151" }}>Tools</strong>
-          </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "0.5rem",
+                marginBottom: "0.4rem"
+              }}
+            >
+              <strong style={{ fontSize: 12, color: "#374151" }}>Tools</strong>
+            </div>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-              gap: "0.35rem",
-              marginBottom: "0.4rem"
-            }}
-          >
-            {BOARD_TOOLS.map((toolKind) => (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                gap: "0.35rem",
+                marginBottom: "0.4rem"
+              }}
+            >
+              {BOARD_TOOLS.map((toolKind) => (
+                <button
+                  key={toolKind}
+                  type="button"
+                  onClick={() => handleToolButtonClick(toolKind)}
+                  disabled={!canEdit}
+                  title={`Add ${getObjectLabel(toolKind).toLowerCase()}`}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: "1px solid #d1d5db",
+                    borderRadius: 8,
+                    background: "white",
+                    height: 32
+                  }}
+                >
+                  <ToolIcon kind={toolKind} />
+                </button>
+              ))}
+            </div>
+
+            {hasDeletableSelection ? (
               <button
-                key={toolKind}
                 type="button"
-                onClick={() => handleToolButtonClick(toolKind)}
-                disabled={!canEdit}
-                title={`Add ${getObjectLabel(toolKind).toLowerCase()}`}
+                onClick={handleDeleteButtonClick}
+                title="Delete selected object"
                 style={{
+                  width: "100%",
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  border: "1px solid #d1d5db",
+                  gap: "0.4rem",
+                  border: "1px solid #fecaca",
                   borderRadius: 8,
-                  background: "white",
-                  height: 32
+                  background: "#fef2f2",
+                  color: "#7f1d1d",
+                  height: 32,
+                  fontSize: 12
                 }}
               >
-                <ToolIcon kind={toolKind} />
+                <TrashIcon />
+                <span>Delete selected ({selectedObjectCount})</span>
               </button>
-            ))}
+            ) : null}
           </div>
 
-          {hasDeletableSelection ? (
-            <button
-              type="button"
-              onClick={handleDeleteButtonClick}
-              title="Delete selected object"
-              style={{
-                width: "100%",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "0.4rem",
-                border: "1px solid #fecaca",
-                borderRadius: 8,
-                background: "#fef2f2",
-                color: "#7f1d1d",
-                height: 32,
-                fontSize: 12
-              }}
-            >
-              <TrashIcon />
-              <span>Delete selected</span>
-            </button>
-          ) : null}
-        </div>
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`,
+              transformOrigin: "0 0"
+            }}
+          >
+            {objects.map((objectItem) => {
+              const draftGeometry = draftGeometryById[objectItem.id];
+              const objectX = draftGeometry?.x ?? objectItem.x;
+              const objectY = draftGeometry?.y ?? objectItem.y;
+              const objectWidth = draftGeometry?.width ?? objectItem.width;
+              const objectHeight = draftGeometry?.height ?? objectItem.height;
+              const objectRotationDeg =
+                draftGeometry?.rotationDeg ?? objectItem.rotationDeg;
+              const objectText = textDrafts[objectItem.id] ?? objectItem.text;
+              const isSelected = selectedObjectIds.includes(objectItem.id);
+              const isSingleSelected = selectedObjectIds.length === 1 && isSelected;
+              const objectGeometry: ObjectGeometry = {
+                x: objectX,
+                y: objectY,
+                width: objectWidth,
+                height: objectHeight,
+                rotationDeg: objectRotationDeg
+              };
+              const lineEndpointOffsets =
+                objectItem.type === "line" ? getLineEndpointOffsets(objectGeometry) : null;
 
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`,
-            transformOrigin: "0 0"
-          }}
-        >
-          {objects.map((objectItem) => {
-            const draftGeometry = draftGeometryById[objectItem.id];
-            const objectX = draftGeometry?.x ?? objectItem.x;
-            const objectY = draftGeometry?.y ?? objectItem.y;
-            const objectWidth = draftGeometry?.width ?? objectItem.width;
-            const objectHeight = draftGeometry?.height ?? objectItem.height;
-            const objectRotationDeg =
-              draftGeometry?.rotationDeg ?? objectItem.rotationDeg;
-            const objectText = textDrafts[objectItem.id] ?? objectItem.text;
-            const isSelected = selectedObjectId === objectItem.id;
-            const objectGeometry: ObjectGeometry = {
-              x: objectX,
-              y: objectY,
-              width: objectWidth,
-              height: objectHeight,
-              rotationDeg: objectRotationDeg
-            };
-            const lineEndpointOffsets =
-              objectItem.type === "line" ? getLineEndpointOffsets(objectGeometry) : null;
+              if (objectItem.type === "sticky") {
+                return (
+                  <article
+                    key={objectItem.id}
+                    data-board-object="true"
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      if (event.shiftKey) {
+                        toggleObjectSelection(objectItem.id);
+                        return;
+                      }
 
-            if (objectItem.type === "sticky") {
+                      selectSingleObject(objectItem.id);
+                    }}
+                    style={{
+                      position: "absolute",
+                      left: objectX,
+                      top: objectY,
+                      width: objectWidth,
+                      height: objectHeight,
+                      borderRadius: 10,
+                      border: isSelected
+                        ? "2px solid #2563eb"
+                        : "1px solid rgba(15, 23, 42, 0.28)",
+                      background: objectItem.color,
+                      boxShadow: isSelected
+                        ? SELECTED_OBJECT_HALO
+                        : "0 4px 12px rgba(0,0,0,0.08)",
+                      overflow: "visible"
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        borderRadius: 8,
+                        overflow: "hidden"
+                      }}
+                    >
+                      <header
+                        onPointerDown={(event) => startObjectDrag(objectItem.id, event)}
+                        style={{
+                          height: 28,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "flex-start",
+                          gap: "0.35rem",
+                          padding: "0 0.5rem",
+                          background: "rgba(0,0,0,0.08)",
+                          cursor: canEdit ? "grab" : "default"
+                        }}
+                      />
+
+                      <textarea
+                        value={objectText}
+                        onPointerDown={(event) => {
+                          event.stopPropagation();
+                          selectSingleObject(objectItem.id);
+                        }}
+                        onFocus={() => selectSingleObject(objectItem.id)}
+                        onChange={(event) => {
+                          const nextText = event.target.value.slice(0, 1_000);
+                          setTextDrafts((previous) => ({
+                            ...previous,
+                            [objectItem.id]: nextText
+                          }));
+                          queueStickyTextSync(objectItem.id, nextText);
+                        }}
+                        onBlur={(event) => {
+                          const nextText = event.target.value;
+                          setTextDrafts((previous) => {
+                            const next = { ...previous };
+                            delete next[objectItem.id];
+                            return next;
+                          });
+
+                          queueStickyTextSync(objectItem.id, nextText);
+                          flushStickyTextSync(objectItem.id);
+                        }}
+                        readOnly={!canEdit}
+                        style={{
+                          width: "100%",
+                          height: objectHeight - 28,
+                          border: "none",
+                          resize: "none",
+                          padding: "0.5rem",
+                          background: "transparent",
+                          color: "#111827",
+                          fontSize: 14,
+                          outline: "none"
+                        }}
+                      />
+                    </div>
+
+                    {isSingleSelected && canEdit ? (
+                      <div
+                        style={{
+                          position: "absolute",
+                          right: 8,
+                          top: 6,
+                          zIndex: 5
+                        }}
+                      >
+                        <ColorSwatchPicker
+                          currentColor={objectItem.color}
+                          onSelectColor={(nextColor) =>
+                            void saveObjectColor(objectItem.id, nextColor)
+                          }
+                        />
+                      </div>
+                    ) : null}
+
+                    {isSingleSelected && canEdit ? (
+                      <div>
+                        {CORNER_HANDLES.map((corner) => (
+                          <button
+                            key={corner}
+                            type="button"
+                            onPointerDown={(event) =>
+                              startCornerResize(objectItem.id, corner, event)
+                            }
+                            style={{
+                              position: "absolute",
+                              ...getCornerPositionStyle(corner),
+                              width: RESIZE_HANDLE_SIZE,
+                              height: RESIZE_HANDLE_SIZE,
+                              border: "1px solid #1d4ed8",
+                              borderRadius: 2,
+                              background: "white",
+                              cursor: getCornerCursor(corner)
+                            }}
+                            aria-label={`Resize ${corner} corner`}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              }
+
               return (
                 <article
                   key={objectItem.id}
                   data-board-object="true"
                   onPointerDown={(event) => {
                     event.stopPropagation();
-                    setSelectedObjectId(objectItem.id);
+                    if (event.shiftKey) {
+                      toggleObjectSelection(objectItem.id);
+                      return;
+                    }
+
+                    selectSingleObject(objectItem.id);
                   }}
                   style={{
                     position: "absolute",
@@ -1775,99 +2388,78 @@ export default function RealtimeBoardCanvas({
                     top: objectY,
                     width: objectWidth,
                     height: objectHeight,
-                    borderRadius: 10,
-                    border: isSelected ? "2px solid #b45309" : "1px solid #d4b84f",
-                    background: objectItem.color,
+                    overflow: "visible",
                     boxShadow: isSelected
-                      ? "0 0 0 2px rgba(245, 158, 11, 0.35), 0 8px 14px rgba(0,0,0,0.14)"
-                      : "0 4px 12px rgba(0,0,0,0.08)",
-                    overflow: "visible"
+                      ? objectItem.type === "line"
+                        ? "none"
+                        : SELECTED_OBJECT_HALO
+                      : "none",
+                    borderRadius:
+                      objectItem.type === "circle"
+                        ? "999px"
+                        : objectItem.type === "line"
+                          ? 0
+                          : 4
                   }}
                 >
                   <div
+                    onPointerDown={(event) => startObjectDrag(objectItem.id, event)}
                     style={{
                       width: "100%",
                       height: "100%",
-                      borderRadius: 8,
-                      overflow: "hidden"
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: canEdit ? "grab" : "default",
+                      border:
+                        objectItem.type === "line" ? "none" : "2px solid rgba(15, 23, 42, 0.55)",
+                      borderRadius:
+                        objectItem.type === "rect"
+                          ? 3
+                          : objectItem.type === "circle"
+                            ? "999px"
+                            : 0,
+                      background:
+                        objectItem.type === "line" ? "transparent" : objectItem.color,
+                      boxShadow:
+                        objectItem.type === "line" ? "none" : "0 3px 10px rgba(0,0,0,0.08)"
                     }}
                   >
-                    <header
-                      onPointerDown={(event) => startObjectDrag(objectItem.id, event)}
-                      style={{
-                        height: 28,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "flex-start",
-                        gap: "0.35rem",
-                        padding: "0 0.5rem",
-                        background: "rgba(0,0,0,0.08)",
-                        cursor: canEdit ? "grab" : "default"
-                      }}
-                    />
-
-                    <textarea
-                      value={objectText}
-                      onPointerDown={(event) => {
-                        event.stopPropagation();
-                        setSelectedObjectId(objectItem.id);
-                      }}
-                      onFocus={() => setSelectedObjectId(objectItem.id)}
-                      onChange={(event) =>
-                        setTextDrafts((previous) => ({
-                          ...previous,
-                          [objectItem.id]: event.target.value
-                        }))
-                      }
-                      onBlur={(event) => {
-                        const nextText = event.target.value;
-                        setTextDrafts((previous) => {
-                          const next = { ...previous };
-                          delete next[objectItem.id];
-                          return next;
-                        });
-
-                        if (nextText !== objectItem.text) {
-                          void saveStickyText(objectItem.id, nextText);
-                        }
-                      }}
-                      readOnly={!canEdit}
-                      style={{
-                        width: "100%",
-                        height: objectHeight - 28,
-                        border: "none",
-                        resize: "none",
-                        padding: "0.5rem",
-                        background: "transparent",
-                        color: "#111827",
-                        fontSize: 14,
-                        outline: "none"
-                      }}
-                    />
+                    {objectItem.type === "line" ? (
+                      <div
+                        style={{
+                          width: "100%",
+                          height: 4,
+                          borderRadius: 999,
+                          background: objectItem.color,
+                          transform: `rotate(${objectRotationDeg}deg)`,
+                          transformOrigin: "center center"
+                        }}
+                      />
+                    ) : null}
                   </div>
 
-                  {isSelected && canEdit ? (
-                    <input
-                      type="color"
-                      value={objectItem.color}
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onChange={(event) => void saveObjectColor(objectItem.id, event.target.value)}
+                  {isSingleSelected && canEdit ? (
+                    <div
                       style={{
                         position: "absolute",
-                        right: 8,
-                        top: 6,
-                        width: 24,
-                        height: 24,
-                        border: "1px solid #d1d5db",
-                        borderRadius: 4,
-                        background: "white",
-                        padding: 0
+                        top: objectItem.type === "line" ? -52 : 8,
+                        right: objectItem.type === "line" ? "auto" : 8,
+                        left: objectItem.type === "line" ? "50%" : "auto",
+                        transform: objectItem.type === "line" ? "translateX(-50%)" : "none",
+                        zIndex: 5
                       }}
-                      aria-label="Change sticky color"
-                    />
+                    >
+                      <ColorSwatchPicker
+                        currentColor={objectItem.color}
+                        onSelectColor={(nextColor) =>
+                          void saveObjectColor(objectItem.id, nextColor)
+                        }
+                      />
+                    </div>
                   ) : null}
 
-                  {isSelected && canEdit ? (
+                  {isSingleSelected && canEdit && objectItem.type !== "line" ? (
                     <div>
                       {CORNER_HANDLES.map((corner) => (
                         <button
@@ -1891,214 +2483,184 @@ export default function RealtimeBoardCanvas({
                       ))}
                     </div>
                   ) : null}
-                </article>
-              );
-            }
 
-            return (
-              <article
-                key={objectItem.id}
-                data-board-object="true"
-                onPointerDown={(event) => {
-                  event.stopPropagation();
-                  setSelectedObjectId(objectItem.id);
-                }}
-                style={{
-                  position: "absolute",
-                  left: objectX,
-                  top: objectY,
-                  width: objectWidth,
-                  height: objectHeight,
-                  overflow: "visible",
-                  boxShadow: isSelected
-                    ? objectItem.type === "line"
-                      ? "none"
-                      : "0 0 0 2px rgba(59, 130, 246, 0.45), 0 8px 14px rgba(0,0,0,0.14)"
-                    : "none",
-                  borderRadius:
-                    objectItem.type === "circle"
-                      ? "999px"
-                      : objectItem.type === "line"
-                        ? 0
-                        : 4
-                }}
-              >
-                <div
-                  onPointerDown={(event) => startObjectDrag(objectItem.id, event)}
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: canEdit ? "grab" : "default",
-                    border:
-                      objectItem.type === "line" ? "none" : "2px solid rgba(15, 23, 42, 0.55)",
-                    borderRadius:
-                      objectItem.type === "rect"
-                        ? 3
-                        : objectItem.type === "circle"
-                          ? "999px"
-                          : 0,
-                    background:
-                      objectItem.type === "line" ? "transparent" : objectItem.color,
-                    boxShadow:
-                      objectItem.type === "line" ? "none" : "0 3px 10px rgba(0,0,0,0.08)"
-                  }}
-                >
-                  {objectItem.type === "line" ? (
-                    <div
-                      style={{
-                        width: "100%",
-                        height: 4,
-                        borderRadius: 999,
-                        background: objectItem.color,
-                        transform: `rotate(${objectRotationDeg}deg)`,
-                        transformOrigin: "center center"
-                      }}
-                    />
-                  ) : null}
-                </div>
-
-                {isSelected && canEdit ? (
-                  <input
-                    type="color"
-                    value={objectItem.color}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onChange={(event) => void saveObjectColor(objectItem.id, event.target.value)}
-                    style={{
-                      position: "absolute",
-                      top: objectItem.type === "line" ? -30 : 8,
-                      right: objectItem.type === "line" ? "auto" : 8,
-                      left: objectItem.type === "line" ? "50%" : "auto",
-                      transform: objectItem.type === "line" ? "translateX(-50%)" : "none",
-                      width: 24,
-                      height: 24,
-                      border: "1px solid #d1d5db",
-                      borderRadius: 4,
-                      background: "white",
-                      padding: 0
-                    }}
-                    aria-label="Change shape color"
-                  />
-                ) : null}
-
-                {isSelected && canEdit && objectItem.type !== "line" ? (
-                  <div>
-                    {CORNER_HANDLES.map((corner) => (
+                  {isSingleSelected && canEdit && objectItem.type === "line" && lineEndpointOffsets ? (
+                    <>
                       <button
-                        key={corner}
                         type="button"
                         onPointerDown={(event) =>
-                          startCornerResize(objectItem.id, corner, event)
+                          startLineEndpointResize(objectItem.id, "start", event)
                         }
+                        aria-label="Adjust line start"
                         style={{
                           position: "absolute",
-                          ...getCornerPositionStyle(corner),
+                          left: lineEndpointOffsets.start.x - RESIZE_HANDLE_SIZE / 2,
+                          top: lineEndpointOffsets.start.y - RESIZE_HANDLE_SIZE / 2,
                           width: RESIZE_HANDLE_SIZE,
                           height: RESIZE_HANDLE_SIZE,
+                          borderRadius: "50%",
                           border: "1px solid #1d4ed8",
-                          borderRadius: 2,
                           background: "white",
-                          cursor: getCornerCursor(corner)
+                          cursor: "move"
                         }}
-                        aria-label={`Resize ${corner} corner`}
                       />
-                    ))}
-                  </div>
-                ) : null}
+                      <button
+                        type="button"
+                        onPointerDown={(event) =>
+                          startLineEndpointResize(objectItem.id, "end", event)
+                        }
+                        aria-label="Adjust line end"
+                        style={{
+                          position: "absolute",
+                          left: lineEndpointOffsets.end.x - RESIZE_HANDLE_SIZE / 2,
+                          top: lineEndpointOffsets.end.y - RESIZE_HANDLE_SIZE / 2,
+                          width: RESIZE_HANDLE_SIZE,
+                          height: RESIZE_HANDLE_SIZE,
+                          borderRadius: "50%",
+                          border: "1px solid #1d4ed8",
+                          background: "white",
+                          cursor: "move"
+                        }}
+                      />
+                    </>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
 
-                {isSelected && canEdit && objectItem.type === "line" && lineEndpointOffsets ? (
-                  <>
-                    <button
-                      type="button"
-                      onPointerDown={(event) =>
-                        startLineEndpointResize(objectItem.id, "start", event)
-                      }
-                      aria-label="Adjust line start"
-                      style={{
-                        position: "absolute",
-                        left: lineEndpointOffsets.start.x - RESIZE_HANDLE_SIZE / 2,
-                        top: lineEndpointOffsets.start.y - RESIZE_HANDLE_SIZE / 2,
-                        width: RESIZE_HANDLE_SIZE,
-                        height: RESIZE_HANDLE_SIZE,
-                        borderRadius: "50%",
-                        border: "1px solid #1d4ed8",
-                        background: "white",
-                        cursor: "move"
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onPointerDown={(event) =>
-                        startLineEndpointResize(objectItem.id, "end", event)
-                      }
-                      aria-label="Adjust line end"
-                      style={{
-                        position: "absolute",
-                        left: lineEndpointOffsets.end.x - RESIZE_HANDLE_SIZE / 2,
-                        top: lineEndpointOffsets.end.y - RESIZE_HANDLE_SIZE / 2,
-                        width: RESIZE_HANDLE_SIZE,
-                        height: RESIZE_HANDLE_SIZE,
-                        borderRadius: "50%",
-                        border: "1px solid #1d4ed8",
-                        background: "white",
-                        cursor: "move"
-                      }}
-                    />
-                  </>
-                ) : null}
-              </article>
-            );
-          })}
-        </div>
-        
-        {remoteCursors.map((presenceUser) => (
-          <div
-            key={presenceUser.uid}
-            style={{
-              position: "absolute",
-              left: viewport.x + (presenceUser.cursorX ?? 0) * viewport.scale,
-              top: viewport.y + (presenceUser.cursorY ?? 0) * viewport.scale,
-              pointerEvents: "none",
-              transform: "translate(-2px, -2px)"
-            }}
-          >
-            <svg
-              width="18"
-              height="24"
-              viewBox="0 0 18 24"
-              style={{
-                display: "block",
-                filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.35))"
-              }}
-              aria-hidden="true"
-            >
-              <path
-                d="M2 1.5 L2 18.8 L6.6 14.9 L9.2 22 L12 20.8 L9.5 13.8 L16.2 13.8 Z"
-                fill={presenceUser.color}
-                stroke="white"
-                strokeWidth="1.15"
-                strokeLinejoin="round"
-              />
-            </svg>
+          {marqueeRect ? (
             <div
               style={{
-                marginTop: 2,
-                marginLeft: 10,
-                padding: "2px 6px",
-                borderRadius: 999,
-                background: presenceUser.color,
-                color: "white",
-                fontSize: 11,
-                whiteSpace: "nowrap"
+                position: "absolute",
+                left: viewport.x + marqueeRect.left * viewport.scale,
+                top: viewport.y + marqueeRect.top * viewport.scale,
+                width: Math.max(1, (marqueeRect.right - marqueeRect.left) * viewport.scale),
+                height: Math.max(1, (marqueeRect.bottom - marqueeRect.top) * viewport.scale),
+                border: "1px solid rgba(37, 99, 235, 0.95)",
+                background: "rgba(59, 130, 246, 0.16)",
+                pointerEvents: "none",
+                zIndex: 40
+              }}
+            />
+          ) : null}
+
+          {remoteCursors.map((presenceUser) => (
+            <div
+              key={presenceUser.uid}
+              style={{
+                position: "absolute",
+                left: viewport.x + (presenceUser.cursorX ?? 0) * viewport.scale,
+                top: viewport.y + (presenceUser.cursorY ?? 0) * viewport.scale,
+                pointerEvents: "none",
+                transform: "translate(-2px, -2px)"
               }}
             >
-              {getPresenceLabel(presenceUser)}
+              <svg
+                width="18"
+                height="24"
+                viewBox="0 0 18 24"
+                style={{
+                  display: "block",
+                  filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.35))"
+                }}
+                aria-hidden="true"
+              >
+                <path
+                  d="M2 1.5 L2 18.8 L6.6 14.9 L9.2 22 L12 20.8 L9.5 13.8 L16.2 13.8 Z"
+                  fill={presenceUser.color}
+                  stroke="white"
+                  strokeWidth="1.15"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <div
+                style={{
+                  marginTop: 2,
+                  marginLeft: 10,
+                  padding: "2px 6px",
+                  borderRadius: 999,
+                  background: presenceUser.color,
+                  color: "white",
+                  fontSize: 11,
+                  whiteSpace: "nowrap"
+                }}
+              >
+                {getPresenceLabel(presenceUser)}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
+
+      <aside
+        style={{
+          width: "clamp(170px, 18vw, 250px)",
+          minWidth: 170,
+          border: "1px solid #d1d5db",
+          borderRadius: 12,
+          background: "rgba(255,255,255,0.92)",
+          display: "flex",
+          flexDirection: "column",
+          minHeight: 0
+        }}
+      >
+        <div
+          style={{
+            padding: "0.75rem 0.8rem",
+            borderBottom: "1px solid #e5e7eb",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "0.5rem"
+          }}
+        >
+          <strong style={{ fontSize: 13, color: "#111827" }}>Online users</strong>
+          <span style={{ color: "#6b7280", fontSize: 13 }}>{onlineUsers.length}</span>
+        </div>
+
+        <div
+          style={{
+            padding: "0.75rem 0.8rem",
+            overflowY: "auto",
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.45rem",
+            fontSize: 14,
+            color: "#374151"
+          }}
+        >
+          {onlineUsers.length > 0 ? (
+            onlineUsers.map((presenceUser) => (
+              <span
+                key={presenceUser.uid}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.4rem",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis"
+                }}
+                title={getPresenceLabel(presenceUser)}
+              >
+                <span style={{ color: presenceUser.color }}>●</span>
+                <span
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis"
+                  }}
+                >
+                  {getPresenceLabel(presenceUser)}
+                </span>
+              </span>
+            ))
+          ) : (
+            <span style={{ color: "#6b7280" }}>No active users yet.</span>
+          )}
+        </div>
+      </aside>
     </section>
   );
 }

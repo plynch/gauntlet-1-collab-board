@@ -24,12 +24,6 @@ type BoardDetailsResponse = {
   debug?: string;
 };
 
-type BoardAccessResponse = {
-  board: BoardDetail;
-  error?: string;
-  debug?: string;
-};
-
 type BoardWorkspaceProps = {
   boardId: string;
 };
@@ -55,10 +49,8 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
   const [idToken, setIdToken] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [boardLoading, setBoardLoading] = useState(false);
-  const [savingAccess, setSavingAccess] = useState(false);
   const [board, setBoard] = useState<BoardDetail | null>(null);
   const [permissions, setPermissions] = useState<BoardPermissions | null>(null);
-  const [newEditorEmail, setNewEditorEmail] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const firebaseIsConfigured = isFirebaseClientConfigured();
@@ -153,80 +145,6 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
     await signOut(auth);
   }, [auth]);
 
-  const updateAccess = useCallback(
-    async (payload: object): Promise<BoardDetail | null> => {
-      if (!idToken) {
-        return null;
-      }
-
-      setSavingAccess(true);
-      setErrorMessage(null);
-
-      try {
-        const response = await fetch(`/api/boards/${boardId}/access`, {
-          method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${idToken}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(payload)
-        });
-
-        const result = (await response.json()) as BoardAccessResponse;
-        if (!response.ok) {
-          throw new Error(getErrorMessage(result, "Failed to update board access."));
-        }
-
-        setBoard(result.board);
-        return result.board;
-      } catch (error) {
-        setErrorMessage(
-          error instanceof Error ? error.message : "Failed to update board access."
-        );
-        return null;
-      } finally {
-        setSavingAccess(false);
-      }
-    },
-    [boardId, idToken]
-  );
-
-  const handleToggleOpenEdit = useCallback(
-    async (nextOpenEdit: boolean) => {
-      await updateAccess({
-        action: "set-open-edit",
-        openEdit: nextOpenEdit
-      });
-    },
-    [updateAccess]
-  );
-
-  const handleAddEditor = useCallback(async () => {
-    const email = newEditorEmail.trim();
-    if (!email) {
-      return;
-    }
-
-    const updatedBoard = await updateAccess({
-      action: "add-editor",
-      editorEmail: email
-    });
-
-    if (updatedBoard) {
-      setNewEditorEmail("");
-    }
-  }, [newEditorEmail, updateAccess]);
-
-  const handleRemoveEditor = useCallback(
-    async (editorUid: string) => {
-      await updateAccess({
-        action: "remove-editor",
-        editorUid
-      });
-    },
-    [updateAccess]
-  );
-
   if (!firebaseIsConfigured) {
     return (
       <main
@@ -235,6 +153,8 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
           maxWidth: "none",
           margin: 0,
           padding: "1rem 1.25rem",
+          height: "100vh",
+          overflow: "hidden",
           boxSizing: "border-box"
         }}
       >
@@ -254,7 +174,11 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
         maxWidth: "none",
         margin: 0,
         padding: "1rem 1.25rem",
-        boxSizing: "border-box"
+        boxSizing: "border-box",
+        height: "100vh",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column"
       }}
     >
       <header
@@ -269,158 +193,57 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
       >
         <div>
           <p style={{ margin: 0 }}>
-            <Link href="/boards">Back to boards</Link>
+            <Link href="/">Back to boards</Link>
           </p>
           <h1 style={{ margin: "0.3rem 0 0" }}>
             {board?.title ?? "Board"}{" "}
             <span style={{ color: "#6b7280", fontWeight: 400 }}>({boardId})</span>
           </h1>
         </div>
-        {user ? (
-          <button type="button" onClick={() => void handleSignOut()}>
-            Sign out
-          </button>
-        ) : null}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          {permissions?.isOwner ? (
+            <Link href={`/boards/${boardId}/settings`}>Manage access</Link>
+          ) : null}
+          {user ? (
+            <button type="button" onClick={() => void handleSignOut()}>
+              Sign out
+            </button>
+          ) : null}
+        </div>
       </header>
 
-      {authLoading ? <p>Checking authentication...</p> : null}
+      <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+        {authLoading ? <p>Checking authentication...</p> : null}
 
-      {!authLoading && !user ? (
-        <section>
-          <p>Sign in to access this board.</p>
-          <button type="button" onClick={() => void handleSignIn()}>
-            Sign in with Google
-          </button>
-        </section>
-      ) : null}
+        {!authLoading && !user ? (
+          <section>
+            <p>Sign in to access this board.</p>
+            <button type="button" onClick={() => void handleSignIn()}>
+              Sign in with Google
+            </button>
+          </section>
+        ) : null}
 
-      {errorMessage ? (
-        <p style={{ color: "#b91c1c", marginTop: "1rem" }}>{errorMessage}</p>
-      ) : null}
+        {errorMessage ? (
+          <p style={{ color: "#b91c1c", marginTop: "1rem" }}>{errorMessage}</p>
+        ) : null}
 
-      {!authLoading && user ? (
-        <>
-          {boardLoading ? <p>Loading board...</p> : null}
+        {!authLoading && user ? (
+          <>
+            {boardLoading ? <p>Loading board...</p> : null}
 
-          {!boardLoading && board && permissions ? (
-            <>
-              <RealtimeBoardCanvas
-                boardId={boardId}
-                user={user}
-                permissions={permissions}
-              />
-
-              <section
-                style={{
-                  border: "1px solid #d1d5db",
-                  borderRadius: 10,
-                  padding: "1rem"
-                }}
-              >
-                <h2 style={{ marginTop: 0 }}>Access</h2>
-                <p style={{ marginTop: 0 }}>
-                  {permissions.isOwner
-                    ? "You are the board owner."
-                    : permissions.canEdit
-                      ? "You can edit this board."
-                      : "You currently have read-only access."}
-                </p>
-
-                {permissions.isOwner ? (
-                  <>
-                    <label
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "0.5rem",
-                        marginBottom: "0.75rem"
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={board.openEdit}
-                        onChange={(event) =>
-                          void handleToggleOpenEdit(event.target.checked)
-                        }
-                        disabled={savingAccess}
-                      />
-                      Open edit mode (any signed-in user can edit)
-                    </label>
-
-                    {!board.openEdit ? (
-                      <>
-                        <p style={{ margin: "0 0 0.5rem", color: "#6b7280" }}>
-                          Open edit is off. Only you and users in editor allowlist can
-                          edit.
-                        </p>
-                        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                          <input
-                            placeholder="Editor email"
-                            value={newEditorEmail}
-                            onChange={(event) => setNewEditorEmail(event.target.value)}
-                            style={{ minWidth: 260, flex: "1 1 260px", padding: "0.5rem" }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => void handleAddEditor()}
-                            disabled={savingAccess || newEditorEmail.trim().length === 0}
-                          >
-                            Add editor
-                          </button>
-                        </div>
-
-                        <ul
-                          style={{
-                            listStyle: "none",
-                            margin: "0.75rem 0 0",
-                            padding: 0,
-                            display: "grid",
-                            gap: "0.5rem"
-                          }}
-                        >
-                          {board.editors.map((editor) => (
-                            <li
-                              key={editor.uid}
-                              style={{
-                                border: "1px solid #e5e7eb",
-                                borderRadius: 8,
-                                padding: "0.5rem",
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                gap: "0.75rem",
-                                flexWrap: "wrap"
-                              }}
-                            >
-                              <span>
-                                {editor.email ?? editor.displayName ?? editor.uid}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => void handleRemoveEditor(editor.uid)}
-                                disabled={savingAccess}
-                              >
-                                Remove
-                              </button>
-                            </li>
-                          ))}
-                          {board.editors.length === 0 ? (
-                            <li style={{ color: "#6b7280" }}>No editors in allowlist.</li>
-                          ) : null}
-                        </ul>
-                      </>
-                    ) : null}
-                  </>
-                ) : (
-                  <p style={{ color: "#6b7280", marginBottom: 0 }}>
-                    Only board owner can update access settings.
-                  </p>
-                )}
-              </section>
-            </>
-          ) : null}
-        </>
-      ) : null}
+            {!boardLoading && board && permissions ? (
+              <div style={{ height: "100%", minHeight: 0 }}>
+                <RealtimeBoardCanvas
+                  boardId={boardId}
+                  user={user}
+                  permissions={permissions}
+                />
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </div>
     </main>
   );
 }

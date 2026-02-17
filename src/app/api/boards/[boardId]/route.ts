@@ -7,7 +7,7 @@ import {
   canUserEditBoard,
   canUserReadBoard,
   parseBoardDoc,
-  resolveEditorProfiles,
+  resolveUserProfiles,
   toIsoDate,
   type BoardDoc
 } from "@/server/boards/board-access";
@@ -40,7 +40,8 @@ function getDebugMessage(error: unknown): string | undefined {
 function toBoardDetail(
   boardId: string,
   board: BoardDoc,
-  editors: Awaited<ReturnType<typeof resolveEditorProfiles>>
+  editors: Awaited<ReturnType<typeof resolveUserProfiles>>,
+  readers: Awaited<ReturnType<typeof resolveUserProfiles>>
 ): BoardDetail {
   return {
     id: boardId,
@@ -51,6 +52,7 @@ function toBoardDetail(
     editorIds: board.editorIds,
     readerIds: board.readerIds,
     editors,
+    readers,
     createdAt: toIsoDate(board.createdAt),
     updatedAt: toIsoDate(board.updatedAt)
   };
@@ -88,12 +90,11 @@ export async function GET(request: NextRequest, context: BoardRouteContext) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
 
-    const editors = permissions.isOwner
-      ? await resolveEditorProfiles(board.editorIds)
-      : [];
+    const editors = permissions.isOwner ? await resolveUserProfiles(board.editorIds) : [];
+    const readers = permissions.isOwner ? await resolveUserProfiles(board.readerIds) : [];
 
     return NextResponse.json({
-      board: toBoardDetail(boardId, board, editors),
+      board: toBoardDetail(boardId, board, editors, readers),
       permissions
     });
   } catch (error) {

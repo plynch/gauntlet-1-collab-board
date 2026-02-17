@@ -20,6 +20,7 @@ export type BoardDetail = BoardSummary & {
   editorIds: string[];
   readerIds: string[];
   editors: BoardEditorProfile[];
+  readers: BoardEditorProfile[];
 };
 
 export type BoardPermissions = {
@@ -33,6 +34,7 @@ export type BoardObjectKind = "sticky" | "rect" | "circle" | "line";
 export type BoardObject = {
   id: string;
   type: BoardObjectKind;
+  zIndex: number;
   x: number;
   y: number;
   width: number;

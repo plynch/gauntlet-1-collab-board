@@ -32,9 +32,17 @@ import { getFirebaseClientDb } from "@/lib/firebase/client";
 
 const CURSOR_THROTTLE_MS = 100;
 const DRAG_THROTTLE_MS = 60;
+const DRAG_CLICK_SLOP_PX = 3;
 const STICKY_TEXT_SYNC_THROTTLE_MS = 120;
 const PRESENCE_HEARTBEAT_MS = 10_000;
 const PRESENCE_TTL_MS = 15_000;
+const MIN_SCALE = 0.05;
+const MAX_SCALE = 2;
+const ZOOM_SLIDER_MIN_PERCENT = Math.round(MIN_SCALE * 100);
+const ZOOM_SLIDER_MAX_PERCENT = Math.round(MAX_SCALE * 100);
+const ZOOM_BUTTON_STEP_PERCENT = 5;
+const ZOOM_WHEEL_INTENSITY = 0.0065;
+const ZOOM_WHEEL_MAX_EFFECTIVE_DELTA = 180;
 
 type RealtimeBoardCanvasProps = {
   boardId: string;
@@ -61,6 +69,8 @@ type DragState = {
   startClientX: number;
   startClientY: number;
   lastSentAt: number;
+  hasMoved: boolean;
+  collapseToObjectIdOnClick: string | null;
 };
 
 type ToolPanelPosition = {
@@ -79,6 +89,13 @@ type ToolPanelDragState = {
 type BoardPoint = {
   x: number;
   y: number;
+};
+
+type ObjectBounds = {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
 };
 
 type MarqueeSelectionMode = "add" | "remove";
@@ -118,6 +135,14 @@ type LineEndpointResizeState = {
   lastSentAt: number;
 };
 
+type RotateState = {
+  objectId: string;
+  centerPoint: BoardPoint;
+  initialPointerAngleDeg: number;
+  initialRotationDeg: number;
+  lastSentAt: number;
+};
+
 type StickyTextSyncState = {
   pendingText: string | null;
   lastSentAt: number;
@@ -129,7 +154,14 @@ type ColorSwatch = {
   value: string;
 };
 
-const BOARD_TOOLS: BoardObjectKind[] = ["sticky", "rect", "circle", "line"];
+const BOARD_TOOLS: BoardObjectKind[] = [
+  "sticky",
+  "rect",
+  "circle",
+  "line",
+  "triangle",
+  "star"
+];
 const TOOL_PANEL_EDGE_PADDING = 8;
 const TOOL_PANEL_DRAG_THRESHOLD_PX = 5;
 const INITIAL_TOOL_PANEL_POSITION: ToolPanelPosition = {
@@ -137,6 +169,7 @@ const INITIAL_TOOL_PANEL_POSITION: ToolPanelPosition = {
   y: 12
 };
 const RESIZE_THROTTLE_MS = 60;
+const ROTATE_THROTTLE_MS = 60;
 const RESIZE_HANDLE_SIZE = 10;
 const LINE_MIN_LENGTH = 40;
 const SELECTED_OBJECT_HALO = "0 0 0 2px rgba(59, 130, 246, 0.45), 0 8px 14px rgba(0,0,0,0.14)";
@@ -161,7 +194,18 @@ const INITIAL_VIEWPORT: ViewportState = {
 };
 
 function clampScale(nextScale: number): number {
-  return Math.min(2.5, Math.max(0.3, nextScale));
+  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, nextScale));
+}
+
+function getAcceleratedWheelZoomDelta(deltaY: number): number {
+  const magnitude = Math.abs(deltaY);
+  const acceleration = 1 + Math.min(2.4, magnitude / 110);
+  const acceleratedMagnitude = Math.min(
+    ZOOM_WHEEL_MAX_EFFECTIVE_DELTA,
+    magnitude * acceleration
+  );
+
+  return Math.sign(deltaY) * acceleratedMagnitude;
 }
 
 function toNormalizedRect(start: BoardPoint, end: BoardPoint): {
@@ -271,7 +315,14 @@ function hashToColor(input: string): string {
 }
 
 function isBoardObjectKind(value: unknown): value is BoardObjectKind {
-  return value === "sticky" || value === "rect" || value === "circle" || value === "line";
+  return (
+    value === "sticky" ||
+    value === "rect" ||
+    value === "circle" ||
+    value === "line" ||
+    value === "triangle" ||
+    value === "star"
+  );
 }
 
 function getDefaultObjectSize(kind: BoardObjectKind): { width: number; height: number } {
@@ -287,6 +338,14 @@ function getDefaultObjectSize(kind: BoardObjectKind): { width: number; height: n
     return { width: 170, height: 170 };
   }
 
+  if (kind === "triangle") {
+    return { width: 180, height: 170 };
+  }
+
+  if (kind === "star") {
+    return { width: 180, height: 180 };
+  }
+
   return { width: 240, height: 64 };
 }
 
@@ -300,6 +359,10 @@ function getMinimumObjectSize(kind: BoardObjectKind): { width: number; height: n
   }
 
   if (kind === "circle") {
+    return { width: 80, height: 80 };
+  }
+
+  if (kind === "triangle" || kind === "star") {
     return { width: 80, height: 80 };
   }
 
@@ -319,6 +382,14 @@ function getDefaultObjectColor(kind: BoardObjectKind): string {
     return "#86efac";
   }
 
+  if (kind === "triangle") {
+    return "#c4b5fd";
+  }
+
+  if (kind === "star") {
+    return "#fcd34d";
+  }
+
   return "#1f2937";
 }
 
@@ -335,6 +406,14 @@ function getObjectLabel(kind: BoardObjectKind): string {
     return "Circle";
   }
 
+  if (kind === "triangle") {
+    return "Triangle";
+  }
+
+  if (kind === "star") {
+    return "Star";
+  }
+
   return "Line";
 }
 
@@ -344,6 +423,76 @@ function toRadians(degrees: number): number {
 
 function toDegrees(radians: number): number {
   return (radians * 180) / Math.PI;
+}
+
+function normalizeRotationDeg(rotationDeg: number): number {
+  return ((rotationDeg % 360) + 360) % 360;
+}
+
+function hasMeaningfulRotation(rotationDeg: number): boolean {
+  const normalized = normalizeRotationDeg(rotationDeg);
+  const distanceToZero = Math.min(normalized, 360 - normalized);
+  return distanceToZero > 0.25;
+}
+
+function getRotatedBounds(geometry: ObjectGeometry): ObjectBounds {
+  const centerX = geometry.x + geometry.width / 2;
+  const centerY = geometry.y + geometry.height / 2;
+  const halfWidth = geometry.width / 2;
+  const halfHeight = geometry.height / 2;
+  const radians = toRadians(geometry.rotationDeg);
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+
+  const corners = [
+    { x: -halfWidth, y: -halfHeight },
+    { x: halfWidth, y: -halfHeight },
+    { x: halfWidth, y: halfHeight },
+    { x: -halfWidth, y: halfHeight }
+  ];
+
+  let left = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+
+  corners.forEach((corner) => {
+    const rotatedX = centerX + corner.x * cos - corner.y * sin;
+    const rotatedY = centerY + corner.x * sin + corner.y * cos;
+    left = Math.min(left, rotatedX);
+    right = Math.max(right, rotatedX);
+    top = Math.min(top, rotatedY);
+    bottom = Math.max(bottom, rotatedY);
+  });
+
+  return { left, right, top, bottom };
+}
+
+function getObjectVisualBounds(type: BoardObjectKind, geometry: ObjectGeometry): ObjectBounds {
+  if (type === "line") {
+    const endpoints = getLineEndpoints(geometry);
+    return {
+      left: Math.min(endpoints.start.x, endpoints.end.x),
+      right: Math.max(endpoints.start.x, endpoints.end.x),
+      top: Math.min(endpoints.start.y, endpoints.end.y),
+      bottom: Math.max(endpoints.start.y, endpoints.end.y)
+    };
+  }
+
+  return getRotatedBounds(geometry);
+}
+
+function mergeBounds(bounds: ObjectBounds[]): ObjectBounds | null {
+  if (bounds.length === 0) {
+    return null;
+  }
+
+  return bounds.reduce((combined, current) => ({
+    left: Math.min(combined.left, current.left),
+    right: Math.max(combined.right, current.right),
+    top: Math.min(combined.top, current.top),
+    bottom: Math.max(combined.bottom, current.bottom)
+  }));
 }
 
 function getLineEndpoints(geometry: ObjectGeometry): {
@@ -417,6 +566,27 @@ function ToolIcon({ kind }: { kind: BoardObjectKind }) {
     );
   }
 
+  if (kind === "triangle") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+        <polygon points="8,2 14,13 2,13" fill="#c4b5fd" stroke="#6d28d9" strokeWidth="1.1" />
+      </svg>
+    );
+  }
+
+  if (kind === "star") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+        <polygon
+          points="8,1.8 9.9,6.1 14.5,6.1 10.8,8.9 12.3,13.7 8,10.8 3.7,13.7 5.2,8.9 1.5,6.1 6.1,6.1"
+          fill="#fcd34d"
+          stroke="#92400e"
+          strokeWidth="1.05"
+        />
+      </svg>
+    );
+  }
+
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
       <line x1="2.5" y1="8" x2="13.5" y2="8" stroke="#1f2937" strokeWidth="2.5" />
@@ -428,27 +598,23 @@ function ColorSwatchPicker({
   currentColor,
   onSelectColor
 }: {
-  currentColor: string;
+  currentColor: string | null;
   onSelectColor: (nextColor: string) => void;
 }) {
-  const currentColorKey = currentColor.toLowerCase();
+  const currentColorKey = currentColor ? currentColor.toLowerCase() : null;
 
   return (
     <div
       style={{
         display: "grid",
         gridTemplateColumns: "repeat(5, 18px)",
-        gap: 6,
-        padding: "0.35rem",
-        borderRadius: 8,
-        background: "rgba(255,255,255,0.98)",
-        border: "1px solid #d1d5db",
-        boxShadow: "0 6px 14px rgba(0,0,0,0.15)"
+        gap: 6
       }}
       onPointerDown={(event) => event.stopPropagation()}
     >
       {BOARD_COLOR_SWATCHES.map((swatch) => {
-        const isSelected = swatch.value.toLowerCase() === currentColorKey;
+        const isSelected =
+          currentColorKey !== null && swatch.value.toLowerCase() === currentColorKey;
 
         return (
           <button
@@ -604,11 +770,13 @@ export default function RealtimeBoardCanvas({
 
   const stageRef = useRef<HTMLDivElement | null>(null);
   const toolPanelRef = useRef<HTMLDivElement | null>(null);
+  const selectionHudRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<ViewportState>(INITIAL_VIEWPORT);
   const panStateRef = useRef<PanState | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const cornerResizeStateRef = useRef<CornerResizeState | null>(null);
   const lineEndpointResizeStateRef = useRef<LineEndpointResizeState | null>(null);
+  const rotateStateRef = useRef<RotateState | null>(null);
   const marqueeSelectionStateRef = useRef<MarqueeSelectionState | null>(null);
   const toolPanelDragStateRef = useRef<ToolPanelDragState | null>(null);
   const suppressToolPanelClickRef = useRef(false);
@@ -637,6 +805,8 @@ export default function RealtimeBoardCanvas({
   const [toolPanelPosition, setToolPanelPosition] = useState<ToolPanelPosition>(
     INITIAL_TOOL_PANEL_POSITION
   );
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
+  const [selectionHudSize, setSelectionHudSize] = useState({ width: 0, height: 0 });
 
   const boardColor = useMemo(() => hashToColor(user.uid), [user.uid]);
   const objectsCollectionRef = useMemo(
@@ -675,6 +845,38 @@ export default function RealtimeBoardCanvas({
   useEffect(() => {
     selectedObjectIdsRef.current = new Set(selectedObjectIds);
   }, [selectedObjectIds]);
+
+  useEffect(() => {
+    const stageElement = stageRef.current;
+    if (!stageElement) {
+      return;
+    }
+
+    const syncStageSize = () => {
+      setStageSize({
+        width: stageElement.clientWidth,
+        height: stageElement.clientHeight
+      });
+    };
+
+    syncStageSize();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", syncStageSize);
+      return () => {
+        window.removeEventListener("resize", syncStageSize);
+      };
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      syncStageSize();
+    });
+    resizeObserver.observe(stageElement);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     const syncStates = stickyTextSyncStateRef.current;
@@ -982,31 +1184,22 @@ export default function RealtimeBoardCanvas({
     [boardId, db, getCurrentObjectGeometry]
   );
 
-  const getObjectSelectionBounds = useCallback((objectItem: BoardObject) => {
-    if (objectItem.type === "line") {
-      const endpoints = getLineEndpoints({
-        x: objectItem.x,
-        y: objectItem.y,
-        width: objectItem.width,
-        height: objectItem.height,
-        rotationDeg: objectItem.rotationDeg
-      });
+  const getObjectSelectionBounds = useCallback(
+    (objectItem: BoardObject) => {
+      const geometry = getCurrentObjectGeometry(objectItem.id);
+      if (!geometry) {
+        return {
+          left: objectItem.x,
+          right: objectItem.x + objectItem.width,
+          top: objectItem.y,
+          bottom: objectItem.y + objectItem.height
+        };
+      }
 
-      return {
-        left: Math.min(endpoints.start.x, endpoints.end.x),
-        right: Math.max(endpoints.start.x, endpoints.end.x),
-        top: Math.min(endpoints.start.y, endpoints.end.y),
-        bottom: Math.max(endpoints.start.y, endpoints.end.y)
-      };
-    }
-
-    return {
-      left: objectItem.x,
-      right: objectItem.x + objectItem.width,
-      top: objectItem.y,
-      bottom: objectItem.y + objectItem.height
-    };
-  }, []);
+      return getObjectVisualBounds(objectItem.type, geometry);
+    },
+    [getCurrentObjectGeometry]
+  );
 
   const getObjectsIntersectingRect = useCallback(
     (rect: { left: number; right: number; top: number; bottom: number }): string[] => {
@@ -1237,6 +1430,54 @@ export default function RealtimeBoardCanvas({
         return;
       }
 
+      const rotateState = rotateStateRef.current;
+      if (rotateState) {
+        const stageElement = stageRef.current;
+        if (!stageElement) {
+          return;
+        }
+
+        const rect = stageElement.getBoundingClientRect();
+        const pointer = {
+          x: (event.clientX - rect.left - viewportRef.current.x) / scale,
+          y: (event.clientY - rect.top - viewportRef.current.y) / scale
+        };
+
+        const pointerAngleDeg = toDegrees(
+          Math.atan2(
+            pointer.y - rotateState.centerPoint.y,
+            pointer.x - rotateState.centerPoint.x
+          )
+        );
+        const deltaAngle = pointerAngleDeg - rotateState.initialPointerAngleDeg;
+        let nextRotationDeg = rotateState.initialRotationDeg + deltaAngle;
+
+        if (event.shiftKey) {
+          nextRotationDeg = Math.round(nextRotationDeg / 15) * 15;
+        }
+
+        const normalizedRotationDeg =
+          ((nextRotationDeg % 360) + 360) % 360;
+
+        const geometry = getCurrentObjectGeometry(rotateState.objectId);
+        if (!geometry) {
+          return;
+        }
+
+        const nextGeometry: ObjectGeometry = {
+          ...geometry,
+          rotationDeg: normalizedRotationDeg
+        };
+        setDraftGeometry(rotateState.objectId, nextGeometry);
+
+        const now = Date.now();
+        if (canEditRef.current && now - rotateState.lastSentAt >= ROTATE_THROTTLE_MS) {
+          rotateState.lastSentAt = now;
+          void updateObjectGeometry(rotateState.objectId, nextGeometry);
+        }
+        return;
+      }
+
       const marqueeSelectionState = marqueeSelectionStateRef.current;
       if (marqueeSelectionState) {
         const stageElement = stageRef.current;
@@ -1273,6 +1514,17 @@ export default function RealtimeBoardCanvas({
 
       const dragState = dragStateRef.current;
       if (dragState) {
+        const pointerDeltaX = event.clientX - dragState.startClientX;
+        const pointerDeltaY = event.clientY - dragState.startClientY;
+        if (!dragState.hasMoved) {
+          dragState.hasMoved =
+            Math.hypot(pointerDeltaX, pointerDeltaY) >= DRAG_CLICK_SLOP_PX;
+        }
+
+        if (!dragState.hasMoved) {
+          return;
+        }
+
         const deltaX = (event.clientX - dragState.startClientX) / scale;
         const deltaY = (event.clientY - dragState.startClientY) / scale;
 
@@ -1344,6 +1596,18 @@ export default function RealtimeBoardCanvas({
         return;
       }
 
+      const rotateState = rotateStateRef.current;
+      if (rotateState) {
+        rotateStateRef.current = null;
+        const finalGeometry = draftGeometryByIdRef.current[rotateState.objectId];
+        clearDraftGeometry(rotateState.objectId);
+
+        if (finalGeometry && canEditRef.current) {
+          void updateObjectGeometry(rotateState.objectId, finalGeometry);
+        }
+        return;
+      }
+
       const marqueeSelectionState = marqueeSelectionStateRef.current;
       if (marqueeSelectionState) {
         marqueeSelectionStateRef.current = null;
@@ -1384,6 +1648,17 @@ export default function RealtimeBoardCanvas({
       const deltaY = (event.clientY - dragState.startClientY) / scale;
 
       dragStateRef.current = null;
+
+      if (!dragState.hasMoved) {
+        dragState.objectIds.forEach((objectId) => {
+          clearDraftGeometry(objectId);
+        });
+
+        if (dragState.collapseToObjectIdOnClick) {
+          setSelectedObjectIds([dragState.collapseToObjectIdOnClick]);
+        }
+        return;
+      }
 
       if (canEditRef.current) {
         const nextPositionsById: Record<string, BoardPoint> = {};
@@ -1650,24 +1925,103 @@ export default function RealtimeBoardCanvas({
     [saveStickyText]
   );
 
-  const saveObjectColor = useCallback(
-    async (objectId: string, color: string) => {
-      if (!canEdit) {
+  const saveSelectedObjectsColor = useCallback(
+    async (color: string) => {
+      if (!canEditRef.current) {
+        return;
+      }
+
+      const objectIdsToUpdate = Array.from(selectedObjectIdsRef.current).filter((objectId) =>
+        objectsByIdRef.current.has(objectId)
+      );
+      if (objectIdsToUpdate.length === 0) {
         return;
       }
 
       try {
-        await updateDoc(doc(db, `boards/${boardId}/objects/${objectId}`), {
-          color,
-          updatedAt: serverTimestamp()
+        const batch = writeBatch(db);
+        const updatedAt = serverTimestamp();
+
+        objectIdsToUpdate.forEach((objectId) => {
+          batch.update(doc(db, `boards/${boardId}/objects/${objectId}`), {
+            color,
+            updatedAt
+          });
         });
+
+        await batch.commit();
       } catch (error) {
-        console.error("Failed to update object color", error);
-        setBoardError(toBoardErrorMessage(error, "Failed to update object color."));
+        console.error("Failed to update selected object colors", error);
+        setBoardError(toBoardErrorMessage(error, "Failed to update selected object colors."));
       }
     },
-    [boardId, canEdit, db]
+    [boardId, db]
   );
+
+  const resetSelectedObjectsRotation = useCallback(async () => {
+    if (!canEditRef.current) {
+      return;
+    }
+
+    const targets = Array.from(selectedObjectIdsRef.current)
+      .map((objectId) => {
+        const geometry = getCurrentObjectGeometry(objectId);
+        if (!geometry) {
+          return null;
+        }
+
+        return { objectId, geometry };
+      })
+      .filter(
+        (
+          item
+        ): item is {
+          objectId: string;
+          geometry: ObjectGeometry;
+        } => item !== null
+      )
+      .filter((item) => hasMeaningfulRotation(item.geometry.rotationDeg));
+
+    if (targets.length === 0) {
+      return;
+    }
+
+    rotateStateRef.current = null;
+
+    targets.forEach((target) => {
+      setDraftGeometry(target.objectId, {
+        ...target.geometry,
+        rotationDeg: 0
+      });
+    });
+
+    try {
+      const batch = writeBatch(db);
+      const updatedAt = serverTimestamp();
+
+      targets.forEach((target) => {
+        batch.update(doc(db, `boards/${boardId}/objects/${target.objectId}`), {
+          x: target.geometry.x,
+          y: target.geometry.y,
+          width: target.geometry.width,
+          height: target.geometry.height,
+          rotationDeg: 0,
+          updatedAt
+        });
+      });
+
+      await batch.commit();
+    } catch (error) {
+      console.error("Failed to reset selected object rotation", error);
+      setBoardError(toBoardErrorMessage(error, "Failed to reset selected object rotation."));
+    } finally {
+      targets.forEach((target) => {
+        window.setTimeout(() => {
+          clearDraftGeometry(target.objectId);
+        }, 180);
+      });
+    }
+  }, [boardId, clearDraftGeometry, db, getCurrentObjectGeometry, setDraftGeometry]);
 
   const selectSingleObject = useCallback((objectId: string) => {
     setSelectedObjectIds((previous) =>
@@ -1753,6 +2107,10 @@ export default function RealtimeBoardCanvas({
       return;
     }
 
+    if (target.closest("[data-selection-hud='true']")) {
+      return;
+    }
+
     if (target.closest("[data-board-object='true']")) {
       return;
     }
@@ -1809,32 +2167,64 @@ export default function RealtimeBoardCanvas({
     void updateCursor(null);
   }, [updateCursor]);
 
+  const setScaleAtClientPoint = useCallback(
+    (clientX: number, clientY: number, targetScale: number) => {
+      const stageElement = stageRef.current;
+      if (!stageElement) {
+        return;
+      }
+
+      const rect = stageElement.getBoundingClientRect();
+      const pointerX = clientX - rect.left;
+      const pointerY = clientY - rect.top;
+
+      const current = viewportRef.current;
+      const worldX = (pointerX - current.x) / current.scale;
+      const worldY = (pointerY - current.y) / current.scale;
+      const nextScale = clampScale(targetScale);
+
+      if (nextScale === current.scale) {
+        return;
+      }
+
+      const nextX = pointerX - worldX * nextScale;
+      const nextY = pointerY - worldY * nextScale;
+
+      setViewport({
+        x: nextX,
+        y: nextY,
+        scale: nextScale
+      });
+    },
+    []
+  );
+
   const zoomAtPointer = useCallback((clientX: number, clientY: number, deltaY: number) => {
+    const effectiveDeltaY = getAcceleratedWheelZoomDelta(deltaY);
+    const zoomFactor = Math.exp(-effectiveDeltaY * ZOOM_WHEEL_INTENSITY);
+    const nextScale = clampScale(viewportRef.current.scale * zoomFactor);
+    setScaleAtClientPoint(clientX, clientY, nextScale);
+  }, [setScaleAtClientPoint]);
+
+  const zoomAtStageCenter = useCallback((targetScale: number) => {
     const stageElement = stageRef.current;
     if (!stageElement) {
       return;
     }
 
     const rect = stageElement.getBoundingClientRect();
-    const pointerX = clientX - rect.left;
-    const pointerY = clientY - rect.top;
+    setScaleAtClientPoint(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+      targetScale
+    );
+  }, [setScaleAtClientPoint]);
 
-    const current = viewportRef.current;
-    const worldX = (pointerX - current.x) / current.scale;
-    const worldY = (pointerY - current.y) / current.scale;
-
-    const zoomFactor = Math.exp(-deltaY * 0.0012);
-    const nextScale = clampScale(current.scale * zoomFactor);
-
-    const nextX = pointerX - worldX * nextScale;
-    const nextY = pointerY - worldY * nextScale;
-
-    setViewport({
-      x: nextX,
-      y: nextY,
-      scale: nextScale
-    });
-  }, []);
+  const nudgeZoom = useCallback((direction: "in" | "out") => {
+    const deltaPercent = direction === "in" ? ZOOM_BUTTON_STEP_PERCENT : -ZOOM_BUTTON_STEP_PERCENT;
+    const nextPercent = Math.round(viewportRef.current.scale * 100) + deltaPercent;
+    zoomAtStageCenter(nextPercent / 100);
+  }, [zoomAtStageCenter]);
 
   const panByWheel = useCallback((deltaX: number, deltaY: number) => {
     setViewport((previous) => ({
@@ -1888,13 +2278,13 @@ export default function RealtimeBoardCanvas({
       }
 
       const currentSelectedIds = selectedObjectIdsRef.current;
-      const shouldDragCurrentSelection =
+      const shouldPrepareGroupDrag =
         currentSelectedIds.has(objectId) && currentSelectedIds.size > 1;
-      const dragObjectIds = shouldDragCurrentSelection
+      const dragObjectIds = shouldPrepareGroupDrag
         ? Array.from(currentSelectedIds)
         : [objectId];
 
-      if (!shouldDragCurrentSelection) {
+      if (!shouldPrepareGroupDrag) {
         selectSingleObject(objectId);
       }
 
@@ -1916,10 +2306,60 @@ export default function RealtimeBoardCanvas({
         initialGeometries,
         startClientX: event.clientX,
         startClientY: event.clientY,
-        lastSentAt: 0
+        lastSentAt: 0,
+        hasMoved: false,
+        collapseToObjectIdOnClick: shouldPrepareGroupDrag ? objectId : null
       };
     },
     [canEdit, getCurrentObjectGeometry, selectSingleObject, toggleObjectSelection]
+  );
+
+  const startShapeRotate = useCallback(
+    (objectId: string, event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (!canEdit) {
+        return;
+      }
+
+      if (event.button !== 0) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const objectItem = objectsByIdRef.current.get(objectId);
+      if (!objectItem || objectItem.type === "line") {
+        return;
+      }
+
+      const geometry = getCurrentObjectGeometry(objectId);
+      if (!geometry) {
+        return;
+      }
+
+      const pointer = toBoardCoordinates(event.clientX, event.clientY);
+      if (!pointer) {
+        return;
+      }
+
+      const centerPoint = {
+        x: geometry.x + geometry.width / 2,
+        y: geometry.y + geometry.height / 2
+      };
+      const initialPointerAngleDeg = toDegrees(
+        Math.atan2(pointer.y - centerPoint.y, pointer.x - centerPoint.x)
+      );
+
+      selectSingleObject(objectId);
+      rotateStateRef.current = {
+        objectId,
+        centerPoint,
+        initialPointerAngleDeg,
+        initialRotationDeg: geometry.rotationDeg,
+        lastSentAt: 0
+      };
+    },
+    [canEdit, getCurrentObjectGeometry, selectSingleObject, toBoardCoordinates]
   );
 
   const startCornerResize = useCallback(
@@ -2031,6 +2471,132 @@ export default function RealtimeBoardCanvas({
   );
 
   const selectedObjectCount = selectedObjectIds.length;
+  const selectedObjects = useMemo(
+    () =>
+      selectedObjectIds
+        .map((objectId) => {
+          const objectItem = objects.find((candidate) => candidate.id === objectId);
+          if (!objectItem) {
+            return null;
+          }
+
+          const draftGeometry = draftGeometryById[objectId];
+          const geometry: ObjectGeometry = draftGeometry ?? {
+            x: objectItem.x,
+            y: objectItem.y,
+            width: objectItem.width,
+            height: objectItem.height,
+            rotationDeg: objectItem.rotationDeg
+          };
+
+          return {
+            object: objectItem,
+            geometry
+          };
+        })
+        .filter(
+          (
+            item
+          ): item is {
+            object: BoardObject;
+            geometry: ObjectGeometry;
+          } => item !== null
+        ),
+    [draftGeometryById, objects, selectedObjectIds]
+  );
+  const selectedObjectBounds = useMemo(
+    () =>
+      mergeBounds(
+        selectedObjects.map((selectedObject) =>
+          getObjectVisualBounds(selectedObject.object.type, selectedObject.geometry)
+        )
+      ),
+    [selectedObjects]
+  );
+  const selectedColor = useMemo(() => {
+    if (selectedObjects.length === 0) {
+      return null;
+    }
+
+    const firstColor = selectedObjects[0].object.color.toLowerCase();
+    const hasMixedColors = selectedObjects.some(
+      (selectedObject) => selectedObject.object.color.toLowerCase() !== firstColor
+    );
+
+    return hasMixedColors ? null : selectedObjects[0].object.color;
+  }, [selectedObjects]);
+  const canColorSelection = canEdit && selectedObjects.length > 0;
+  const canResetSelectionRotation =
+    canEdit &&
+    selectedObjects.some((selectedObject) =>
+      hasMeaningfulRotation(selectedObject.geometry.rotationDeg)
+    );
+  const canShowSelectionHud = canColorSelection;
+  const selectionHudPosition = useMemo(() => {
+    if (!canShowSelectionHud || !selectedObjectBounds) {
+      return null;
+    }
+
+    if (stageSize.width <= 0 || stageSize.height <= 0) {
+      return null;
+    }
+
+    const hudWidth = selectionHudSize.width > 0 ? selectionHudSize.width : 214;
+    const hudHeight = selectionHudSize.height > 0 ? selectionHudSize.height : 86;
+    const edgePadding = 10;
+    const offset = 10;
+    const selectionLeft = viewport.x + selectedObjectBounds.left * viewport.scale;
+    const selectionRight = viewport.x + selectedObjectBounds.right * viewport.scale;
+    const selectionTop = viewport.y + selectedObjectBounds.top * viewport.scale;
+    const selectionBottom = viewport.y + selectedObjectBounds.bottom * viewport.scale;
+    const selectionCenterY = (selectionTop + selectionBottom) / 2;
+    const maxX = Math.max(edgePadding, stageSize.width - hudWidth - edgePadding);
+    const maxY = Math.max(edgePadding, stageSize.height - hudHeight - edgePadding);
+
+    const clampPoint = (point: { x: number; y: number }) => ({
+      x: Math.max(edgePadding, Math.min(maxX, point.x)),
+      y: Math.max(edgePadding, Math.min(maxY, point.y))
+    });
+
+    const isFullyVisible = (point: { x: number; y: number }) =>
+      point.x >= edgePadding &&
+      point.y >= edgePadding &&
+      point.x + hudWidth <= stageSize.width - edgePadding &&
+      point.y + hudHeight <= stageSize.height - edgePadding;
+
+    const singleSelectedObject =
+      selectedObjects.length === 1 ? selectedObjects[0].object : null;
+    const preferSidePlacement =
+      singleSelectedObject !== null && singleSelectedObject.type !== "line";
+
+    const candidates = preferSidePlacement
+      ? [
+          { x: selectionRight + offset, y: selectionCenterY - hudHeight / 2 },
+          { x: selectionLeft - hudWidth - offset, y: selectionCenterY - hudHeight / 2 },
+          { x: selectionRight - hudWidth, y: selectionBottom + offset },
+          { x: selectionRight - hudWidth, y: selectionTop - hudHeight - offset }
+        ]
+      : [
+          { x: selectionRight - hudWidth, y: selectionTop - hudHeight - offset },
+          { x: selectionRight - hudWidth, y: selectionBottom + offset },
+          { x: selectionRight + offset, y: selectionCenterY - hudHeight / 2 },
+          { x: selectionLeft - hudWidth - offset, y: selectionCenterY - hudHeight / 2 }
+        ];
+
+    const visibleCandidate = candidates.find((candidate) => isFullyVisible(candidate));
+    if (visibleCandidate) {
+      return visibleCandidate;
+    }
+
+    return clampPoint(candidates[0] ?? { x: edgePadding, y: edgePadding });
+  }, [
+    canShowSelectionHud,
+    selectedObjectBounds,
+    selectedObjects,
+    selectionHudSize,
+    stageSize,
+    viewport
+  ]);
   const hasDeletableSelection = useMemo(
     () =>
       canEdit &&
@@ -2039,7 +2605,52 @@ export default function RealtimeBoardCanvas({
     [canEdit, objects, selectedObjectIds]
   );
 
+  useEffect(() => {
+    if (!canShowSelectionHud) {
+      setSelectionHudSize((previous) =>
+        previous.width === 0 && previous.height === 0
+          ? previous
+          : { width: 0, height: 0 }
+      );
+      return;
+    }
+
+    const hudElement = selectionHudRef.current;
+    if (!hudElement) {
+      return;
+    }
+
+    const syncHudSize = () => {
+      const nextWidth = hudElement.offsetWidth;
+      const nextHeight = hudElement.offsetHeight;
+      setSelectionHudSize((previous) =>
+        previous.width === nextWidth && previous.height === nextHeight
+          ? previous
+          : { width: nextWidth, height: nextHeight }
+      );
+    };
+
+    syncHudSize();
+
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      syncHudSize();
+    });
+    resizeObserver.observe(hudElement);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [canResetSelectionRotation, canShowSelectionHud, selectedColor]);
+
   const zoomPercent = Math.round(viewport.scale * 100);
+  const zoomSliderValue = Math.min(
+    ZOOM_SLIDER_MAX_PERCENT,
+    Math.max(ZOOM_SLIDER_MIN_PERCENT, zoomPercent)
+  );
   const marqueeRect = marqueeSelectionState
     ? toNormalizedRect(
         marqueeSelectionState.startPoint,
@@ -2081,7 +2692,79 @@ export default function RealtimeBoardCanvas({
           >
             Reset view
           </button>
-          <span style={{ color: "#6b7280" }}>Zoom: {zoomPercent}%</span>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.35rem",
+              padding: "0.15rem 0.45rem",
+              border: "1px solid #d1d5db",
+              borderRadius: 999,
+              background: "white"
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => nudgeZoom("out")}
+              title="Zoom out"
+              aria-label="Zoom out"
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: 999,
+                border: "1px solid #d1d5db",
+                background: "#f8fafc",
+                lineHeight: 1,
+                padding: 0
+              }}
+            >
+              −
+            </button>
+            <input
+              type="range"
+              min={ZOOM_SLIDER_MIN_PERCENT}
+              max={ZOOM_SLIDER_MAX_PERCENT}
+              step={1}
+              value={zoomSliderValue}
+              onChange={(event) => {
+                const nextScale = Number(event.target.value) / 100;
+                zoomAtStageCenter(nextScale);
+              }}
+              aria-label="Zoom level"
+              style={{
+                width: 116,
+                accentColor: "#2563eb"
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => nudgeZoom("in")}
+              title="Zoom in"
+              aria-label="Zoom in"
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: 999,
+                border: "1px solid #d1d5db",
+                background: "#f8fafc",
+                lineHeight: 1,
+                padding: 0
+              }}
+            >
+              +
+            </button>
+            <span
+              style={{
+                color: "#6b7280",
+                fontSize: 12,
+                minWidth: 42,
+                textAlign: "right",
+                fontVariantNumeric: "tabular-nums"
+              }}
+            >
+              {zoomPercent}%
+            </span>
+          </div>
           <span style={{ color: selectedObjectCount > 0 ? "#111827" : "#6b7280" }}>
             Selected:{" "}
             {selectedObjectCount > 0
@@ -2129,7 +2812,7 @@ export default function RealtimeBoardCanvas({
               boxShadow: "0 8px 20px rgba(0,0,0,0.14)",
               padding: "0.5rem",
               backdropFilter: "blur(4px)",
-              minWidth: 208,
+              minWidth: 170,
               cursor: "grab"
             }}
           >
@@ -2148,7 +2831,7 @@ export default function RealtimeBoardCanvas({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
                 gap: "0.35rem",
                 marginBottom: "0.4rem"
               }}
@@ -2200,6 +2883,60 @@ export default function RealtimeBoardCanvas({
             ) : null}
           </div>
 
+          {canShowSelectionHud && selectionHudPosition ? (
+            <div
+              ref={selectionHudRef}
+              data-selection-hud="true"
+              onPointerDown={(event) => {
+                event.stopPropagation();
+              }}
+              onClick={(event) => {
+                event.stopPropagation();
+              }}
+              style={{
+                position: "absolute",
+                left: selectionHudPosition.x,
+                top: selectionHudPosition.y,
+                zIndex: 45,
+                display: "flex",
+                alignItems: "center",
+                gap: "0.45rem",
+                padding: "0.4rem 0.45rem",
+                borderRadius: 10,
+                border: "1px solid #d1d5db",
+                background: "rgba(255,255,255,0.98)",
+                boxShadow: "0 8px 20px rgba(0,0,0,0.14)",
+                backdropFilter: "blur(2px)"
+              }}
+            >
+              <ColorSwatchPicker
+                currentColor={selectedColor}
+                onSelectColor={(nextColor) => {
+                  void saveSelectedObjectsColor(nextColor);
+                }}
+              />
+              {canResetSelectionRotation ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void resetSelectedObjectsRotation();
+                  }}
+                  style={{
+                    border: "1px solid #cbd5e1",
+                    borderRadius: 8,
+                    background: "white",
+                    padding: "0.35rem 0.55rem",
+                    color: "#1f2937",
+                    fontSize: 12,
+                    whiteSpace: "nowrap"
+                  }}
+                >
+                  Reset rotation
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
           <div
             style={{
               position: "absolute",
@@ -2228,6 +2965,8 @@ export default function RealtimeBoardCanvas({
               };
               const lineEndpointOffsets =
                 objectItem.type === "line" ? getLineEndpointOffsets(objectGeometry) : null;
+              const isPolygonShape =
+                objectItem.type === "triangle" || objectItem.type === "star";
 
               if (objectItem.type === "sticky") {
                 return (
@@ -2257,7 +2996,9 @@ export default function RealtimeBoardCanvas({
                       boxShadow: isSelected
                         ? SELECTED_OBJECT_HALO
                         : "0 4px 12px rgba(0,0,0,0.08)",
-                      overflow: "visible"
+                      overflow: "visible",
+                      transform: `rotate(${objectRotationDeg}deg)`,
+                      transformOrigin: "center center"
                     }}
                   >
                     <div
@@ -2324,24 +3065,6 @@ export default function RealtimeBoardCanvas({
                     </div>
 
                     {isSingleSelected && canEdit ? (
-                      <div
-                        style={{
-                          position: "absolute",
-                          right: 8,
-                          top: 6,
-                          zIndex: 5
-                        }}
-                      >
-                        <ColorSwatchPicker
-                          currentColor={objectItem.color}
-                          onSelectColor={(nextColor) =>
-                            void saveObjectColor(objectItem.id, nextColor)
-                          }
-                        />
-                      </div>
-                    ) : null}
-
-                    {isSingleSelected && canEdit ? (
                       <div>
                         {CORNER_HANDLES.map((corner) => (
                           <button
@@ -2364,6 +3087,42 @@ export default function RealtimeBoardCanvas({
                           />
                         ))}
                       </div>
+                    ) : null}
+
+                    {isSingleSelected && canEdit ? (
+                      <>
+                        <div
+                          style={{
+                            position: "absolute",
+                            left: "50%",
+                            top: 0,
+                            width: 2,
+                            height: 16,
+                            background: "#93c5fd",
+                            transform: "translate(-50%, -102%)",
+                            pointerEvents: "none"
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onPointerDown={(event) => startShapeRotate(objectItem.id, event)}
+                          aria-label="Rotate note"
+                          title="Drag to rotate note (hold Shift to snap)"
+                          style={{
+                            position: "absolute",
+                            left: "50%",
+                            top: 0,
+                            transform: "translate(-50%, -168%)",
+                            width: 14,
+                            height: 14,
+                            borderRadius: "50%",
+                            border: "1px solid #1d4ed8",
+                            background: "white",
+                            boxShadow: "0 1px 4px rgba(15, 23, 42, 0.25)",
+                            cursor: "grab"
+                          }}
+                        />
+                      </>
                     ) : null}
                   </article>
                 );
@@ -2397,9 +3156,16 @@ export default function RealtimeBoardCanvas({
                     borderRadius:
                       objectItem.type === "circle"
                         ? "999px"
-                        : objectItem.type === "line"
+                        : objectItem.type === "line" ||
+                            objectItem.type === "triangle" ||
+                            objectItem.type === "star"
                           ? 0
-                          : 4
+                          : 4,
+                    transform:
+                      objectItem.type === "line"
+                        ? "none"
+                        : `rotate(${objectRotationDeg}deg)`,
+                    transformOrigin: "center center"
                   }}
                 >
                   <div
@@ -2412,7 +3178,9 @@ export default function RealtimeBoardCanvas({
                       justifyContent: "center",
                       cursor: canEdit ? "grab" : "default",
                       border:
-                        objectItem.type === "line" ? "none" : "2px solid rgba(15, 23, 42, 0.55)",
+                        objectItem.type === "line" || isPolygonShape
+                          ? "none"
+                          : "2px solid rgba(15, 23, 42, 0.55)",
                       borderRadius:
                         objectItem.type === "rect"
                           ? 3
@@ -2420,9 +3188,13 @@ export default function RealtimeBoardCanvas({
                             ? "999px"
                             : 0,
                       background:
-                        objectItem.type === "line" ? "transparent" : objectItem.color,
+                        objectItem.type === "line" || isPolygonShape
+                          ? "transparent"
+                          : objectItem.color,
                       boxShadow:
-                        objectItem.type === "line" ? "none" : "0 3px 10px rgba(0,0,0,0.08)"
+                        objectItem.type === "line" || isPolygonShape
+                          ? "none"
+                          : "0 3px 10px rgba(0,0,0,0.08)"
                     }}
                   >
                     {objectItem.type === "line" ? (
@@ -2436,27 +3208,75 @@ export default function RealtimeBoardCanvas({
                           transformOrigin: "center center"
                         }}
                       />
+                    ) : objectItem.type === "triangle" ? (
+                      <svg
+                        viewBox="0 0 100 100"
+                        width="100%"
+                        height="100%"
+                        aria-hidden="true"
+                        style={{ display: "block" }}
+                      >
+                        <polygon
+                          points="50,6 94,92 6,92"
+                          fill={objectItem.color}
+                          stroke="rgba(15, 23, 42, 0.62)"
+                          strokeWidth="5"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    ) : objectItem.type === "star" ? (
+                      <svg
+                        viewBox="0 0 100 100"
+                        width="100%"
+                        height="100%"
+                        aria-hidden="true"
+                        style={{ display: "block" }}
+                      >
+                        <polygon
+                          points="50,7 61,38 95,38 67,57 78,90 50,70 22,90 33,57 5,38 39,38"
+                          fill={objectItem.color}
+                          stroke="rgba(15, 23, 42, 0.62)"
+                          strokeWidth="5"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
                     ) : null}
                   </div>
 
-                  {isSingleSelected && canEdit ? (
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: objectItem.type === "line" ? -52 : 8,
-                        right: objectItem.type === "line" ? "auto" : 8,
-                        left: objectItem.type === "line" ? "50%" : "auto",
-                        transform: objectItem.type === "line" ? "translateX(-50%)" : "none",
-                        zIndex: 5
-                      }}
-                    >
-                      <ColorSwatchPicker
-                        currentColor={objectItem.color}
-                        onSelectColor={(nextColor) =>
-                          void saveObjectColor(objectItem.id, nextColor)
-                        }
+                  {isSingleSelected && canEdit && objectItem.type !== "line" ? (
+                    <>
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: "50%",
+                          top: 0,
+                          width: 2,
+                          height: 16,
+                          background: "#93c5fd",
+                          transform: "translate(-50%, -102%)",
+                          pointerEvents: "none"
+                        }}
                       />
-                    </div>
+                      <button
+                        type="button"
+                        onPointerDown={(event) => startShapeRotate(objectItem.id, event)}
+                        aria-label="Rotate shape"
+                        title="Drag to rotate shape (hold Shift to snap)"
+                        style={{
+                          position: "absolute",
+                          left: "50%",
+                          top: 0,
+                          transform: "translate(-50%, -168%)",
+                          width: 14,
+                          height: 14,
+                          borderRadius: "50%",
+                          border: "1px solid #1d4ed8",
+                          background: "white",
+                          boxShadow: "0 1px 4px rgba(15, 23, 42, 0.25)",
+                          cursor: "grab"
+                        }}
+                      />
+                    </>
                   ) : null}
 
                   {isSingleSelected && canEdit && objectItem.type !== "line" ? (

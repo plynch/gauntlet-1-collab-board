@@ -27,3 +27,6 @@ ui-debug.log
 *.pem
 *.p12
 *service-account*.json
+
+# Local agent planning artifacts
+.agents/

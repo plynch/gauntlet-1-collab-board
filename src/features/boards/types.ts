@@ -29,7 +29,13 @@ export type BoardPermissions = {
   canEdit: boolean;
 };
 
-export type BoardObjectKind = "sticky" | "rect" | "circle" | "line";
+export type BoardObjectKind =
+  | "sticky"
+  | "rect"
+  | "circle"
+  | "line"
+  | "triangle"
+  | "star";
 
 export type BoardObject = {
   id: string;

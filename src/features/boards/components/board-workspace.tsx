@@ -17,8 +17,7 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
     firebaseIsConfigured,
     user,
     authLoading,
-    signInWithGoogle,
-    signOutCurrentUser
+    signInWithGoogle
   } = useAuthSession();
   const { board, permissions, boardLoading, boardError } = useBoardLive(
     boardId,
@@ -35,10 +34,6 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
     }
   }, [signInWithGoogle]);
 
-  const handleSignOut = useCallback(async () => {
-    await signOutCurrentUser();
-  }, [signOutCurrentUser]);
-
   const combinedErrorMessage = useMemo(() => {
     if (errorMessage) {
       return errorMessage;
@@ -46,6 +41,11 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
 
     return boardError;
   }, [boardError, errorMessage]);
+  const profileLabel = useMemo(
+    () => user?.displayName?.trim() || user?.email?.trim() || user?.uid || "Account",
+    [user]
+  );
+  const avatarInitial = profileLabel[0]?.toUpperCase() ?? "A";
 
   if (!firebaseIsConfigured) {
     return (
@@ -54,8 +54,8 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
           width: "100%",
           maxWidth: "none",
           margin: 0,
-          padding: "1rem 1.25rem",
-          height: "100vh",
+          padding: "1.25rem",
+          height: "100dvh",
           overflow: "hidden",
           boxSizing: "border-box"
         }}
@@ -75,50 +75,120 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
         width: "100%",
         maxWidth: "none",
         margin: 0,
-        padding: "1rem 1.25rem",
         boxSizing: "border-box",
-        height: "100vh",
+        height: "100dvh",
         overflow: "hidden",
         display: "flex",
-        flexDirection: "column"
+        flexDirection: "column",
+        background: "#ffffff"
       }}
     >
       <header
         style={{
-          display: "flex",
-          justifyContent: "space-between",
+          display: "grid",
+          gridTemplateColumns: "1fr auto 1fr",
           alignItems: "center",
-          flexWrap: "wrap",
-          gap: "0.5rem",
-          marginBottom: "1rem"
+          gap: "0.75rem",
+          minHeight: 56,
+          padding: "0 0.85rem",
+          borderBottom: "2px solid #d1d5db",
+          flexShrink: 0
         }}
       >
         <div>
-          <p style={{ margin: 0 }}>
-            <Link href="/">Back to boards</Link>
-          </p>
-          <h1 style={{ margin: "0.3rem 0 0" }}>
-            {board?.title ?? "Board"}{" "}
-            <span style={{ color: "#6b7280", fontWeight: 400 }}>({boardId})</span>
-          </h1>
+          <Link
+            href="/"
+            title="Back to My Boards"
+            aria-label="Back to My Boards"
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: "50%",
+              border: "1px solid #cbd5e1",
+              background: "#f8fafc",
+              color: "#0f172a",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              textDecoration: "none",
+              fontSize: 18
+            }}
+          >
+            {"<"}
+          </Link>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          {permissions?.isOwner ? (
-            <Link href={`/boards/${boardId}/settings`}>Manage access</Link>
-          ) : null}
-          {user ? (
-            <button type="button" onClick={() => void handleSignOut()}>
-              Sign out
-            </button>
-          ) : null}
+        <h1
+          style={{
+            margin: 0,
+            fontSize: "1.25rem",
+            fontWeight: 700,
+            textAlign: "center",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis"
+          }}
+        >
+          {board?.title ?? "Board"}
+        </h1>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <Link
+            href="/account"
+            aria-label="Open account settings"
+            title="Account settings"
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: "50%",
+              border: "1px solid #cbd5e1",
+              background: "#e2e8f0",
+              color: "#0f172a",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              textDecoration: "none",
+              overflow: "hidden",
+              fontWeight: 600,
+              textTransform: "uppercase"
+            }}
+          >
+            {user?.photoURL ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={user.photoURL}
+                alt={profileLabel}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover"
+                }}
+              />
+            ) : (
+              <span>{avatarInitial}</span>
+            )}
+          </Link>
         </div>
       </header>
 
-      <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-        {authLoading ? <p>Checking authentication...</p> : null}
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: "hidden",
+          display: "flex",
+          position: "relative"
+        }}
+      >
+        {authLoading ? (
+          <div style={{ margin: "auto", color: "#475569" }}>Checking authentication...</div>
+        ) : null}
 
         {!authLoading && !user ? (
-          <section>
+          <section
+            style={{
+              margin: "auto",
+              textAlign: "center"
+            }}
+          >
             <p>Sign in to access this board.</p>
             <button type="button" onClick={() => void handleSignIn()}>
               Sign in with Google
@@ -127,15 +197,28 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
         ) : null}
 
         {combinedErrorMessage ? (
-          <p style={{ color: "#b91c1c", marginTop: "1rem" }}>{combinedErrorMessage}</p>
+          <p
+            style={{
+              color: "#b91c1c",
+              margin: 0,
+              position: "absolute",
+              left: 12,
+              top: 68,
+              zIndex: 10
+            }}
+          >
+            {combinedErrorMessage}
+          </p>
         ) : null}
 
         {!authLoading && user ? (
           <>
-            {boardLoading ? <p>Loading board...</p> : null}
+            {boardLoading ? (
+              <div style={{ margin: "auto", color: "#475569" }}>Loading board...</div>
+            ) : null}
 
             {!boardLoading && board && permissions?.canRead ? (
-              <div style={{ height: "100%", minHeight: 0 }}>
+              <div style={{ height: "100%", minHeight: 0, flex: 1 }}>
                 <RealtimeBoardCanvas
                   boardId={boardId}
                   user={user}
@@ -145,7 +228,7 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
             ) : null}
 
             {!boardLoading && board && permissions && !permissions.canRead ? (
-              <p>You do not have access to this board.</p>
+              <p style={{ margin: "auto" }}>You do not have access to this board.</p>
             ) : null}
           </>
         ) : null}

@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type FormEvent as ReactFormEvent,
   type PointerEvent as ReactPointerEvent
 } from "react";
 import type { User } from "firebase/auth";
@@ -73,17 +74,15 @@ type DragState = {
   collapseToObjectIdOnClick: string | null;
 };
 
-type ToolPanelPosition = {
-  x: number;
-  y: number;
+type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
 };
 
-type ToolPanelDragState = {
-  startClientX: number;
+type AiFooterResizeState = {
   startClientY: number;
-  initialX: number;
-  initialY: number;
-  isDragging: boolean;
+  initialHeight: number;
 };
 
 type BoardPoint = {
@@ -162,18 +161,21 @@ const BOARD_TOOLS: BoardObjectKind[] = [
   "triangle",
   "star"
 ];
-const TOOL_PANEL_EDGE_PADDING = 8;
-const TOOL_PANEL_DRAG_THRESHOLD_PX = 5;
-const INITIAL_TOOL_PANEL_POSITION: ToolPanelPosition = {
-  x: 12,
-  y: 12
-};
 const RESIZE_THROTTLE_MS = 45;
 const ROTATE_THROTTLE_MS = 45;
 const RESIZE_HANDLE_SIZE = 10;
 const LINE_MIN_LENGTH = 40;
 const SELECTED_OBJECT_HALO = "0 0 0 2px rgba(59, 130, 246, 0.45), 0 8px 14px rgba(0,0,0,0.14)";
 const OBJECT_SPAWN_STEP_PX = 20;
+const PANEL_SEPARATOR_COLOR = "#d1d5db";
+const LEFT_PANEL_WIDTH = 216;
+const RIGHT_PANEL_WIDTH = 238;
+const COLLAPSED_PANEL_WIDTH = 44;
+const AI_FOOTER_DEFAULT_HEIGHT = 220;
+const AI_FOOTER_MIN_HEIGHT = 140;
+const AI_FOOTER_MAX_HEIGHT = 460;
+const AI_FOOTER_COLLAPSED_HEIGHT = 46;
+const AI_FOOTER_HEIGHT_STORAGE_KEY = "collabboard-ai-footer-height-v1";
 const BOARD_COLOR_SWATCHES: ColorSwatch[] = [
   { name: "Yellow", value: "#fde68a" },
   { name: "Orange", value: "#fdba74" },
@@ -195,6 +197,10 @@ const INITIAL_VIEWPORT: ViewportState = {
 
 function clampScale(nextScale: number): number {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, nextScale));
+}
+
+function clampAiFooterHeight(nextHeight: number): number {
+  return Math.min(AI_FOOTER_MAX_HEIGHT, Math.max(AI_FOOTER_MIN_HEIGHT, Math.round(nextHeight)));
 }
 
 function getAcceleratedWheelZoomDelta(deltaY: number): number {
@@ -769,8 +775,8 @@ export default function RealtimeBoardCanvas({
   const canEdit = permissions.canEdit;
 
   const stageRef = useRef<HTMLDivElement | null>(null);
-  const toolPanelRef = useRef<HTMLDivElement | null>(null);
   const selectionHudRef = useRef<HTMLDivElement | null>(null);
+  const chatMessagesRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<ViewportState>(INITIAL_VIEWPORT);
   const panStateRef = useRef<PanState | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
@@ -778,9 +784,7 @@ export default function RealtimeBoardCanvas({
   const lineEndpointResizeStateRef = useRef<LineEndpointResizeState | null>(null);
   const rotateStateRef = useRef<RotateState | null>(null);
   const marqueeSelectionStateRef = useRef<MarqueeSelectionState | null>(null);
-  const toolPanelDragStateRef = useRef<ToolPanelDragState | null>(null);
-  const suppressToolPanelClickRef = useRef(false);
-  const toolPanelPositionRef = useRef<ToolPanelPosition>(INITIAL_TOOL_PANEL_POSITION);
+  const aiFooterResizeStateRef = useRef<AiFooterResizeState | null>(null);
   const idTokenRef = useRef<string | null>(null);
   const objectsByIdRef = useRef<Map<string, BoardObject>>(new Map());
   const objectSpawnSequenceRef = useRef(0);
@@ -802,9 +806,12 @@ export default function RealtimeBoardCanvas({
     useState<MarqueeSelectionState | null>(null);
   const [boardError, setBoardError] = useState<string | null>(null);
   const [presenceClock, setPresenceClock] = useState(() => Date.now());
-  const [toolPanelPosition, setToolPanelPosition] = useState<ToolPanelPosition>(
-    INITIAL_TOOL_PANEL_POSITION
-  );
+  const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
+  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
+  const [isAiFooterCollapsed, setIsAiFooterCollapsed] = useState(false);
+  const [aiFooterHeight, setAiFooterHeight] = useState(AI_FOOTER_DEFAULT_HEIGHT);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [selectionHudSize, setSelectionHudSize] = useState({ width: 0, height: 0 });
 
@@ -839,12 +846,43 @@ export default function RealtimeBoardCanvas({
   }, [draftGeometryById]);
 
   useEffect(() => {
-    toolPanelPositionRef.current = toolPanelPosition;
-  }, [toolPanelPosition]);
-
-  useEffect(() => {
     selectedObjectIdsRef.current = new Set(selectedObjectIds);
   }, [selectedObjectIds]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const savedHeight = window.localStorage.getItem(AI_FOOTER_HEIGHT_STORAGE_KEY);
+    if (!savedHeight) {
+      return;
+    }
+
+    const parsedHeight = Number(savedHeight);
+    if (!Number.isFinite(parsedHeight)) {
+      return;
+    }
+
+    setAiFooterHeight(clampAiFooterHeight(parsedHeight));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(AI_FOOTER_HEIGHT_STORAGE_KEY, String(aiFooterHeight));
+  }, [aiFooterHeight]);
+
+  useEffect(() => {
+    const element = chatMessagesRef.current;
+    if (!element || isAiFooterCollapsed) {
+      return;
+    }
+
+    element.scrollTop = element.scrollHeight;
+  }, [chatMessages, isAiFooterCollapsed]);
 
   useEffect(() => {
     const stageElement = stageRef.current;
@@ -1221,31 +1259,6 @@ export default function RealtimeBoardCanvas({
     [getObjectSelectionBounds]
   );
 
-  const clampToolPanelPosition = useCallback((nextPosition: ToolPanelPosition) => {
-    const stageElement = stageRef.current;
-    const panelElement = toolPanelRef.current;
-    if (!stageElement || !panelElement) {
-      return nextPosition;
-    }
-
-    const stageRect = stageElement.getBoundingClientRect();
-    const panelRect = panelElement.getBoundingClientRect();
-
-    const maxX = Math.max(
-      TOOL_PANEL_EDGE_PADDING,
-      stageRect.width - panelRect.width - TOOL_PANEL_EDGE_PADDING
-    );
-    const maxY = Math.max(
-      TOOL_PANEL_EDGE_PADDING,
-      stageRect.height - panelRect.height - TOOL_PANEL_EDGE_PADDING
-    );
-
-    return {
-      x: Math.min(maxX, Math.max(TOOL_PANEL_EDGE_PADDING, nextPosition.x)),
-      y: Math.min(maxY, Math.max(TOOL_PANEL_EDGE_PADDING, nextPosition.y))
-    };
-  }, []);
-
   const getResizedGeometry = useCallback(
     (
       state: CornerResizeState,
@@ -1356,24 +1369,11 @@ export default function RealtimeBoardCanvas({
 
   useEffect(() => {
     const handleWindowPointerMove = (event: PointerEvent) => {
-      const panelDragState = toolPanelDragStateRef.current;
-      if (panelDragState) {
-        const deltaX = event.clientX - panelDragState.startClientX;
-        const deltaY = event.clientY - panelDragState.startClientY;
-        if (!panelDragState.isDragging) {
-          const distance = Math.hypot(deltaX, deltaY);
-          if (distance < TOOL_PANEL_DRAG_THRESHOLD_PX) {
-            return;
-          }
-          panelDragState.isDragging = true;
-          suppressToolPanelClickRef.current = true;
-        }
-
-        const rawX =
-          panelDragState.initialX + deltaX;
-        const rawY =
-          panelDragState.initialY + deltaY;
-        setToolPanelPosition(clampToolPanelPosition({ x: rawX, y: rawY }));
+      const aiFooterResizeState = aiFooterResizeStateRef.current;
+      if (aiFooterResizeState) {
+        const deltaY = aiFooterResizeState.startClientY - event.clientY;
+        const nextHeight = clampAiFooterHeight(aiFooterResizeState.initialHeight + deltaY);
+        setAiFooterHeight(nextHeight);
         return;
       }
 
@@ -1559,14 +1559,8 @@ export default function RealtimeBoardCanvas({
     };
 
     const handleWindowPointerUp = (event: PointerEvent) => {
-      const panelDragState = toolPanelDragStateRef.current;
-      if (panelDragState) {
-        toolPanelDragStateRef.current = null;
-        if (panelDragState.isDragging) {
-          window.setTimeout(() => {
-            suppressToolPanelClickRef.current = false;
-          }, 250);
-        }
+      if (aiFooterResizeStateRef.current) {
+        aiFooterResizeStateRef.current = null;
         return;
       }
 
@@ -1689,7 +1683,6 @@ export default function RealtimeBoardCanvas({
       window.removeEventListener("pointerup", handleWindowPointerUp);
     };
   }, [
-    clampToolPanelPosition,
     clearDraftGeometry,
     getObjectsIntersectingRect,
     getCurrentObjectGeometry,
@@ -2046,50 +2039,60 @@ export default function RealtimeBoardCanvas({
     void Promise.all(objectIdsToDelete.map((objectId) => deleteObject(objectId)));
   }, [canEdit, deleteObject, selectedObjectIds]);
 
-  const consumeSuppressedToolPanelClick = useCallback((): boolean => {
-    if (!suppressToolPanelClickRef.current) {
-      return false;
-    }
-
-    suppressToolPanelClickRef.current = false;
-    return true;
-  }, []);
-
-  const handleToolPanelPointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (event.button !== 0) {
-        return;
-      }
-
-      toolPanelDragStateRef.current = {
-        startClientX: event.clientX,
-        startClientY: event.clientY,
-        initialX: toolPanelPositionRef.current.x,
-        initialY: toolPanelPositionRef.current.y,
-        isDragging: false
-      };
-    },
-    []
-  );
-
   const handleToolButtonClick = useCallback(
     (toolKind: BoardObjectKind) => {
-      if (consumeSuppressedToolPanelClick()) {
-        return;
-      }
-
       void createObject(toolKind);
     },
-    [consumeSuppressedToolPanelClick, createObject]
+    [createObject]
   );
 
   const handleDeleteButtonClick = useCallback(() => {
-    if (consumeSuppressedToolPanelClick()) {
-      return;
-    }
-
     handleDeleteSelectedObjects();
-  }, [consumeSuppressedToolPanelClick, handleDeleteSelectedObjects]);
+  }, [handleDeleteSelectedObjects]);
+
+  const handleAiFooterResizeStart = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0 || isAiFooterCollapsed) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      aiFooterResizeStateRef.current = {
+        startClientY: event.clientY,
+        initialHeight: aiFooterHeight
+      };
+    },
+    [aiFooterHeight, isAiFooterCollapsed]
+  );
+
+  const handleAiChatSubmit = useCallback(
+    (event: ReactFormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const nextMessage = chatInput.trim();
+      if (nextMessage.length === 0) {
+        return;
+      }
+
+      const now = Date.now();
+      setChatMessages((previous) => [
+        ...previous,
+        {
+          id: `u-${now}`,
+          role: "user",
+          text: nextMessage
+        },
+        {
+          id: `a-${now + 1}`,
+          role: "assistant",
+          text: "AI agent coming soon!"
+        }
+      ]);
+      setChatInput("");
+    },
+    [chatInput]
+  );
 
   const handleStagePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
@@ -2098,10 +2101,6 @@ export default function RealtimeBoardCanvas({
 
     const target = event.target;
     if (!(target instanceof HTMLElement)) {
-      return;
-    }
-
-    if (target.closest("[data-tool-panel='true']")) {
       return;
     }
 
@@ -2662,224 +2661,279 @@ export default function RealtimeBoardCanvas({
         height: "100%",
         minHeight: 0,
         display: "flex",
-        alignItems: "stretch",
-        gap: "0.75rem"
+        flexDirection: "column",
+        overflow: "hidden",
+        background: "white"
       }}
     >
       <div
         style={{
           flex: 1,
-          minWidth: 0,
           minHeight: 0,
-          display: "flex",
-          flexDirection: "column",
-          gap: "0.5rem"
+          minWidth: 0,
+          display: "grid",
+          gridTemplateColumns: `${isLeftPanelCollapsed ? COLLAPSED_PANEL_WIDTH : LEFT_PANEL_WIDTH}px 2px minmax(0, 1fr) 2px ${isRightPanelCollapsed ? COLLAPSED_PANEL_WIDTH : RIGHT_PANEL_WIDTH}px`
         }}
       >
-        <div
+        <aside
           style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "0.5rem",
-            alignItems: "center"
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setViewport(INITIAL_VIEWPORT)}
-          >
-            Reset view
-          </button>
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.35rem",
-              padding: "0.15rem 0.45rem",
-              border: "1px solid #d1d5db",
-              borderRadius: 999,
-              background: "white"
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => nudgeZoom("out")}
-              title="Zoom out"
-              aria-label="Zoom out"
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: 999,
-                border: "1px solid #d1d5db",
-                background: "#f8fafc",
-                lineHeight: 1,
-                padding: 0
-              }}
-            >
-              −
-            </button>
-            <input
-              type="range"
-              min={ZOOM_SLIDER_MIN_PERCENT}
-              max={ZOOM_SLIDER_MAX_PERCENT}
-              step={1}
-              value={zoomSliderValue}
-              onChange={(event) => {
-                const nextScale = Number(event.target.value) / 100;
-                zoomAtStageCenter(nextScale);
-              }}
-              aria-label="Zoom level"
-              style={{
-                width: 116,
-                accentColor: "#2563eb"
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => nudgeZoom("in")}
-              title="Zoom in"
-              aria-label="Zoom in"
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: 999,
-                border: "1px solid #d1d5db",
-                background: "#f8fafc",
-                lineHeight: 1,
-                padding: 0
-              }}
-            >
-              +
-            </button>
-            <span
-              style={{
-                color: "#6b7280",
-                fontSize: 12,
-                minWidth: 42,
-                textAlign: "right",
-                fontVariantNumeric: "tabular-nums"
-              }}
-            >
-              {zoomPercent}%
-            </span>
-          </div>
-          <span style={{ color: selectedObjectCount > 0 ? "#111827" : "#6b7280" }}>
-            Selected:{" "}
-            {selectedObjectCount > 0
-              ? `${selectedObjectCount} object${selectedObjectCount === 1 ? "" : "s"}`
-              : "None"}
-          </span>
-        </div>
-
-        {boardError ? <p style={{ color: "#b91c1c", margin: 0 }}>{boardError}</p> : null}
-
-        <div
-          ref={stageRef}
-          onPointerDown={handleStagePointerDown}
-          onPointerMove={handleStagePointerMove}
-          onPointerLeave={handleStagePointerLeave}
-          onContextMenu={(event) => event.preventDefault()}
-          style={{
-            position: "relative",
-            flex: 1,
+            minWidth: 0,
             minHeight: 0,
-            border: "1px solid #e5e7eb",
-            borderRadius: 12,
-            overflow: "hidden",
-            backgroundColor: "#f9fafb",
-            backgroundImage:
-              "linear-gradient(#e5e7eb 1px, transparent 1px), linear-gradient(90deg, #e5e7eb 1px, transparent 1px)",
-            backgroundSize: `${40 * viewport.scale}px ${40 * viewport.scale}px`,
-            backgroundPosition: `${viewport.x}px ${viewport.y}px`,
-            touchAction: "none",
-            overscrollBehavior: "contain"
+            background: "#f8fafc",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden"
           }}
         >
-          <div
-            ref={toolPanelRef}
-            data-tool-panel="true"
-            onPointerDown={handleToolPanelPointerDown}
-            style={{
-              position: "absolute",
-              left: toolPanelPosition.x,
-              top: toolPanelPosition.y,
-              zIndex: 30,
-              border: "1px solid #d1d5db",
-              borderRadius: 12,
-              background: "rgba(255,255,255,0.94)",
-              boxShadow: "0 8px 20px rgba(0,0,0,0.14)",
-              padding: "0.5rem",
-              backdropFilter: "blur(4px)",
-              minWidth: 170,
-              cursor: "grab"
-            }}
-          >
+          {isLeftPanelCollapsed ? (
             <div
               style={{
+                height: "100%",
                 display: "flex",
+                flexDirection: "column",
                 alignItems: "center",
-                justifyContent: "center",
-                gap: "0.5rem",
-                marginBottom: "0.4rem"
+                paddingTop: "0.55rem",
+                gap: "0.55rem"
               }}
             >
-              <strong style={{ fontSize: 12, color: "#374151" }}>Tools</strong>
+              <button
+                type="button"
+                onClick={() => setIsLeftPanelCollapsed(false)}
+                title="Expand tools panel"
+                aria-label="Expand tools panel"
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  border: "1px solid #cbd5e1",
+                  background: "white",
+                  cursor: "pointer"
+                }}
+              >
+                {">"}
+              </button>
             </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: "0.35rem",
-                marginBottom: "0.4rem"
-              }}
-            >
-              {BOARD_TOOLS.map((toolKind) => (
+          ) : (
+            <>
+              <div
+                style={{
+                  padding: "0.6rem 0.7rem",
+                  borderBottom: "1px solid #dbe3eb",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "0.5rem"
+                }}
+              >
+                <strong style={{ fontSize: 13, color: "#111827" }}>Tools</strong>
                 <button
-                  key={toolKind}
                   type="button"
-                  onClick={() => handleToolButtonClick(toolKind)}
-                  disabled={!canEdit}
-                  title={`Add ${getObjectLabel(toolKind).toLowerCase()}`}
+                  onClick={() => setIsLeftPanelCollapsed(true)}
+                  title="Collapse tools panel"
+                  aria-label="Collapse tools panel"
+                  style={{
+                    width: 24,
+                    height: 24,
+                    border: "1px solid #cbd5e1",
+                    borderRadius: 7,
+                    background: "white",
+                    cursor: "pointer"
+                  }}
+                  >
+                    {"<"}
+                  </button>
+              </div>
+
+              <div
+                style={{
+                  minHeight: 0,
+                  overflowY: "auto",
+                  padding: "0.65rem",
+                  display: "grid",
+                  gap: "0.7rem",
+                  alignContent: "start"
+                }}
+              >
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                    gap: "0.35rem"
+                  }}
+                >
+                  {BOARD_TOOLS.map((toolKind) => (
+                    <button
+                      key={toolKind}
+                      type="button"
+                      onClick={() => handleToolButtonClick(toolKind)}
+                      disabled={!canEdit}
+                      title={`Add ${getObjectLabel(toolKind).toLowerCase()}`}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        border: "1px solid #d1d5db",
+                        borderRadius: 8,
+                        background: "white",
+                        height: 34
+                      }}
+                    >
+                      <ToolIcon kind={toolKind} />
+                    </button>
+                  ))}
+                </div>
+
+                {hasDeletableSelection ? (
+                  <button
+                    type="button"
+                    onClick={handleDeleteButtonClick}
+                    title="Delete selected objects"
+                    style={{
+                      width: "100%",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "0.4rem",
+                      border: "1px solid #fecaca",
+                      borderRadius: 8,
+                      background: "#fef2f2",
+                      color: "#7f1d1d",
+                      height: 34,
+                      fontSize: 12
+                    }}
+                  >
+                    <TrashIcon />
+                    <span>Delete ({selectedObjectCount})</span>
+                  </button>
+                ) : null}
+
+                <button type="button" onClick={() => setViewport(INITIAL_VIEWPORT)}>
+                  Reset view
+                </button>
+
+                <div
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
-                    justifyContent: "center",
+                    gap: "0.35rem",
+                    padding: "0.2rem 0.45rem",
                     border: "1px solid #d1d5db",
-                    borderRadius: 8,
-                    background: "white",
-                    height: 32
+                    borderRadius: 999,
+                    background: "white"
                   }}
                 >
-                  <ToolIcon kind={toolKind} />
-                </button>
-              ))}
-            </div>
+                  <button
+                    type="button"
+                    onClick={() => nudgeZoom("out")}
+                    title="Zoom out"
+                    aria-label="Zoom out"
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 999,
+                      border: "1px solid #d1d5db",
+                      background: "#f8fafc",
+                      lineHeight: 1,
+                      padding: 0
+                    }}
+                  >
+                    −
+                  </button>
+                  <input
+                    type="range"
+                    min={ZOOM_SLIDER_MIN_PERCENT}
+                    max={ZOOM_SLIDER_MAX_PERCENT}
+                    step={1}
+                    value={zoomSliderValue}
+                    onChange={(event) => {
+                      const nextScale = Number(event.target.value) / 100;
+                      zoomAtStageCenter(nextScale);
+                    }}
+                    aria-label="Zoom level"
+                    style={{
+                      width: 112,
+                      accentColor: "#2563eb"
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => nudgeZoom("in")}
+                    title="Zoom in"
+                    aria-label="Zoom in"
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 999,
+                      border: "1px solid #d1d5db",
+                      background: "#f8fafc",
+                      lineHeight: 1,
+                      padding: 0
+                    }}
+                  >
+                    +
+                  </button>
+                  <span
+                    style={{
+                      color: "#6b7280",
+                      fontSize: 12,
+                      minWidth: 40,
+                      textAlign: "right",
+                      fontVariantNumeric: "tabular-nums"
+                    }}
+                  >
+                    {zoomPercent}%
+                  </span>
+                </div>
 
-            {hasDeletableSelection ? (
-              <button
-                type="button"
-                onClick={handleDeleteButtonClick}
-                title="Delete selected object"
-                style={{
-                  width: "100%",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "0.4rem",
-                  border: "1px solid #fecaca",
-                  borderRadius: 8,
-                  background: "#fef2f2",
-                  color: "#7f1d1d",
-                  height: 32,
-                  fontSize: 12
-                }}
-              >
-                <TrashIcon />
-                <span>Delete selected ({selectedObjectCount})</span>
-              </button>
-            ) : null}
-          </div>
+                <span style={{ color: selectedObjectCount > 0 ? "#111827" : "#6b7280", fontSize: 13 }}>
+                  Selected:{" "}
+                  {selectedObjectCount > 0
+                    ? `${selectedObjectCount} object${selectedObjectCount === 1 ? "" : "s"}`
+                    : "None"}
+                </span>
+
+                {boardError ? (
+                  <p style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>{boardError}</p>
+                ) : null}
+              </div>
+            </>
+          )}
+        </aside>
+
+        <div
+          style={{
+            background: PANEL_SEPARATOR_COLOR
+          }}
+        />
+
+        <div
+          style={{
+            minWidth: 0,
+            minHeight: 0,
+            position: "relative"
+          }}
+        >
+          <div
+            ref={stageRef}
+            onPointerDown={handleStagePointerDown}
+            onPointerMove={handleStagePointerMove}
+            onPointerLeave={handleStagePointerLeave}
+            onContextMenu={(event) => event.preventDefault()}
+            style={{
+              position: "relative",
+              width: "100%",
+              height: "100%",
+              minHeight: 0,
+              overflow: "hidden",
+              backgroundColor: "#f9fafb",
+              backgroundImage:
+                "linear-gradient(#e5e7eb 1px, transparent 1px), linear-gradient(90deg, #e5e7eb 1px, transparent 1px)",
+              backgroundSize: `${40 * viewport.scale}px ${40 * viewport.scale}px`,
+              backgroundPosition: `${viewport.x}px ${viewport.y}px`,
+              touchAction: "none",
+              overscrollBehavior: "contain"
+            }}
+          >
 
           {canShowSelectionHud && selectionHudPosition ? (
             <div
@@ -3418,74 +3472,264 @@ export default function RealtimeBoardCanvas({
         </div>
       </div>
 
-      <aside
-        style={{
-          width: "clamp(170px, 18vw, 250px)",
-          minWidth: 170,
-          border: "1px solid #d1d5db",
-          borderRadius: 12,
-          background: "rgba(255,255,255,0.92)",
-          display: "flex",
-          flexDirection: "column",
-          minHeight: 0
-        }}
-      >
         <div
           style={{
-            padding: "0.75rem 0.8rem",
-            borderBottom: "1px solid #e5e7eb",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "0.5rem"
+            background: PANEL_SEPARATOR_COLOR
           }}
-        >
-          <strong style={{ fontSize: 13, color: "#111827" }}>Online users</strong>
-          <span style={{ color: "#6b7280", fontSize: 13 }}>{onlineUsers.length}</span>
-        </div>
+        />
 
-        <div
+        <aside
           style={{
-            padding: "0.75rem 0.8rem",
-            overflowY: "auto",
+            minWidth: 0,
             minHeight: 0,
+            background: "#f8fafc",
             display: "flex",
             flexDirection: "column",
-            gap: "0.45rem",
-            fontSize: 14,
-            color: "#374151"
+            overflow: "hidden"
           }}
         >
-          {onlineUsers.length > 0 ? (
-            onlineUsers.map((presenceUser) => (
-              <span
-                key={presenceUser.uid}
+          {isRightPanelCollapsed ? (
+            <div
+              style={{
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                paddingTop: "0.55rem",
+                gap: "0.55rem"
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setIsRightPanelCollapsed(false)}
+                title="Expand online users panel"
+                aria-label="Expand online users panel"
                 style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  border: "1px solid #cbd5e1",
+                  background: "white",
+                  cursor: "pointer"
+                }}
+              >
+                {"<"}
+              </button>
+            </div>
+          ) : (
+            <>
+              <div
+                style={{
+                  padding: "0.6rem 0.7rem",
+                  borderBottom: "1px solid #dbe3eb",
                   display: "flex",
                   alignItems: "center",
-                  gap: "0.4rem",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis"
+                  justifyContent: "space-between",
+                  gap: "0.5rem"
                 }}
-                title={getPresenceLabel(presenceUser)}
               >
-                <span style={{ color: presenceUser.color }}>●</span>
-                <span
-                  style={{
-                    overflow: "hidden",
-                    textOverflow: "ellipsis"
-                  }}
-                >
-                  {getPresenceLabel(presenceUser)}
-                </span>
-              </span>
-            ))
-          ) : (
-            <span style={{ color: "#6b7280" }}>No active users yet.</span>
+                <strong style={{ fontSize: 13, color: "#111827" }}>Online users</strong>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.55rem" }}>
+                  <span style={{ color: "#6b7280", fontSize: 13 }}>{onlineUsers.length}</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsRightPanelCollapsed(true)}
+                    title="Collapse online users panel"
+                    aria-label="Collapse online users panel"
+                    style={{
+                      width: 24,
+                      height: 24,
+                      border: "1px solid #cbd5e1",
+                      borderRadius: 7,
+                      background: "white",
+                      cursor: "pointer"
+                    }}
+                  >
+                    {">"}
+                  </button>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  padding: "0.75rem 0.8rem",
+                  overflowY: "auto",
+                  minHeight: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.45rem",
+                  fontSize: 14,
+                  color: "#374151"
+                }}
+              >
+                {onlineUsers.length > 0 ? (
+                  onlineUsers.map((presenceUser) => (
+                    <span
+                      key={presenceUser.uid}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.4rem",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis"
+                      }}
+                      title={getPresenceLabel(presenceUser)}
+                    >
+                      <span style={{ color: presenceUser.color }}>●</span>
+                      <span
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis"
+                        }}
+                      >
+                        {getPresenceLabel(presenceUser)}
+                      </span>
+                    </span>
+                  ))
+                ) : (
+                  <span style={{ color: "#6b7280" }}>No active users yet.</span>
+                )}
+              </div>
+            </>
           )}
-        </div>
-      </aside>
+        </aside>
+      </div>
+
+      <footer
+        style={{
+          height: isAiFooterCollapsed ? AI_FOOTER_COLLAPSED_HEIGHT : aiFooterHeight,
+          minHeight: isAiFooterCollapsed ? AI_FOOTER_COLLAPSED_HEIGHT : aiFooterHeight,
+          maxHeight: isAiFooterCollapsed ? AI_FOOTER_COLLAPSED_HEIGHT : aiFooterHeight,
+          borderTop: `2px solid ${PANEL_SEPARATOR_COLOR}`,
+          background: "#ffffff",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          flexShrink: 0
+        }}
+      >
+        {isAiFooterCollapsed ? (
+          <div
+            style={{
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "0 0.9rem"
+            }}
+          >
+            <strong style={{ fontSize: 13, color: "#0f172a" }}>AI Assistant</strong>
+            <button type="button" onClick={() => setIsAiFooterCollapsed(false)}>
+              Open
+            </button>
+          </div>
+        ) : (
+          <>
+            <div
+              onPointerDown={handleAiFooterResizeStart}
+              style={{
+                height: 11,
+                borderBottom: "1px solid #e2e8f0",
+                cursor: "ns-resize",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "#f8fafc",
+                touchAction: "none"
+              }}
+            >
+              <span
+                style={{
+                  width: 38,
+                  height: 3,
+                  borderRadius: 999,
+                  background: "#cbd5e1"
+                }}
+              />
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "0.45rem 0.75rem",
+                borderBottom: "1px solid #e5e7eb",
+                gap: "0.5rem"
+              }}
+            >
+              <strong style={{ fontSize: 13, color: "#0f172a" }}>AI Assistant</strong>
+              <button type="button" onClick={() => setIsAiFooterCollapsed(true)}>
+                Collapse
+              </button>
+            </div>
+
+            <div
+              ref={chatMessagesRef}
+              style={{
+                flex: 1,
+                minHeight: 0,
+                overflowY: "auto",
+                padding: "0.6rem 0.75rem",
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.5rem",
+                background: "#f8fafc"
+              }}
+            >
+              {chatMessages.length === 0 ? (
+                <span style={{ color: "#64748b", fontSize: 13 }}>
+                  Ask the board assistant something. It will reply with a stub for now.
+                </span>
+              ) : (
+                chatMessages.map((message) => (
+                  <div
+                    key={message.id}
+                    style={{
+                      alignSelf: message.role === "user" ? "flex-end" : "flex-start",
+                      maxWidth: "min(520px, 92%)",
+                      padding: "0.42rem 0.58rem",
+                      borderRadius: 8,
+                      background: message.role === "user" ? "#dbeafe" : "#e2e8f0",
+                      color: "#0f172a",
+                      fontSize: 13,
+                      lineHeight: 1.35
+                    }}
+                  >
+                    {message.text}
+                  </div>
+                ))
+              )}
+            </div>
+
+            <form
+              onSubmit={handleAiChatSubmit}
+              style={{
+                display: "flex",
+                gap: "0.5rem",
+                alignItems: "center",
+                padding: "0.55rem 0.75rem",
+                borderTop: "1px solid #e5e7eb"
+              }}
+            >
+              <input
+                value={chatInput}
+                onChange={(event) => setChatInput(event.target.value)}
+                placeholder="Ask AI agent..."
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  padding: "0.48rem 0.58rem"
+                }}
+              />
+              <button type="submit" disabled={chatInput.trim().length === 0}>
+                Send
+              </button>
+            </form>
+          </>
+        )}
+      </footer>
     </section>
   );
 }

@@ -1,40 +1,54 @@
 # CollabBoard
 
-Real-time collaborative whiteboard MVP built with Next.js + Firebase.
+A realtime multi-user whiteboard.
 
-## Local
+Built with Next.js and Firebase Firestore.
 
+## Deployed Live
+
+- Firebase App Hosting: [https://collab-board-backend--gauntlet-1-collab-board.us-east5.hosted.app/](https://collab-board-backend--gauntlet-1-collab-board.us-east5.hosted.app/)
+- Vercel: [https://gauntlet-1-collab-board.vercel.app/](https://gauntlet-1-collab-board.vercel.app/)
+
+## Build And Run Locally
+
+1. Install dependencies:
 ```bash
 npm install
+```
+
+2. Add Firebase environment variables in `.env.local` (see `.env.example`).
+
+3. Start dev server:
+```bash
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+4. Open:
+`http://localhost:3000`
 
-## Required env vars
+Useful scripts:
 
-Set these in `.env.local`:
+```bash
+npm run lint
+npm run typecheck
+npm run build
+```
 
-- `NEXT_PUBLIC_FIREBASE_API_KEY`
-- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
-- `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
-- `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
-- `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
-- `NEXT_PUBLIC_FIREBASE_APP_ID`
-- `FIREBASE_ADMIN_PROJECT_ID`
-- `FIREBASE_ADMIN_CLIENT_EMAIL`
-- `FIREBASE_ADMIN_PRIVATE_KEY`
+## Current Features
 
-## Scripts
+- ✅ Infinite board with pan/zoom
+- ✅ Sticky notes with editable text
+- ✅ Shapes!
+- ✅ Move and edit objects!
+- ✅ Real-time sync between multiple users!
+- ✅ Multiplayer cursors!
+- ✅ Who's Online!
+- ✅ User authentication! (Google only, more coming later)
+- ✅ Deployed and publicly accessible
 
-- `npm run dev`
-- `npm run build`
-- `npm run start`
-- `npm run lint`
-- `npm run typecheck`
+## Features Not Added For MVP
 
-## Realtime Data Policy
-
-- Mutable user-facing data should use Firestore realtime listeners (`onSnapshot`) for reads.
-- Privileged writes (ownership checks, access control updates) should stay in server API routes.
-- Avoid manual refresh UX for first-party pages when data can change in another window/session.
+- 🚧 Email and password sign-on
+- 🚧 GitHub Auth
+- 🚧 AI agent assistance
+- 🚧 Automated testing

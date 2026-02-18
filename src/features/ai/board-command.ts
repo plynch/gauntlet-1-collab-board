@@ -1,12 +1,16 @@
 import { BOARD_AI_TOOLS } from "@/features/ai/board-tool-schema";
 import type {
   BoardCommandRequest,
-  BoardCommandResponse
+  BoardCommandResponse,
+  BoardCommandExecutionSummary
 } from "@/features/ai/types";
 
 export const MAX_BOARD_COMMAND_CHARS = 500;
 export const MAX_BOARD_COMMAND_SELECTION_IDS = 100;
 export const AI_COMMAND_REQUEST_TIMEOUT_MS = 8_000;
+export const MCP_TEMPLATE_TIMEOUT_MS = 1_200;
+
+export type BoardCommandIntent = "swot-template" | "stub";
 
 export function parseBoardCommandRequest(input: unknown): BoardCommandRequest | null {
   if (!input || typeof input !== "object") {
@@ -69,7 +73,59 @@ export function buildStubBoardCommandResponse(options: {
     ok: true,
     provider: "stub",
     assistantMessage: responseText,
-    tools: BOARD_AI_TOOLS
+    tools: BOARD_AI_TOOLS,
+    mode: "stub",
+    execution: {
+      intent: "stub",
+      mode: "stub",
+      mcpUsed: false,
+      fallbackUsed: false,
+      toolCalls: 0,
+      objectsCreated: 0
+    }
+  };
+}
+
+export function detectBoardCommandIntent(message: string): BoardCommandIntent {
+  const normalized = message.trim().toLowerCase();
+  const swotMatches =
+    normalized.includes("swot") &&
+    (normalized.includes("template") ||
+      normalized.includes("analysis") ||
+      normalized.includes("board") ||
+      normalized.includes("create") ||
+      normalized.includes("build"));
+
+  if (swotMatches) {
+    return "swot-template";
+  }
+
+  return "stub";
+}
+
+export function buildSwotAssistantMessage(options: {
+  fallbackUsed: boolean;
+  objectsCreated: number;
+}): string {
+  const suffix = options.fallbackUsed
+    ? " (MCP fallback mode)"
+    : "";
+  return `Created SWOT analysis template with 4 labeled quadrants (${options.objectsCreated} objects).${suffix}`;
+}
+
+export function buildDeterministicBoardCommandResponse(options: {
+  assistantMessage: string;
+  traceId: string;
+  execution: BoardCommandExecutionSummary;
+}): BoardCommandResponse {
+  return {
+    ok: true,
+    provider: "deterministic-mcp",
+    assistantMessage: options.assistantMessage,
+    tools: BOARD_AI_TOOLS,
+    mode: "deterministic",
+    traceId: options.traceId,
+    execution: options.execution
   };
 }
 

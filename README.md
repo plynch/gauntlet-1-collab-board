@@ -47,6 +47,50 @@ npm run build
 - ✅ User authentication! (Google only, more coming later)
 - ✅ Deployed and publicly accessible
 
+## Runtime AI Agent (Phase 1)
+
+- ✅ Deterministic command routing for SWOT requests
+- ✅ Runtime MCP integration (in-app Streamable HTTP endpoint)
+- ✅ Local fallback template provider if MCP call fails/times out
+- ✅ Server-side board tool executor (create/move/resize/update/color/get state)
+- ✅ End-to-end trace spans through Langfuse (when configured)
+
+Architecture (current):
+
+1. Board chat drawer sends command to `POST /api/ai/board-command`.
+2. Route authenticates user, validates board permissions, applies guardrails.
+3. Route calls internal MCP endpoint `POST /api/mcp/templates` (`template.instantiate` for `swot.v1`).
+4. MCP returns a structured template plan (operations list).
+5. Route executes operations via server-side board tools, writing Firestore objects.
+6. Response returns assistant message + execution metadata + `traceId`.
+
+Langfuse coverage:
+
+- `ai.request.received`
+- `ai.intent.detected`
+- `mcp.call`
+- `tool.execute`
+- `board.write.commit`
+- `ai.response.sent` (final trace update)
+
+Guardrails:
+
+- Max operations per command
+- Max created objects per command
+- Per-user rate limiting window
+- Per-board command lock to avoid conflicting concurrent AI runs
+- MCP timeout and overall route timeout
+
+Env notes:
+
+- OpenAI key is **not** required for this phase.
+- To enable internal MCP auth + Langfuse tracing in deployed environments:
+  - `MCP_INTERNAL_TOKEN`
+  - `LANGFUSE_PUBLIC_KEY`
+  - `LANGFUSE_SECRET_KEY`
+  - optional: `LANGFUSE_BASE_URL`
+  - optional: `AI_AUDIT_LOG_ENABLED=true` (writes `boards/{boardId}/aiRuns/*`)
+
 ## In Progress Features
 
 - 🛠️ Better testing

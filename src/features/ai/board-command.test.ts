@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildDeterministicBoardCommandResponse,
   buildStubBoardCommandResponse,
+  buildSwotAssistantMessage,
+  detectBoardCommandIntent,
   getBoardCommandErrorMessage,
   MAX_BOARD_COMMAND_SELECTION_IDS,
   parseBoardCommandRequest
@@ -50,6 +53,56 @@ describe("buildStubBoardCommandResponse", () => {
     expect(response.provider).toBe("stub");
     expect(response.assistantMessage).toContain("AI agent coming soon!");
     expect(response.tools.length).toBeGreaterThan(0);
+    expect(response.mode).toBe("stub");
+    expect(response.execution?.intent).toBe("stub");
+  });
+});
+
+describe("detectBoardCommandIntent", () => {
+  it("maps SWOT requests to deterministic template intent", () => {
+    expect(detectBoardCommandIntent("Create a SWOT analysis template")).toBe(
+      "swot-template"
+    );
+    expect(detectBoardCommandIntent("build swot board")).toBe("swot-template");
+    expect(detectBoardCommandIntent("hello there")).toBe("stub");
+  });
+});
+
+describe("buildSwotAssistantMessage", () => {
+  it("returns explicit fallback status in assistant response text", () => {
+    const direct = buildSwotAssistantMessage({
+      fallbackUsed: false,
+      objectsCreated: 8
+    });
+    const fallback = buildSwotAssistantMessage({
+      fallbackUsed: true,
+      objectsCreated: 8
+    });
+
+    expect(direct).toContain("8 objects");
+    expect(fallback).toContain("fallback mode");
+  });
+});
+
+describe("buildDeterministicBoardCommandResponse", () => {
+  it("returns response metadata for deterministic execution", () => {
+    const response = buildDeterministicBoardCommandResponse({
+      assistantMessage: "Created SWOT",
+      traceId: "trace-1",
+      execution: {
+        intent: "swot-template",
+        mode: "deterministic",
+        mcpUsed: true,
+        fallbackUsed: false,
+        toolCalls: 8,
+        objectsCreated: 8
+      }
+    });
+
+    expect(response.ok).toBe(true);
+    expect(response.provider).toBe("deterministic-mcp");
+    expect(response.mode).toBe("deterministic");
+    expect(response.traceId).toBe("trace-1");
   });
 });
 

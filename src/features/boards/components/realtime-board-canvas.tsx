@@ -552,7 +552,10 @@ function ToolIcon({ kind }: { kind: BoardObjectKind }) {
   if (kind === "sticky") {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-        <rect x="2" y="2" width="12" height="12" rx="1.5" fill="#fde68a" stroke="#d4b84f" />
+        <rect x="2" y="2" width="12" height="12" rx="1.8" fill="#fde68a" stroke="#b08928" />
+        <rect x="3.2" y="3.2" width="9.6" height="2.2" rx="0.8" fill="#fcd34d" />
+        <line x1="4.1" y1="7.2" x2="11.9" y2="7.2" stroke="#9a7b19" strokeWidth="0.9" />
+        <line x1="4.1" y1="9.4" x2="10.4" y2="9.4" stroke="#9a7b19" strokeWidth="0.9" />
       </svg>
     );
   }
@@ -3693,7 +3696,7 @@ export default function RealtimeBoardCanvas({
             style={{
               height: "100%",
               display: "grid",
-              alignItems: "center",
+              alignItems: "stretch",
               padding: "0 clamp(0.8rem, 2vw, 1.5rem)"
             }}
           >
@@ -3708,7 +3711,21 @@ export default function RealtimeBoardCanvas({
               }}
             >
               <strong style={{ fontSize: 13, color: "#0f172a" }}>AI Assistant</strong>
-              <button type="button" onClick={() => setIsAiFooterCollapsed(false)}>
+              <button
+                type="button"
+                onClick={() => setIsAiFooterCollapsed(false)}
+                style={{
+                  alignSelf: "stretch",
+                  minWidth: 118,
+                  border: "1px solid #94a3b8",
+                  borderTop: "none",
+                  borderRadius: "0 0 10px 10px",
+                  background: "#e2e8f0",
+                  color: "#0f172a",
+                  fontWeight: 700,
+                  cursor: "pointer"
+                }}
+              >
                 ^
               </button>
             </div>
@@ -3718,14 +3735,15 @@ export default function RealtimeBoardCanvas({
             <div
               onPointerDown={handleAiFooterResizeStart}
               style={{
-                height: 11,
+                height: 18,
                 borderBottom: "1px solid #e2e8f0",
                 cursor: "ns-resize",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 background: "#f8fafc",
-                touchAction: "none"
+                touchAction: "none",
+                position: "relative"
               }}
             >
               <span
@@ -3736,6 +3754,29 @@ export default function RealtimeBoardCanvas({
                   background: "#cbd5e1"
                 }}
               />
+              <button
+                type="button"
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                }}
+                onClick={() => setIsAiFooterCollapsed(true)}
+                style={{
+                  position: "absolute",
+                  right: "clamp(0.8rem, 2vw, 1.5rem)",
+                  top: 0,
+                  height: "100%",
+                  minWidth: 118,
+                  border: "1px solid #94a3b8",
+                  borderTop: "none",
+                  borderRadius: "0 0 10px 10px",
+                  background: "#e2e8f0",
+                  color: "#0f172a",
+                  fontWeight: 700,
+                  cursor: "pointer"
+                }}
+              >
+                v
+              </button>
             </div>
 
             <div
@@ -3748,19 +3789,15 @@ export default function RealtimeBoardCanvas({
             >
               <div
                 style={{
-                  width: "min(100%, 800px)",
-                  margin: "0 auto",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "0.75rem"
-                }}
-              >
-                <strong style={{ fontSize: 13, color: "#0f172a" }}>AI Assistant</strong>
-                <button type="button" onClick={() => setIsAiFooterCollapsed(true)}>
-                  v
-                </button>
-              </div>
+                width: "min(100%, 800px)",
+                margin: "0 auto",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.75rem"
+              }}
+            >
+              <strong style={{ fontSize: 13, color: "#0f172a" }}>AI Assistant</strong>
+            </div>
             </div>
 
             <div

@@ -132,7 +132,7 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
             textOverflow: "ellipsis"
           }}
         >
-          {board?.title ?? "Board"}
+          CollabBoard
         </h1>
         <div
           style={{

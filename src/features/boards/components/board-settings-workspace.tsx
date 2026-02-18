@@ -62,8 +62,7 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
     user,
     idToken,
     authLoading,
-    signInWithGoogle,
-    signOutCurrentUser
+    signInWithGoogle
   } = useAuthSession();
   const { board, permissions, boardLoading, boardError } = useBoardLive(
     boardId,
@@ -146,10 +145,6 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
     }
   }, [signInWithGoogle]);
 
-  const handleSignOut = useCallback(async () => {
-    await signOutCurrentUser();
-  }, [signOutCurrentUser]);
-
   const updateAccess = useCallback(
     async (payload: object): Promise<BoardDetail | null> => {
       if (!idToken) {
@@ -201,6 +196,11 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
 
     return profileErrorMessage;
   }, [boardError, errorMessage, profileErrorMessage]);
+  const profileLabel = useMemo(
+    () => user?.displayName?.trim() || user?.email?.trim() || user?.uid || "Account",
+    [user]
+  );
+  const avatarInitial = profileLabel[0]?.toUpperCase() ?? "A";
 
   const handleToggleOpenEdit = useCallback(
     async (nextOpenEdit: boolean) => {
@@ -287,34 +287,151 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
   }
 
   return (
-    <main style={{ padding: "2rem", maxWidth: 980, margin: "0 auto" }}>
+    <main
+      style={{
+        width: "100%",
+        maxWidth: "none",
+        margin: 0,
+        boxSizing: "border-box",
+        height: "100dvh",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        background: "#ffffff"
+      }}
+    >
       <header
         style={{
-          display: "flex",
-          justifyContent: "space-between",
+          display: "grid",
+          gridTemplateColumns: "1fr auto 1fr",
           alignItems: "center",
-          flexWrap: "wrap",
-          gap: "0.5rem",
-          marginBottom: "1rem"
+          gap: "0.75rem",
+          minHeight: 56,
+          padding: "0 0.85rem",
+          borderBottom: "2px solid #d1d5db",
+          flexShrink: 0
         }}
       >
         <div>
-          <p style={{ margin: 0 }}>
-            <Link href={`/boards/${boardId}`}>Back to board</Link>
-          </p>
-          <h1 style={{ margin: "0.3rem 0 0" }}>
-            Access Settings{" "}
-            <span style={{ color: "#6b7280", fontWeight: 400 }}>
-              ({board?.title ?? boardId})
-            </span>
-          </h1>
+          <Link
+            href={`/boards/${boardId}`}
+            title="Back to board"
+            aria-label="Back to board"
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: "50%",
+              border: "1px solid #cbd5e1",
+              background: "#f8fafc",
+              color: "#0f172a",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              textDecoration: "none",
+              fontSize: 18
+            }}
+          >
+            {"<"}
+          </Link>
         </div>
-        {user ? (
-          <button type="button" onClick={() => void handleSignOut()}>
-            Sign out
-          </button>
-        ) : null}
+        <h1
+          style={{
+            margin: 0,
+            fontSize: "1.25rem",
+            fontWeight: 700,
+            textAlign: "center",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis"
+          }}
+        >
+          CollabBoard
+        </h1>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          {user ? (
+            <div
+              style={{
+                display: "grid",
+                justifyItems: "end",
+                gap: "0.15rem"
+              }}
+            >
+              <Link
+                href="/account"
+                aria-label="Open account settings"
+                title="Account settings"
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  border: "1px solid #cbd5e1",
+                  background: "#e2e8f0",
+                  color: "#0f172a",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textDecoration: "none",
+                  overflow: "hidden",
+                  fontWeight: 600,
+                  textTransform: "uppercase"
+                }}
+              >
+                {user.photoURL ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={user.photoURL}
+                    alt={profileLabel}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover"
+                    }}
+                  />
+                ) : (
+                  <span>{avatarInitial}</span>
+                )}
+              </Link>
+              <span
+                style={{
+                  fontSize: 11,
+                  lineHeight: 1.1,
+                  color: "#64748b",
+                  maxWidth: 260,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  textAlign: "right"
+                }}
+                title={user.email ?? user.uid}
+              >
+                Signed in as {user.email ?? user.uid}
+              </span>
+            </div>
+          ) : (
+            <div style={{ width: 34, height: 34 }} />
+          )}
+        </div>
       </header>
+
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: "auto",
+          width: "min(100%, 980px)",
+          margin: "0 auto",
+          padding: "1.25rem"
+        }}
+      >
+        <h2 style={{ margin: 0, fontSize: "1.2rem" }}>
+          Access Settings{" "}
+          <span style={{ color: "#6b7280", fontWeight: 400 }}>
+            ({board?.title ?? boardId})
+          </span>
+        </h2>
+        <p style={{ margin: "0.35rem 0 1rem" }}>
+          <Link href={`/boards/${boardId}`}>Back to board</Link>
+        </p>
 
       {authLoading ? <p>Checking authentication...</p> : null}
 
@@ -530,6 +647,7 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
           ) : null}
         </>
       ) : null}
+      </div>
     </main>
   );
 }

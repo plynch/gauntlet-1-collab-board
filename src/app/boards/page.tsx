@@ -220,10 +220,6 @@ export default function BoardsPage() {
     [user]
   );
   const avatarInitial = profileLabel[0]?.toUpperCase() ?? "A";
-  const titleText =
-    user && !authLoading
-      ? `My Boards (${boards.length} out of ${MAX_OWNED_BOARDS})`
-      : "My Boards";
 
   if (!firebaseIsConfigured) {
     return (
@@ -275,45 +271,74 @@ export default function BoardsPage() {
             textOverflow: "ellipsis"
           }}
         >
-          {titleText}
+          CollabBoard
         </h1>
-        <div style={{ display: "flex", justifyContent: "flex-end", minWidth: 34 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            minWidth: 34
+          }}
+        >
           {user ? (
-            <Link
-              href="/account"
-              aria-label="Open account settings"
-              title="Account settings"
+            <div
               style={{
-                width: 34,
-                height: 34,
-                borderRadius: "50%",
-                border: "1px solid #cbd5e1",
-                background: "#e2e8f0",
-                color: "#0f172a",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                textDecoration: "none",
-                overflow: "hidden",
-                fontWeight: 600,
-                textTransform: "uppercase"
+                display: "grid",
+                justifyItems: "end",
+                gap: "0.15rem"
               }}
             >
-              {user.photoURL ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={user.photoURL}
-                  alt={profileLabel}
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover"
-                  }}
-                />
-              ) : (
-                <span>{avatarInitial}</span>
-              )}
-            </Link>
+              <Link
+                href="/account"
+                aria-label="Open account settings"
+                title="Account settings"
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  border: "1px solid #cbd5e1",
+                  background: "#e2e8f0",
+                  color: "#0f172a",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textDecoration: "none",
+                  overflow: "hidden",
+                  fontWeight: 600,
+                  textTransform: "uppercase"
+                }}
+              >
+                {user.photoURL ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={user.photoURL}
+                    alt={profileLabel}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover"
+                    }}
+                  />
+                ) : (
+                  <span>{avatarInitial}</span>
+                )}
+              </Link>
+              <span
+                style={{
+                  fontSize: 11,
+                  lineHeight: 1.1,
+                  color: "#64748b",
+                  maxWidth: 260,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  textAlign: "right"
+                }}
+                title={user.email ?? user.uid}
+              >
+                Signed in as {user.email ?? user.uid}
+              </span>
+            </div>
           ) : null}
         </div>
       </header>
@@ -371,19 +396,25 @@ export default function BoardsPage() {
 
         {!authLoading && user ? (
           <section>
+            <h2
+              style={{
+                margin: "0 0 0.8rem",
+                fontSize: "1.2rem"
+              }}
+            >
+              My Boards ({boards.length} out of {MAX_OWNED_BOARDS})
+            </h2>
+
             <div
               style={{
                 display: "flex",
-                justifyContent: "space-between",
+                justifyContent: "flex-end",
                 alignItems: "center",
                 gap: "0.75rem",
                 marginBottom: "1rem",
                 flexWrap: "wrap"
               }}
             >
-              <p style={{ margin: 0 }}>
-                Signed in as <strong>{user.email ?? user.uid}</strong>
-              </p>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 {boards.length < MAX_OWNED_BOARDS ? (
                   <button

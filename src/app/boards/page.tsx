@@ -328,7 +328,7 @@ export default function BoardsPage() {
                   fontSize: 11,
                   lineHeight: 1.1,
                   color: "#64748b",
-                  maxWidth: 260,
+                  maxWidth: "min(56vw, 760px)",
                   whiteSpace: "nowrap",
                   overflow: "hidden",
                   textOverflow: "ellipsis",

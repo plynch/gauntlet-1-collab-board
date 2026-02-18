@@ -38,19 +38,14 @@ function getDebugMessage(error: unknown): string | undefined {
   return undefined;
 }
 
-function parseBoardTitle(value: unknown): string {
+function parseBoardTitle(value: unknown): string | null {
   if (typeof value !== "string") {
-    return "Untitled board";
+    return null;
   }
 
   const normalized = value.trim();
   if (!normalized) {
-    return "Untitled board";
-  }
-
-  const lowered = normalized.toLowerCase();
-  if (lowered === "create new board" || lowered === "create board") {
-    return "Untitled board";
+    return null;
   }
 
   return normalized.slice(0, 80);
@@ -213,6 +208,9 @@ export async function PATCH(request: NextRequest, context: BoardRouteContext) {
     }
 
     const title = parseBoardTitle(requestBody.title);
+    if (!title) {
+      return NextResponse.json({ error: "Board title is required." }, { status: 400 });
+    }
 
     await boardRef.update({
       title,

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 
 import { MAX_OWNED_BOARDS, type BoardSummary } from "@/features/boards/types";
 import { useAuthSession } from "@/features/auth/hooks/use-auth-session";
@@ -140,6 +140,8 @@ function GoogleBrandIcon() {
 }
 
 export default function BoardsPage() {
+  const [showCreateBoardForm, setShowCreateBoardForm] = useState(false);
+  const [newBoardTitle, setNewBoardTitle] = useState("");
   const [creatingBoard, setCreatingBoard] = useState(false);
   const [renamingBoardId, setRenamingBoardId] = useState<string | null>(null);
   const [deletingBoardId, setDeletingBoardId] = useState<string | null>(null);
@@ -173,6 +175,12 @@ export default function BoardsPage() {
       return;
     }
 
+    const title = newBoardTitle.trim();
+    if (!title) {
+      setErrorMessage("Board title is required.");
+      return;
+    }
+
     setCreatingBoard(true);
     setErrorMessage(null);
 
@@ -184,7 +192,7 @@ export default function BoardsPage() {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          title: "Untitled board"
+          title
         })
       });
 
@@ -196,12 +204,15 @@ export default function BoardsPage() {
       if (!("board" in payload)) {
         throw new Error("Malformed create board response.");
       }
+
+      setNewBoardTitle("");
+      setShowCreateBoardForm(false);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to create board.");
     } finally {
       setCreatingBoard(false);
     }
-  }, [idToken]);
+  }, [idToken, newBoardTitle]);
 
   const handleDeleteBoard = useCallback(
     async (boardId: string) => {
@@ -249,7 +260,10 @@ export default function BoardsPage() {
       }
 
       const nextTitle = promptedTitle.trim();
-      const normalizedTitle = nextTitle.length > 0 ? nextTitle : "Untitled board";
+      if (nextTitle.length === 0) {
+        setErrorMessage("Board title is required.");
+        return;
+      }
 
       setRenamingBoardId(board.id);
       setErrorMessage(null);
@@ -262,7 +276,7 @@ export default function BoardsPage() {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            title: normalizedTitle
+            title: nextTitle
           })
         });
 
@@ -282,6 +296,28 @@ export default function BoardsPage() {
     },
     [idToken]
   );
+
+  const handleCreateBoardSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      void handleCreateBoard();
+    },
+    [handleCreateBoard]
+  );
+
+  const handleOpenCreateBoardForm = useCallback(() => {
+    setErrorMessage(null);
+    setShowCreateBoardForm(true);
+  }, []);
+
+  const handleCancelCreateBoardForm = useCallback(() => {
+    if (creatingBoard) {
+      return;
+    }
+
+    setShowCreateBoardForm(false);
+    setNewBoardTitle("");
+  }, [creatingBoard]);
 
   const combinedErrorMessage = useMemo(() => {
     if (errorMessage) {
@@ -492,13 +528,41 @@ export default function BoardsPage() {
             >
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 {boards.length < MAX_OWNED_BOARDS ? (
-                  <button
-                    type="button"
-                    disabled={creatingBoard}
-                    onClick={() => void handleCreateBoard()}
-                  >
-                    {creatingBoard ? "Creating..." : "Create New Board"}
-                  </button>
+                  <>
+                    {showCreateBoardForm ? (
+                      <form
+                        onSubmit={handleCreateBoardSubmit}
+                        style={{ display: "flex", alignItems: "center", gap: "0.45rem" }}
+                      >
+                        <input
+                          value={newBoardTitle}
+                          onChange={(event) => setNewBoardTitle(event.target.value)}
+                          placeholder="Board title"
+                          maxLength={80}
+                          disabled={creatingBoard}
+                          style={{
+                            height: 34,
+                            minWidth: 200,
+                            padding: "0 0.6rem"
+                          }}
+                        />
+                        <button type="submit" disabled={creatingBoard}>
+                          {creatingBoard ? "Creating..." : "Create"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCancelCreateBoardForm}
+                          disabled={creatingBoard}
+                        >
+                          Cancel
+                        </button>
+                      </form>
+                    ) : (
+                      <button type="button" onClick={handleOpenCreateBoardForm}>
+                        Create New Board
+                      </button>
+                    )}
+                  </>
                 ) : null}
                 <button type="button" onClick={() => void handleSignOut()}>
                   Sign out

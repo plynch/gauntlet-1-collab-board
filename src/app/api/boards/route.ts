@@ -37,19 +37,14 @@ function toBoardSummary(id: string, boardDoc: BoardDoc): BoardSummary {
   };
 }
 
-function parseBoardTitle(value: unknown): string {
+function parseBoardTitle(value: unknown): string | null {
   if (typeof value !== "string") {
-    return "Untitled board";
+    return null;
   }
 
   const normalized = value.trim();
   if (!normalized) {
-    return "Untitled board";
-  }
-
-  const lowered = normalized.toLowerCase();
-  if (lowered === "create new board" || lowered === "create board") {
-    return "Untitled board";
+    return null;
   }
 
   return normalized.slice(0, 80);
@@ -138,6 +133,10 @@ export async function POST(request: NextRequest) {
     }
 
     const title = parseBoardTitle(requestBody.title);
+    if (!title) {
+      return NextResponse.json({ error: "Board title is required." }, { status: 400 });
+    }
+
     const boardRef = db.collection("boards").doc();
 
     await boardRef.set({

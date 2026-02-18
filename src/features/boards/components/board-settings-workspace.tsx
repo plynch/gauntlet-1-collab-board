@@ -9,6 +9,7 @@ import type {
 } from "@/features/boards/types";
 import { useAuthSession } from "@/features/auth/hooks/use-auth-session";
 import { useBoardLive } from "@/features/boards/hooks/use-board-live";
+import AppHeader, { HeaderBackLink } from "@/features/layout/components/app-header";
 
 type BoardDetailsResponse = {
   board: BoardDetail;
@@ -49,6 +50,7 @@ function getProfileLabel(profile: BoardEditorProfile): string {
 
 export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspaceProps) {
   const [savingAccess, setSavingAccess] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [newEditorEmail, setNewEditorEmail] = useState("");
   const [newReaderEmail, setNewReaderEmail] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -62,7 +64,8 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
     user,
     idToken,
     authLoading,
-    signInWithGoogle
+    signInWithGoogle,
+    signOutCurrentUser
   } = useAuthSession();
   const { board, permissions, boardLoading, boardError } = useBoardLive(
     boardId,
@@ -145,6 +148,19 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
     }
   }, [signInWithGoogle]);
 
+  const handleSignOut = useCallback(async () => {
+    setErrorMessage(null);
+    setSigningOut(true);
+
+    try {
+      await signOutCurrentUser();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Sign out failed.");
+    } finally {
+      setSigningOut(false);
+    }
+  }, [signOutCurrentUser]);
+
   const updateAccess = useCallback(
     async (payload: object): Promise<BoardDetail | null> => {
       if (!idToken) {
@@ -196,12 +212,6 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
 
     return profileErrorMessage;
   }, [boardError, errorMessage, profileErrorMessage]);
-  const profileLabel = useMemo(
-    () => user?.displayName?.trim() || user?.email?.trim() || user?.uid || "Account",
-    [user]
-  );
-  const avatarInitial = profileLabel[0]?.toUpperCase() ?? "A";
-
   const handleToggleOpenEdit = useCallback(
     async (nextOpenEdit: boolean) => {
       await updateAccess({
@@ -300,118 +310,12 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
         background: "#ffffff"
       }}
     >
-      <header
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr auto 1fr",
-          alignItems: "center",
-          gap: "0.75rem",
-          minHeight: 56,
-          padding: "0 0.85rem",
-          borderBottom: "2px solid #d1d5db",
-          flexShrink: 0
-        }}
-      >
-        <div>
-          <Link
-            href={`/boards/${boardId}`}
-            title="Back to board"
-            aria-label="Back to board"
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: "50%",
-              border: "1px solid #cbd5e1",
-              background: "#f8fafc",
-              color: "#0f172a",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              textDecoration: "none",
-              fontSize: 18
-            }}
-          >
-            {"<"}
-          </Link>
-        </div>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: "1.25rem",
-            fontWeight: 700,
-            textAlign: "center",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis"
-          }}
-        >
-          CollabBoard
-        </h1>
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          {user ? (
-            <div
-              style={{
-                display: "grid",
-                justifyItems: "end",
-                gap: "0.15rem"
-              }}
-            >
-              <Link
-                href="/account"
-                aria-label="Open account settings"
-                title="Account settings"
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: "50%",
-                  border: "1px solid #cbd5e1",
-                  background: "#e2e8f0",
-                  color: "#0f172a",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  textDecoration: "none",
-                  overflow: "hidden",
-                  fontWeight: 600,
-                  textTransform: "uppercase"
-                }}
-              >
-                {user.photoURL ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={user.photoURL}
-                    alt={profileLabel}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover"
-                    }}
-                  />
-                ) : (
-                  <span>{avatarInitial}</span>
-                )}
-              </Link>
-              <span
-                style={{
-                  fontSize: 11,
-                  lineHeight: 1.1,
-                  color: "#64748b",
-                  maxWidth: "min(56vw, 760px)",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  textAlign: "right"
-                }}
-                title={user.email ?? user.uid}
-              >
-                Signed in as {user.email ?? user.uid}
-              </span>
-            </div>
-          ) : (
-            <div style={{ width: 34, height: 34 }} />
-          )}
-        </div>
-      </header>
+      <AppHeader
+        user={user}
+        leftSlot={<HeaderBackLink href={`/boards/${boardId}`} label="Back to board" />}
+        onSignOut={user ? handleSignOut : null}
+        signOutDisabled={signingOut}
+      />
 
       <div
         style={{

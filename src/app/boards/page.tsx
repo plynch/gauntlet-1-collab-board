@@ -6,6 +6,7 @@ import { useCallback, useMemo, useState, type CSSProperties, type FormEvent } fr
 import { MAX_OWNED_BOARDS, type BoardSummary } from "@/features/boards/types";
 import { useAuthSession } from "@/features/auth/hooks/use-auth-session";
 import { useOwnedBoardsLive } from "@/features/boards/hooks/use-owned-boards-live";
+import AppHeader from "@/features/layout/components/app-header";
 
 type CreateBoardResponse = {
   board: BoardSummary;
@@ -143,7 +144,10 @@ export default function BoardsPage() {
   const [showCreateBoardForm, setShowCreateBoardForm] = useState(false);
   const [newBoardTitle, setNewBoardTitle] = useState("");
   const [creatingBoard, setCreatingBoard] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [renamingBoardId, setRenamingBoardId] = useState<string | null>(null);
+  const [editingBoardId, setEditingBoardId] = useState<string | null>(null);
+  const [renameBoardTitle, setRenameBoardTitle] = useState("");
   const [deletingBoardId, setDeletingBoardId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const {
@@ -167,7 +171,16 @@ export default function BoardsPage() {
   }, [signInWithGoogle]);
 
   const handleSignOut = useCallback(async () => {
-    await signOutCurrentUser();
+    setErrorMessage(null);
+    setSigningOut(true);
+
+    try {
+      await signOutCurrentUser();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Sign out failed.");
+    } finally {
+      setSigningOut(false);
+    }
   }, [signOutCurrentUser]);
 
   const handleCreateBoard = useCallback(async () => {
@@ -248,28 +261,38 @@ export default function BoardsPage() {
     [idToken]
   );
 
-  const handleRenameBoard = useCallback(
-    async (board: BoardSummary) => {
+  const handleStartRenameBoard = useCallback((board: BoardSummary) => {
+    setErrorMessage(null);
+    setEditingBoardId(board.id);
+    setRenameBoardTitle(board.title);
+  }, []);
+
+  const handleCancelRenameBoard = useCallback(() => {
+    if (renamingBoardId) {
+      return;
+    }
+
+    setEditingBoardId(null);
+    setRenameBoardTitle("");
+  }, [renamingBoardId]);
+
+  const handleRenameBoardSubmit = useCallback(
+    async (boardId: string) => {
       if (!idToken) {
         return;
       }
 
-      const promptedTitle = window.prompt("Rename board", board.title);
-      if (promptedTitle === null) {
-        return;
-      }
-
-      const nextTitle = promptedTitle.trim();
+      const nextTitle = renameBoardTitle.trim();
       if (nextTitle.length === 0) {
         setErrorMessage("Board title is required.");
         return;
       }
 
-      setRenamingBoardId(board.id);
+      setRenamingBoardId(boardId);
       setErrorMessage(null);
 
       try {
-        const response = await fetch(`/api/boards/${board.id}`, {
+        const response = await fetch(`/api/boards/${boardId}`, {
           method: "PATCH",
           headers: {
             Authorization: `Bearer ${idToken}`,
@@ -288,13 +311,16 @@ export default function BoardsPage() {
         if (!("board" in payload)) {
           throw new Error("Malformed rename board response.");
         }
+
+        setEditingBoardId(null);
+        setRenameBoardTitle("");
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : "Failed to rename board.");
       } finally {
         setRenamingBoardId(null);
       }
     },
-    [idToken]
+    [idToken, renameBoardTitle]
   );
 
   const handleCreateBoardSubmit = useCallback(
@@ -326,11 +352,6 @@ export default function BoardsPage() {
 
     return boardsError;
   }, [boardsError, errorMessage]);
-  const profileLabel = useMemo(
-    () => user?.displayName?.trim() || user?.email?.trim() || user?.uid || "Account",
-    [user]
-  );
-  const avatarInitial = profileLabel[0]?.toUpperCase() ?? "A";
 
   if (!firebaseIsConfigured) {
     return (
@@ -358,101 +379,7 @@ export default function BoardsPage() {
         background: "#ffffff"
       }}
     >
-      <header
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr auto 1fr",
-          alignItems: "center",
-          gap: "0.75rem",
-          minHeight: 56,
-          padding: "0 0.85rem",
-          borderBottom: "2px solid #d1d5db",
-          flexShrink: 0
-        }}
-      >
-        <div style={{ width: 34, height: 34 }} />
-        <h1
-          style={{
-            margin: 0,
-            fontSize: "1.25rem",
-            fontWeight: 700,
-            textAlign: "center",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis"
-          }}
-        >
-          CollabBoard
-        </h1>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            minWidth: 34
-          }}
-        >
-          {user ? (
-            <div
-              style={{
-                display: "grid",
-                justifyItems: "end",
-                gap: "0.15rem"
-              }}
-            >
-              <Link
-                href="/account"
-                aria-label="Open account settings"
-                title="Account settings"
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: "50%",
-                  border: "1px solid #cbd5e1",
-                  background: "#e2e8f0",
-                  color: "#0f172a",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  textDecoration: "none",
-                  overflow: "hidden",
-                  fontWeight: 600,
-                  textTransform: "uppercase"
-                }}
-              >
-                {user.photoURL ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={user.photoURL}
-                    alt={profileLabel}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover"
-                    }}
-                  />
-                ) : (
-                  <span>{avatarInitial}</span>
-                )}
-              </Link>
-              <span
-                style={{
-                  fontSize: 11,
-                  lineHeight: 1.1,
-                  color: "#64748b",
-                  maxWidth: "min(56vw, 760px)",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  textAlign: "right"
-                }}
-                title={user.email ?? user.uid}
-              >
-                Signed in as {user.email ?? user.uid}
-              </span>
-            </div>
-          ) : null}
-        </div>
-      </header>
+      <AppHeader user={user} onSignOut={user ? handleSignOut : null} signOutDisabled={signingOut} />
 
       <div
         style={{
@@ -516,60 +443,6 @@ export default function BoardsPage() {
               My Boards ({boards.length} out of {MAX_OWNED_BOARDS})
             </h2>
 
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                alignItems: "center",
-                gap: "0.75rem",
-                marginBottom: "1rem",
-                flexWrap: "wrap"
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                {boards.length < MAX_OWNED_BOARDS ? (
-                  <>
-                    {showCreateBoardForm ? (
-                      <form
-                        onSubmit={handleCreateBoardSubmit}
-                        style={{ display: "flex", alignItems: "center", gap: "0.45rem" }}
-                      >
-                        <input
-                          value={newBoardTitle}
-                          onChange={(event) => setNewBoardTitle(event.target.value)}
-                          placeholder="Board title"
-                          maxLength={80}
-                          disabled={creatingBoard}
-                          style={{
-                            height: 34,
-                            minWidth: 200,
-                            padding: "0 0.6rem"
-                          }}
-                        />
-                        <button type="submit" disabled={creatingBoard}>
-                          {creatingBoard ? "Creating..." : "Create"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleCancelCreateBoardForm}
-                          disabled={creatingBoard}
-                        >
-                          Cancel
-                        </button>
-                      </form>
-                    ) : (
-                      <button type="button" onClick={handleOpenCreateBoardForm}>
-                        Create New Board
-                      </button>
-                    )}
-                  </>
-                ) : null}
-                <button type="button" onClick={() => void handleSignOut()}>
-                  Sign out
-                </button>
-              </div>
-            </div>
-
             {combinedErrorMessage ? (
               <p style={{ color: "#b91c1c" }}>{combinedErrorMessage}</p>
             ) : null}
@@ -599,32 +472,71 @@ export default function BoardsPage() {
                     borderRadius: 10,
                     padding: "0.9rem"
                   }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: "0.75rem",
-                      flexWrap: "wrap"
-                    }}
                   >
-                    <div>
-                      <p style={{ margin: 0, fontWeight: 600 }}>{board.title}</p>
-                      <p style={{ margin: "0.3rem 0 0", color: "#6b7280" }}>
-                        {board.openEdit ? "Open edit enabled" : "Restricted edit mode"}
-                      </p>
-                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        gap: "0.75rem",
+                        flexWrap: "wrap"
+                      }}
+                    >
+                      <div style={{ minWidth: 0, flex: "1 1 240px" }}>
+                        {editingBoardId === board.id ? (
+                          <form
+                            onSubmit={(event) => {
+                              event.preventDefault();
+                              void handleRenameBoardSubmit(board.id);
+                            }}
+                            style={{ display: "grid", gap: "0.5rem" }}
+                          >
+                            <input
+                              value={renameBoardTitle}
+                              onChange={(event) => setRenameBoardTitle(event.target.value)}
+                              placeholder="Board title"
+                              maxLength={80}
+                              disabled={renamingBoardId === board.id}
+                              style={{
+                                height: 34,
+                                minWidth: 220,
+                                maxWidth: 460,
+                                padding: "0 0.6rem"
+                              }}
+                            />
+                            <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap" }}>
+                              <button type="submit" disabled={renamingBoardId === board.id}>
+                                {renamingBoardId === board.id ? "Saving..." : "Save"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleCancelRenameBoard}
+                                disabled={renamingBoardId === board.id}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </form>
+                        ) : (
+                          <>
+                            <p style={{ margin: 0, fontWeight: 600 }}>{board.title}</p>
+                            <p style={{ margin: "0.3rem 0 0", color: "#6b7280" }}>
+                              {board.openEdit ? "Open edit enabled" : "Restricted edit mode"}
+                            </p>
+                          </>
+                        )}
+                      </div>
+
                     <div style={{ display: "flex", gap: "0.4rem" }}>
                       <button
                         type="button"
-                        onClick={() => void handleRenameBoard(board)}
+                        onClick={() => handleStartRenameBoard(board)}
                         disabled={renamingBoardId === board.id}
                         className="icon-tooltip-trigger"
                         data-tooltip={
-                          renamingBoardId === board.id ? "Renaming..." : "Rename board"
+                          renamingBoardId === board.id ? "Saving..." : "Rename board"
                         }
-                        title={renamingBoardId === board.id ? "Renaming..." : "Rename board"}
+                        title={renamingBoardId === board.id ? "Saving..." : "Rename board"}
                         aria-label={`Rename board ${board.title}`}
                         style={{
                           ...boardActionButtonStyle,
@@ -679,6 +591,74 @@ export default function BoardsPage() {
                 </li>
               ))}
             </ul>
+
+            {boards.length < MAX_OWNED_BOARDS ? (
+              <div
+                style={{
+                  marginTop: "1rem",
+                  display: "grid",
+                  justifyItems: "center",
+                  gap: "0.55rem"
+                }}
+              >
+                {showCreateBoardForm ? (
+                  <form
+                    onSubmit={handleCreateBoardSubmit}
+                    style={{
+                      display: "grid",
+                      justifyItems: "center",
+                      gap: "0.5rem",
+                      width: "min(100%, 420px)"
+                    }}
+                  >
+                    <input
+                      value={newBoardTitle}
+                      onChange={(event) => setNewBoardTitle(event.target.value)}
+                      placeholder="Board title"
+                      maxLength={80}
+                      disabled={creatingBoard}
+                      style={{
+                        width: "100%",
+                        height: 40,
+                        padding: "0 0.7rem"
+                      }}
+                    />
+                    <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                      <button type="submit" disabled={creatingBoard}>
+                        {creatingBoard ? "Creating..." : "Create board"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelCreateBoardForm}
+                        disabled={creatingBoard}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleOpenCreateBoardForm}
+                    style={{
+                      minWidth: 240,
+                      height: 46,
+                      padding: "0 1.1rem",
+                      borderRadius: 10,
+                      border: "1px solid #15803d",
+                      background: "#16a34a",
+                      color: "white",
+                      fontSize: 15,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      boxShadow: "0 6px 16px rgba(22, 163, 74, 0.22)"
+                    }}
+                  >
+                    Create New Board
+                  </button>
+                )}
+              </div>
+            ) : null}
           </section>
         ) : null}
       </div>

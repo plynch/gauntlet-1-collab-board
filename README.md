@@ -29,6 +29,7 @@ npm run dev
 Useful scripts:
 
 ```bash
+npm run test
 npm run lint
 npm run typecheck
 npm run build
@@ -46,9 +47,13 @@ npm run build
 - ✅ User authentication! (Google only, more coming later)
 - ✅ Deployed and publicly accessible
 
+## In Progress Features
+
+- 🛠️ Better testing
+
 ## Features Not Added For MVP
 
 - 🚧 Email and password sign-on
 - 🚧 GitHub Auth
 - 🚧 AI agent assistance
-- 🚧 Automated testing
+- 🚧 Advanced automated test coverage

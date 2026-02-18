@@ -1,17 +1,18 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { updateProfile } from "firebase/auth";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuthSession } from "@/features/auth/hooks/use-auth-session";
+import AppHeader, { HeaderBackLink } from "@/features/layout/components/app-header";
 
 export default function AccountWorkspace() {
   const router = useRouter();
   const [displayNameInput, setDisplayNameInput] = useState("");
   const [photoUrlInput, setPhotoUrlInput] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const { firebaseIsConfigured, user, authLoading, signOutCurrentUser } = useAuthSession();
@@ -37,11 +38,14 @@ export default function AccountWorkspace() {
   const handleSignOut = useCallback(async () => {
     setErrorMessage(null);
     setSuccessMessage(null);
+    setSigningOut(true);
 
     try {
       await signOutCurrentUser();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Sign out failed.");
+    } finally {
+      setSigningOut(false);
     }
   }, [signOutCurrentUser]);
 
@@ -96,116 +100,13 @@ export default function AccountWorkspace() {
         background: "#ffffff"
       }}
     >
-      <header
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr auto 1fr",
-          alignItems: "center",
-          gap: "0.75rem",
-          minHeight: 56,
-          padding: "0 0.85rem",
-          borderBottom: "2px solid #d1d5db",
-          flexShrink: 0
-        }}
-      >
-        <div>
-          <Link
-            href="/"
-            title="Back to My Boards"
-            aria-label="Back to My Boards"
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: "50%",
-              border: "1px solid #cbd5e1",
-              background: "#f8fafc",
-              color: "#0f172a",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              textDecoration: "none",
-              fontSize: 18
-            }}
-          >
-            {"<"}
-          </Link>
-        </div>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: "1.25rem",
-            fontWeight: 700,
-            textAlign: "center",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis"
-          }}
-        >
-          CollabBoard
-        </h1>
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          {user ? (
-            <div
-              style={{
-                display: "grid",
-                justifyItems: "end",
-                gap: "0.15rem"
-              }}
-            >
-              <div
-                aria-hidden="true"
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: "50%",
-                  border: "1px solid #cbd5e1",
-                  background: "#e2e8f0",
-                  color: "#0f172a",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  textDecoration: "none",
-                  overflow: "hidden",
-                  fontWeight: 600,
-                  textTransform: "uppercase"
-                }}
-              >
-                {user.photoURL ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={user.photoURL}
-                    alt={profileLabel}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover"
-                    }}
-                  />
-                ) : (
-                  <span>{avatarInitial}</span>
-                )}
-              </div>
-              <span
-                style={{
-                  fontSize: 11,
-                  lineHeight: 1.1,
-                  color: "#64748b",
-                  maxWidth: "min(56vw, 760px)",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  textAlign: "right"
-                }}
-                title={user.email ?? user.uid}
-              >
-                Signed in as {user.email ?? user.uid}
-              </span>
-            </div>
-          ) : (
-            <div style={{ width: 34, height: 34 }} />
-          )}
-        </div>
-      </header>
+      <AppHeader
+        user={user}
+        leftSlot={<HeaderBackLink href="/" label="Back to My Boards" />}
+        onSignOut={user ? handleSignOut : null}
+        signOutDisabled={signingOut}
+        showAccountLink={false}
+      />
 
       <div
         style={{
@@ -298,9 +199,6 @@ export default function AccountWorkspace() {
                 disabled={isSaving}
               >
                 {isSaving ? "Saving..." : "Save profile"}
-              </button>
-              <button type="button" onClick={() => void handleSignOut()}>
-                Sign out
               </button>
             </div>
 

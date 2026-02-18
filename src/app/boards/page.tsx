@@ -482,7 +482,15 @@ export default function BoardsPage() {
                         flexWrap: "wrap"
                       }}
                     >
-                      <div style={{ minWidth: 0, flex: "1 1 240px" }}>
+                      <div
+                        style={{
+                          minWidth: 0,
+                          flex: "1 1 240px",
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: "0.55rem"
+                        }}
+                      >
                         {editingBoardId === board.id ? (
                           <form
                             onSubmit={(event) => {
@@ -519,32 +527,54 @@ export default function BoardsPage() {
                           </form>
                         ) : (
                           <>
-                            <p style={{ margin: 0, fontWeight: 600 }}>{board.title}</p>
-                            <p style={{ margin: "0.3rem 0 0", color: "#6b7280" }}>
-                              {board.openEdit ? "Open edit enabled" : "Restricted edit mode"}
-                            </p>
+                            <button
+                              type="button"
+                              onClick={() => handleStartRenameBoard(board)}
+                              disabled={renamingBoardId === board.id}
+                              className="icon-tooltip-trigger"
+                              data-tooltip={
+                                renamingBoardId === board.id ? "Saving..." : "Rename board"
+                              }
+                              title={renamingBoardId === board.id ? "Saving..." : "Rename board"}
+                              aria-label={`Rename board ${board.title}`}
+                              style={{
+                                ...boardActionButtonStyle,
+                                width: 34,
+                                height: 34,
+                                borderRadius: 9,
+                                opacity: renamingBoardId === board.id ? 0.75 : 1,
+                                flexShrink: 0
+                              }}
+                            >
+                              <EditIcon />
+                            </button>
+                            <div style={{ minWidth: 0 }}>
+                              <p
+                                style={{
+                                  margin: 0,
+                                  fontWeight: 700,
+                                  fontSize: "1.45rem",
+                                  lineHeight: 1.1
+                                }}
+                              >
+                                {board.title}
+                              </p>
+                              <p
+                                style={{
+                                  margin: "0.28rem 0 0",
+                                  color: "#6b7280",
+                                  fontSize: "1.05rem",
+                                  lineHeight: 1.2
+                                }}
+                              >
+                                {board.openEdit ? "Open edit enabled" : "Restricted edit mode"}
+                              </p>
+                            </div>
                           </>
                         )}
                       </div>
 
                     <div style={{ display: "flex", gap: "0.4rem" }}>
-                      <button
-                        type="button"
-                        onClick={() => handleStartRenameBoard(board)}
-                        disabled={renamingBoardId === board.id}
-                        className="icon-tooltip-trigger"
-                        data-tooltip={
-                          renamingBoardId === board.id ? "Saving..." : "Rename board"
-                        }
-                        title={renamingBoardId === board.id ? "Saving..." : "Rename board"}
-                        aria-label={`Rename board ${board.title}`}
-                        style={{
-                          ...boardActionButtonStyle,
-                          opacity: renamingBoardId === board.id ? 0.75 : 1
-                        }}
-                      >
-                        <EditIcon />
-                      </button>
                       <Link
                         href={`/boards/${board.id}`}
                         className="icon-tooltip-trigger"

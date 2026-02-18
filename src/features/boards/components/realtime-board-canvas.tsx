@@ -2695,24 +2695,12 @@ export default function RealtimeBoardCanvas({
                 height: "100%",
                 display: "flex",
                 flexDirection: "column",
-                alignItems: "flex-end",
-                justifyContent: "space-between",
-                padding: "0.55rem 0.35rem 0.55rem 0.2rem",
+                alignItems: "center",
+                justifyContent: "flex-start",
+                padding: "0.45rem 0.2rem",
                 gap: "0.55rem"
               }}
             >
-              <span
-                style={{
-                  writingMode: "vertical-rl",
-                  transform: "rotate(180deg)",
-                  color: "#334155",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  letterSpacing: "0.04em"
-                }}
-              >
-                TOOLS
-              </span>
               <button
                 type="button"
                 onClick={() => setIsLeftPanelCollapsed(false)}
@@ -2731,6 +2719,18 @@ export default function RealtimeBoardCanvas({
               >
                 {">"}
               </button>
+              <span
+                style={{
+                  writingMode: "vertical-rl",
+                  transform: "rotate(180deg)",
+                  color: "#334155",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: "0.04em"
+                }}
+              >
+                TOOLS
+              </span>
             </div>
           ) : (
             <>
@@ -3551,9 +3551,9 @@ export default function RealtimeBoardCanvas({
                 height: "100%",
                 display: "flex",
                 flexDirection: "column",
-                alignItems: "flex-start",
-                justifyContent: "space-between",
-                padding: "0.55rem 0.2rem 0.55rem 0.35rem",
+                alignItems: "center",
+                justifyContent: "flex-start",
+                padding: "0.45rem 0.2rem",
                 gap: "0.55rem"
               }}
             >
@@ -3688,9 +3688,36 @@ export default function RealtimeBoardCanvas({
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          flexShrink: 0
+          flexShrink: 0,
+          position: "relative"
         }}
       >
+        <button
+          type="button"
+          onClick={() => setIsAiFooterCollapsed((previous) => !previous)}
+          aria-label={isAiFooterCollapsed ? "Expand AI assistant drawer" : "Collapse AI assistant drawer"}
+          title={isAiFooterCollapsed ? "Expand AI assistant drawer" : "Collapse AI assistant drawer"}
+          style={{
+            position: "absolute",
+            right: "clamp(0.8rem, 2vw, 1.5rem)",
+            top: 0,
+            height: 28,
+            minWidth: 120,
+            border: "1px solid #64748b",
+            borderTop: "none",
+            borderRadius: "0 0 12px 12px",
+            background: "#dbe5f1",
+            color: "#0f172a",
+            fontWeight: 700,
+            fontSize: 15,
+            lineHeight: 1,
+            cursor: "pointer",
+            zIndex: 8
+          }}
+        >
+          {isAiFooterCollapsed ? "↑" : "↓"}
+        </button>
+
         {isAiFooterCollapsed ? (
           <div
             style={{
@@ -3706,28 +3733,11 @@ export default function RealtimeBoardCanvas({
                 margin: "0 auto",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "space-between",
+                justifyContent: "flex-start",
                 gap: "0.75rem"
               }}
             >
               <strong style={{ fontSize: 13, color: "#0f172a" }}>AI Assistant</strong>
-              <button
-                type="button"
-                onClick={() => setIsAiFooterCollapsed(false)}
-                style={{
-                  alignSelf: "stretch",
-                  minWidth: 118,
-                  border: "1px solid #94a3b8",
-                  borderTop: "none",
-                  borderRadius: "0 0 10px 10px",
-                  background: "#e2e8f0",
-                  color: "#0f172a",
-                  fontWeight: 700,
-                  cursor: "pointer"
-                }}
-              >
-                ^
-              </button>
             </div>
           </div>
         ) : (
@@ -3743,7 +3753,7 @@ export default function RealtimeBoardCanvas({
                 justifyContent: "center",
                 background: "#f8fafc",
                 touchAction: "none",
-                position: "relative"
+                paddingRight: 128
               }}
             >
               <span
@@ -3754,29 +3764,6 @@ export default function RealtimeBoardCanvas({
                   background: "#cbd5e1"
                 }}
               />
-              <button
-                type="button"
-                onPointerDown={(event) => {
-                  event.stopPropagation();
-                }}
-                onClick={() => setIsAiFooterCollapsed(true)}
-                style={{
-                  position: "absolute",
-                  right: "clamp(0.8rem, 2vw, 1.5rem)",
-                  top: 0,
-                  height: "100%",
-                  minWidth: 118,
-                  border: "1px solid #94a3b8",
-                  borderTop: "none",
-                  borderRadius: "0 0 10px 10px",
-                  background: "#e2e8f0",
-                  color: "#0f172a",
-                  fontWeight: 700,
-                  cursor: "pointer"
-                }}
-              >
-                v
-              </button>
             </div>
 
             <div

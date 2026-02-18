@@ -2,7 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 
 import type { BoardDetail, BoardPermissions } from "@/features/boards/types";
-import { getFirebaseAdminDb } from "@/lib/firebase/admin";
+import { assertFirestoreWritesAllowedInDev, getFirebaseAdminDb } from "@/lib/firebase/admin";
 import { AuthError, requireUser } from "@/server/auth/require-user";
 import {
   canUserEditBoard,
@@ -129,6 +129,8 @@ export async function GET(request: NextRequest, context: BoardRouteContext) {
 
 export async function DELETE(request: NextRequest, context: BoardRouteContext) {
   try {
+    assertFirestoreWritesAllowedInDev();
+
     const user = await requireUser(request);
     const params = await context.params;
     const boardId = params.boardId?.trim();
@@ -175,6 +177,8 @@ export async function DELETE(request: NextRequest, context: BoardRouteContext) {
 
 export async function PATCH(request: NextRequest, context: BoardRouteContext) {
   try {
+    assertFirestoreWritesAllowedInDev();
+
     const user = await requireUser(request);
     const params = await context.params;
     const boardId = params.boardId?.trim();

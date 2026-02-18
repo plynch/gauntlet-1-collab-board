@@ -47,31 +47,71 @@ function getPublicFirebaseConfig(): PublicFirebaseConfig | null {
 const firebaseConfig: PublicFirebaseConfig | null = getPublicFirebaseConfig();
 
 declare global {
-  var __firebaseClientEmulatorsConnected: boolean | undefined;
+  var __firebaseClientAuthEmulatorConnected: boolean | undefined;
+  var __firebaseClientFirestoreEmulatorConnected: boolean | undefined;
 }
 
 let firebaseApp: FirebaseApp | null = null;
 let firebaseAuth: Auth | null = null;
 let firebaseDb: Firestore | null = null;
 
+function isTrue(value: string | undefined): boolean {
+  return value === "true";
+}
+
+function shouldUseAuthEmulator(): boolean {
+  return (
+    isTrue(process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR) ||
+    isTrue(process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATORS)
+  );
+}
+
+function shouldUseFirestoreEmulator(): boolean {
+  return (
+    isTrue(process.env.NEXT_PUBLIC_USE_FIRESTORE_EMULATOR) ||
+    isTrue(process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATORS)
+  );
+}
+
+function shouldRequireFirestoreEmulatorInDev(): boolean {
+  return (
+    process.env.NODE_ENV === "development" &&
+    isTrue(process.env.NEXT_PUBLIC_DEV_REQUIRE_FIRESTORE_EMULATOR)
+  );
+}
+
 export function isFirebaseClientConfigured(): boolean {
   return firebaseConfig !== null;
 }
 
 function connectClientEmulators(auth: Auth, db: Firestore): void {
-  if (
-    typeof window === "undefined" ||
-    process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATORS !== "true" ||
-    globalThis.__firebaseClientEmulatorsConnected
-  ) {
+  if (typeof window === "undefined") {
     return;
   }
 
-  connectAuthEmulator(auth, "http://127.0.0.1:9099", {
-    disableWarnings: true
-  });
-  connectFirestoreEmulator(db, "127.0.0.1", 8080);
-  globalThis.__firebaseClientEmulatorsConnected = true;
+  if (shouldUseAuthEmulator() && !globalThis.__firebaseClientAuthEmulatorConnected) {
+    connectAuthEmulator(auth, "http://127.0.0.1:9099", {
+      disableWarnings: true
+    });
+    globalThis.__firebaseClientAuthEmulatorConnected = true;
+  }
+
+  if (shouldUseFirestoreEmulator() && !globalThis.__firebaseClientFirestoreEmulatorConnected) {
+    connectFirestoreEmulator(db, "127.0.0.1", 8080);
+    globalThis.__firebaseClientFirestoreEmulatorConnected = true;
+  }
+}
+
+function assertFirestoreClientUsageIsSafe(): void {
+  if (!shouldRequireFirestoreEmulatorInDev()) {
+    return;
+  }
+
+  if (!shouldUseFirestoreEmulator()) {
+    throw new Error(
+      "Development Firestore usage is blocked. Set NEXT_PUBLIC_USE_FIRESTORE_EMULATOR=true and run Firebase emulators."
+    );
+  }
 }
 
 export function getFirebaseClientApp(): FirebaseApp {
@@ -101,14 +141,30 @@ export function getFirebaseClientAuth(): Auth {
   }
 
   if (!firebaseDb) {
-    firebaseDb = getFirestore(getFirebaseClientApp());
+    if (shouldUseFirestoreEmulator() || shouldRequireFirestoreEmulatorInDev()) {
+      firebaseDb = getFirestore(getFirebaseClientApp());
+    }
   }
 
-  connectClientEmulators(firebaseAuth, firebaseDb);
+  if (firebaseDb) {
+    connectClientEmulators(firebaseAuth, firebaseDb);
+  } else if (
+    typeof window !== "undefined" &&
+    shouldUseAuthEmulator() &&
+    !globalThis.__firebaseClientAuthEmulatorConnected
+  ) {
+    connectAuthEmulator(firebaseAuth, "http://127.0.0.1:9099", {
+      disableWarnings: true
+    });
+    globalThis.__firebaseClientAuthEmulatorConnected = true;
+  }
+
   return firebaseAuth;
 }
 
 export function getFirebaseClientDb(): Firestore {
+  assertFirestoreClientUsageIsSafe();
+
   if (!firebaseDb) {
     firebaseDb = getFirestore(getFirebaseClientApp());
   }

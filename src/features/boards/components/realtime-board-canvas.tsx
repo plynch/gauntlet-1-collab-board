@@ -248,6 +248,7 @@ const BOARD_COLOR_SWATCHES: ColorSwatch[] = [
 const CONNECTOR_MIN_SEGMENT_SIZE = 12;
 const CONNECTOR_HIT_PADDING = 16;
 const CONNECTOR_HANDLE_SIZE = 12;
+const CONNECTOR_DISCONNECTED_HANDLE_SIZE = 20;
 const CONNECTOR_SNAP_DISTANCE_PX = 20;
 
 const CONNECTOR_TYPES: readonly BoardObjectKind[] = [
@@ -769,6 +770,430 @@ function toConnectorGeometryFromEndpoints(
     width: Math.max(CONNECTOR_MIN_SEGMENT_SIZE, bounds.right - bounds.left),
     height: Math.max(CONNECTOR_MIN_SEGMENT_SIZE, bounds.bottom - bounds.top),
     rotationDeg: 0
+  };
+}
+
+type ConnectorRoutingObstacle = {
+  objectId: string;
+  bounds: ObjectBounds;
+};
+
+type ConnectorRouteGeometry = {
+  points: BoardPoint[];
+  bounds: ObjectBounds;
+  midPoint: BoardPoint;
+  startDirection: BoardPoint;
+  endDirection: BoardPoint;
+};
+
+function inflateObjectBounds(bounds: ObjectBounds, padding: number): ObjectBounds {
+  return {
+    left: bounds.left - padding,
+    right: bounds.right + padding,
+    top: bounds.top - padding,
+    bottom: bounds.bottom + padding
+  };
+}
+
+function formatPathNumber(value: number): string {
+  return Number(value.toFixed(2)).toString();
+}
+
+function getSegmentDirection(fromPoint: BoardPoint, toPoint: BoardPoint): BoardPoint {
+  const dx = toPoint.x - fromPoint.x;
+  const dy = toPoint.y - fromPoint.y;
+  const magnitude = Math.hypot(dx, dy);
+  if (magnitude <= 0.0001) {
+    return { x: 1, y: 0 };
+  }
+
+  return {
+    x: dx / magnitude,
+    y: dy / magnitude
+  };
+}
+
+function getPointSequenceBounds(points: BoardPoint[], padding = 0): ObjectBounds {
+  const xValues = points.map((point) => point.x);
+  const yValues = points.map((point) => point.y);
+  return {
+    left: Math.min(...xValues) - padding,
+    right: Math.max(...xValues) + padding,
+    top: Math.min(...yValues) - padding,
+    bottom: Math.max(...yValues) + padding
+  };
+}
+
+function getPathLength(points: BoardPoint[]): number {
+  if (points.length < 2) {
+    return 0;
+  }
+
+  let length = 0;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    length += getDistance(points[index], points[index + 1]);
+  }
+  return length;
+}
+
+function getPathMidPoint(points: BoardPoint[]): BoardPoint {
+  if (points.length === 0) {
+    return { x: 0, y: 0 };
+  }
+
+  if (points.length === 1) {
+    return points[0];
+  }
+
+  const totalLength = getPathLength(points);
+  if (totalLength <= 0.0001) {
+    return points[0];
+  }
+
+  const midpointDistance = totalLength / 2;
+  let traversed = 0;
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    const segmentLength = getDistance(start, end);
+    if (traversed + segmentLength >= midpointDistance) {
+      const remaining = midpointDistance - traversed;
+      const ratio = segmentLength <= 0.0001 ? 0 : remaining / segmentLength;
+      return {
+        x: start.x + (end.x - start.x) * ratio,
+        y: start.y + (end.y - start.y) * ratio
+      };
+    }
+    traversed += segmentLength;
+  }
+
+  return points[points.length - 1];
+}
+
+function getRouteEndDirections(points: BoardPoint[]): {
+  startDirection: BoardPoint;
+  endDirection: BoardPoint;
+} {
+  if (points.length < 2) {
+    return {
+      startDirection: { x: 1, y: 0 },
+      endDirection: { x: 1, y: 0 }
+    };
+  }
+
+  let startDirection: BoardPoint = { x: 1, y: 0 };
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const direction = getSegmentDirection(points[index], points[index + 1]);
+    if (Math.hypot(direction.x, direction.y) > 0.0001) {
+      startDirection = direction;
+      break;
+    }
+  }
+
+  let endDirection: BoardPoint = { x: 1, y: 0 };
+  for (let index = points.length - 1; index > 0; index -= 1) {
+    const direction = getSegmentDirection(points[index - 1], points[index]);
+    if (Math.hypot(direction.x, direction.y) > 0.0001) {
+      endDirection = direction;
+      break;
+    }
+  }
+
+  return {
+    startDirection,
+    endDirection
+  };
+}
+
+function segmentIntersectsBounds(
+  start: BoardPoint,
+  end: BoardPoint,
+  bounds: ObjectBounds
+): boolean {
+  const epsilon = 0.8;
+  const isHorizontal = Math.abs(start.y - end.y) <= 0.001;
+  const isVertical = Math.abs(start.x - end.x) <= 0.001;
+
+  if (isHorizontal) {
+    const y = start.y;
+    if (y <= bounds.top + epsilon || y >= bounds.bottom - epsilon) {
+      return false;
+    }
+
+    const left = Math.min(start.x, end.x);
+    const right = Math.max(start.x, end.x);
+    return right > bounds.left + epsilon && left < bounds.right - epsilon;
+  }
+
+  if (isVertical) {
+    const x = start.x;
+    if (x <= bounds.left + epsilon || x >= bounds.right - epsilon) {
+      return false;
+    }
+
+    const top = Math.min(start.y, end.y);
+    const bottom = Math.max(start.y, end.y);
+    return bottom > bounds.top + epsilon && top < bounds.bottom - epsilon;
+  }
+
+  return false;
+}
+
+function countRouteIntersections(
+  points: BoardPoint[],
+  obstacles: ConnectorRoutingObstacle[]
+): number {
+  if (points.length < 2 || obstacles.length === 0) {
+    return 0;
+  }
+
+  let hits = 0;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const segmentStart = points[index];
+    const segmentEnd = points[index + 1];
+    obstacles.forEach((obstacle) => {
+      if (segmentIntersectsBounds(segmentStart, segmentEnd, obstacle.bounds)) {
+        hits += 1;
+      }
+    });
+  }
+  return hits;
+}
+
+function simplifyRoutePoints(points: BoardPoint[]): BoardPoint[] {
+  if (points.length <= 2) {
+    return points;
+  }
+
+  const deduped: BoardPoint[] = [];
+  points.forEach((point) => {
+    const previous = deduped[deduped.length - 1];
+    if (!previous || getDistance(previous, point) > 0.1) {
+      deduped.push(point);
+    }
+  });
+
+  if (deduped.length <= 2) {
+    return deduped;
+  }
+
+  const simplified: BoardPoint[] = [deduped[0]];
+  for (let index = 1; index < deduped.length - 1; index += 1) {
+    const previous = simplified[simplified.length - 1];
+    const current = deduped[index];
+    const next = deduped[index + 1];
+
+    const prevToCurrentX = current.x - previous.x;
+    const prevToCurrentY = current.y - previous.y;
+    const currentToNextX = next.x - current.x;
+    const currentToNextY = next.y - current.y;
+    const collinearX = Math.abs(prevToCurrentX) <= 0.001 && Math.abs(currentToNextX) <= 0.001;
+    const collinearY = Math.abs(prevToCurrentY) <= 0.001 && Math.abs(currentToNextY) <= 0.001;
+
+    if (collinearX || collinearY) {
+      continue;
+    }
+
+    simplified.push(current);
+  }
+  simplified.push(deduped[deduped.length - 1]);
+
+  return simplified;
+}
+
+function getAnchorDirection(anchor: ConnectorAnchor | null): BoardPoint | null {
+  if (anchor === "top") {
+    return { x: 0, y: -1 };
+  }
+  if (anchor === "right") {
+    return { x: 1, y: 0 };
+  }
+  if (anchor === "bottom") {
+    return { x: 0, y: 1 };
+  }
+  if (anchor === "left") {
+    return { x: -1, y: 0 };
+  }
+  return null;
+}
+
+function createOrthogonalRouteCandidates(
+  fromPoint: BoardPoint,
+  toPoint: BoardPoint,
+  detourDistance: number
+): BoardPoint[][] {
+  const routes: BoardPoint[][] = [];
+  const middleX = (fromPoint.x + toPoint.x) / 2;
+  const middleY = (fromPoint.y + toPoint.y) / 2;
+  const leftX = Math.min(fromPoint.x, toPoint.x) - detourDistance;
+  const rightX = Math.max(fromPoint.x, toPoint.x) + detourDistance;
+  const topY = Math.min(fromPoint.y, toPoint.y) - detourDistance;
+  const bottomY = Math.max(fromPoint.y, toPoint.y) + detourDistance;
+
+  if (
+    Math.abs(fromPoint.x - toPoint.x) <= 0.001 ||
+    Math.abs(fromPoint.y - toPoint.y) <= 0.001
+  ) {
+    routes.push([fromPoint, toPoint]);
+  }
+
+  routes.push(
+    [fromPoint, { x: toPoint.x, y: fromPoint.y }, toPoint],
+    [fromPoint, { x: fromPoint.x, y: toPoint.y }, toPoint],
+    [fromPoint, { x: middleX, y: fromPoint.y }, { x: middleX, y: toPoint.y }, toPoint],
+    [fromPoint, { x: fromPoint.x, y: middleY }, { x: toPoint.x, y: middleY }, toPoint],
+    [fromPoint, { x: fromPoint.x, y: topY }, { x: toPoint.x, y: topY }, toPoint],
+    [fromPoint, { x: fromPoint.x, y: bottomY }, { x: toPoint.x, y: bottomY }, toPoint],
+    [fromPoint, { x: leftX, y: fromPoint.y }, { x: leftX, y: toPoint.y }, toPoint],
+    [fromPoint, { x: rightX, y: fromPoint.y }, { x: rightX, y: toPoint.y }, toPoint]
+  );
+
+  const unique = new Map<string, BoardPoint[]>();
+  routes.forEach((candidate) => {
+    const simplified = simplifyRoutePoints(candidate);
+    const key = simplified
+      .map((point) => `${Math.round(point.x * 10) / 10},${Math.round(point.y * 10) / 10}`)
+      .join("|");
+    if (!unique.has(key)) {
+      unique.set(key, simplified);
+    }
+  });
+
+  return Array.from(unique.values());
+}
+
+function scoreConnectorRoute(
+  points: BoardPoint[],
+  obstacles: ConnectorRoutingObstacle[]
+): number {
+  const intersections = countRouteIntersections(points, obstacles);
+  const bends = Math.max(0, points.length - 2);
+  const length = getPathLength(points);
+  return intersections * 1_000_000 + bends * 120 + length;
+}
+
+function toRoundedConnectorPath(points: BoardPoint[], cornerRadius = 14): string {
+  if (points.length === 0) {
+    return "";
+  }
+
+  if (points.length === 1) {
+    const point = points[0];
+    return `M ${formatPathNumber(point.x)} ${formatPathNumber(point.y)}`;
+  }
+
+  let pathData = `M ${formatPathNumber(points[0].x)} ${formatPathNumber(points[0].y)}`;
+
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const next = points[index + 1];
+    const inDirection = getSegmentDirection(previous, current);
+    const outDirection = getSegmentDirection(current, next);
+    const inLength = getDistance(previous, current);
+    const outLength = getDistance(current, next);
+    const sameDirection =
+      Math.abs(inDirection.x - outDirection.x) <= 0.001 &&
+      Math.abs(inDirection.y - outDirection.y) <= 0.001;
+
+    if (sameDirection || inLength <= 0.001 || outLength <= 0.001) {
+      pathData += ` L ${formatPathNumber(current.x)} ${formatPathNumber(current.y)}`;
+      continue;
+    }
+
+    const radius = Math.max(0, Math.min(cornerRadius, inLength / 2, outLength / 2));
+    const cornerStart = {
+      x: current.x - inDirection.x * radius,
+      y: current.y - inDirection.y * radius
+    };
+    const cornerEnd = {
+      x: current.x + outDirection.x * radius,
+      y: current.y + outDirection.y * radius
+    };
+
+    pathData += ` L ${formatPathNumber(cornerStart.x)} ${formatPathNumber(cornerStart.y)}`;
+    pathData += ` Q ${formatPathNumber(current.x)} ${formatPathNumber(current.y)} ${formatPathNumber(cornerEnd.x)} ${formatPathNumber(cornerEnd.y)}`;
+  }
+
+  const end = points[points.length - 1];
+  pathData += ` L ${formatPathNumber(end.x)} ${formatPathNumber(end.y)}`;
+
+  return pathData;
+}
+
+function buildConnectorRouteGeometry(options: {
+  from: ResolvedConnectorEndpoint;
+  to: ResolvedConnectorEndpoint;
+  obstacles: ConnectorRoutingObstacle[];
+  padding: number;
+}): ConnectorRouteGeometry {
+  const start = { x: options.from.x, y: options.from.y };
+  const end = { x: options.to.x, y: options.to.y };
+  const fromDirection = getAnchorDirection(options.from.anchor);
+  const toDirection = getAnchorDirection(options.to.anchor);
+  const leadDistance = 30;
+
+  const startLead = fromDirection
+    ? {
+        x: start.x + fromDirection.x * leadDistance,
+        y: start.y + fromDirection.y * leadDistance
+      }
+    : null;
+  const endLead = toDirection
+    ? {
+        x: end.x + toDirection.x * leadDistance,
+        y: end.y + toDirection.y * leadDistance
+      }
+    : null;
+
+  const routeStart = startLead ?? start;
+  const routeEnd = endLead ?? end;
+  const detourDistance = Math.max(
+    52,
+    Math.min(200, 48 + Math.max(Math.abs(routeStart.x - routeEnd.x), Math.abs(routeStart.y - routeEnd.y)) * 0.2)
+  );
+  const bridgeCandidates = createOrthogonalRouteCandidates(
+    routeStart,
+    routeEnd,
+    detourDistance
+  );
+
+  const fullCandidates = bridgeCandidates.map((bridge) =>
+    simplifyRoutePoints([
+      start,
+      ...(startLead ? [startLead] : []),
+      ...bridge.slice(1, -1),
+      ...(endLead ? [endLead] : []),
+      end
+    ])
+  );
+
+  if (fullCandidates.length === 0) {
+    fullCandidates.push([start, end]);
+  }
+
+  let bestPoints = fullCandidates[0];
+  let bestScore = scoreConnectorRoute(bestPoints, options.obstacles);
+  for (let index = 1; index < fullCandidates.length; index += 1) {
+    const candidate = fullCandidates[index];
+    const candidateScore = scoreConnectorRoute(candidate, options.obstacles);
+    if (candidateScore < bestScore) {
+      bestScore = candidateScore;
+      bestPoints = candidate;
+    }
+  }
+
+  const bounds = getPointSequenceBounds(bestPoints, options.padding);
+  const midPoint = getPathMidPoint(bestPoints);
+  const directions = getRouteEndDirections(bestPoints);
+
+  return {
+    points: bestPoints,
+    bounds,
+    midPoint,
+    startDirection: directions.startDirection,
+    endDirection: directions.endDirection
   };
 }
 
@@ -3503,26 +3928,123 @@ export default function RealtimeBoardCanvas({
         ),
     [draftGeometryById, objects, selectedObjectIds]
   );
+  const connectorRoutingObstacles = useMemo(
+    () =>
+      objects
+        .map((objectItem) => {
+          if (!isConnectableShapeKind(objectItem.type)) {
+            return null;
+          }
+
+          const draftGeometry = draftGeometryById[objectItem.id];
+          const geometry: ObjectGeometry = draftGeometry ?? {
+            x: objectItem.x,
+            y: objectItem.y,
+            width: objectItem.width,
+            height: objectItem.height,
+            rotationDeg: objectItem.rotationDeg
+          };
+
+          return {
+            objectId: objectItem.id,
+            bounds: inflateObjectBounds(getObjectVisualBounds(objectItem.type, geometry), 14)
+          };
+        })
+        .filter((item): item is ConnectorRoutingObstacle => item !== null),
+    [draftGeometryById, objects]
+  );
+  const connectorRoutesById = useMemo(() => {
+    const routes = new Map<
+      string,
+      {
+        resolved: {
+          from: ResolvedConnectorEndpoint;
+          to: ResolvedConnectorEndpoint;
+          draft: ConnectorDraft;
+        };
+        geometry: ConnectorRouteGeometry;
+      }
+    >();
+
+    objects.forEach((objectItem) => {
+      if (!isConnectorKind(objectItem.type)) {
+        return;
+      }
+
+      const localDraft = draftConnectorById[objectItem.id];
+      const connectorObjectForRouting = localDraft
+        ? {
+            ...objectItem,
+            fromObjectId: localDraft.fromObjectId,
+            toObjectId: localDraft.toObjectId,
+            fromAnchor: localDraft.fromAnchor,
+            toAnchor: localDraft.toAnchor,
+            fromX: localDraft.fromX,
+            fromY: localDraft.fromY,
+            toX: localDraft.toX,
+            toY: localDraft.toY
+          }
+        : objectItem;
+
+      const resolved = getResolvedConnectorEndpoints(connectorObjectForRouting);
+      if (!resolved) {
+        return;
+      }
+
+      const obstacles = connectorRoutingObstacles.filter(
+        (obstacle) =>
+          obstacle.objectId !== resolved.from.objectId &&
+          obstacle.objectId !== resolved.to.objectId
+      );
+
+      const geometry = buildConnectorRouteGeometry({
+        from: resolved.from,
+        to: resolved.to,
+        obstacles,
+        padding: CONNECTOR_HIT_PADDING
+      });
+
+      routes.set(objectItem.id, {
+        resolved,
+        geometry
+      });
+    });
+
+    return routes;
+  }, [connectorRoutingObstacles, draftConnectorById, getResolvedConnectorEndpoints, objects]);
   const selectedObjectBounds = useMemo(
     () =>
       mergeBounds(
         selectedObjects.map((selectedObject) => {
           if (isConnectorKind(selectedObject.object.type)) {
-            const resolved = getResolvedConnectorEndpoints(selectedObject.object);
-            if (resolved) {
-              return getConnectorBoundsFromEndpoints(
-                resolved.from,
-                resolved.to,
-                CONNECTOR_HIT_PADDING
-              );
+            const routed = connectorRoutesById.get(selectedObject.object.id);
+            if (routed) {
+              return routed.geometry.bounds;
             }
           }
 
           return getObjectVisualBounds(selectedObject.object.type, selectedObject.geometry);
         })
       ),
-    [getResolvedConnectorEndpoints, selectedObjects]
+    [connectorRoutesById, selectedObjects]
   );
+  const selectedConnectorMidpoint = useMemo(() => {
+    if (selectedObjects.length !== 1) {
+      return null;
+    }
+
+    const selectedObject = selectedObjects[0];
+    if (!selectedObject || !isConnectorKind(selectedObject.object.type)) {
+      return null;
+    }
+
+    const routed = connectorRoutesById.get(selectedObject.object.id);
+    if (!routed) {
+      return null;
+    }
+
+    return routed.geometry.midPoint;
+  }, [connectorRoutesById, selectedObjects]);
   const selectedColor = useMemo(() => {
     if (selectedObjects.length === 0) {
       return null;
@@ -3555,18 +4077,27 @@ export default function RealtimeBoardCanvas({
     const hudHeight = selectionHudSize.height > 0 ? selectionHudSize.height : 86;
     const edgePadding = 10;
     const offset = 10;
+    const maxX = Math.max(edgePadding, stageSize.width - hudWidth - edgePadding);
+    const maxY = Math.max(edgePadding, stageSize.height - hudHeight - edgePadding);
+    const clampPoint = (point: { x: number; y: number }) => ({
+      x: Math.max(edgePadding, Math.min(maxX, point.x)),
+      y: Math.max(edgePadding, Math.min(maxY, point.y))
+    });
+
+    if (selectedConnectorMidpoint) {
+      const connectorCenter = {
+        x: viewport.x + selectedConnectorMidpoint.x * viewport.scale - hudWidth / 2,
+        y: viewport.y + selectedConnectorMidpoint.y * viewport.scale - hudHeight / 2
+      };
+
+      return clampPoint(connectorCenter);
+    }
+
     const selectionLeft = viewport.x + selectedObjectBounds.left * viewport.scale;
     const selectionRight = viewport.x + selectedObjectBounds.right * viewport.scale;
     const selectionTop = viewport.y + selectedObjectBounds.top * viewport.scale;
     const selectionBottom = viewport.y + selectedObjectBounds.bottom * viewport.scale;
     const selectionCenterY = (selectionTop + selectionBottom) / 2;
-    const maxX = Math.max(edgePadding, stageSize.width - hudWidth - edgePadding);
-    const maxY = Math.max(edgePadding, stageSize.height - hudHeight - edgePadding);
-
-    const clampPoint = (point: { x: number; y: number }) => ({
-      x: Math.max(edgePadding, Math.min(maxX, point.x)),
-      y: Math.max(edgePadding, Math.min(maxY, point.y))
-    });
 
     const isFullyVisible = (point: { x: number; y: number }) =>
       point.x >= edgePadding &&
@@ -3603,6 +4134,7 @@ export default function RealtimeBoardCanvas({
     return clampPoint(candidates[0] ?? { x: edgePadding, y: edgePadding });
   }, [
     canShowSelectionHud,
+    selectedConnectorMidpoint,
     selectedObjectBounds,
     selectedObjects,
     selectionHudSize,
@@ -4096,22 +4628,21 @@ export default function RealtimeBoardCanvas({
                 height: objectHeight,
                 rotationDeg: objectRotationDeg
               };
-              const resolvedConnector = isConnector
-                ? getResolvedConnectorEndpoints(objectItem)
+              const connectorRoute = isConnector
+                ? connectorRoutesById.get(objectItem.id) ?? null
                 : null;
-              const connectorBounds = resolvedConnector
-                ? getConnectorBoundsFromEndpoints(
-                    resolvedConnector.from,
-                    resolvedConnector.to,
-                    CONNECTOR_HIT_PADDING
-                  )
-                : null;
-              const connectorFrame = connectorBounds
+              const connectorFrame = connectorRoute
                 ? {
-                    left: connectorBounds.left,
-                    top: connectorBounds.top,
-                    width: Math.max(1, connectorBounds.right - connectorBounds.left),
-                    height: Math.max(1, connectorBounds.bottom - connectorBounds.top)
+                    left: connectorRoute.geometry.bounds.left,
+                    top: connectorRoute.geometry.bounds.top,
+                    width: Math.max(
+                      1,
+                      connectorRoute.geometry.bounds.right - connectorRoute.geometry.bounds.left
+                    ),
+                    height: Math.max(
+                      1,
+                      connectorRoute.geometry.bounds.bottom - connectorRoute.geometry.bounds.top
+                    )
                   }
                 : null;
               const lineEndpointOffsets =
@@ -4119,39 +4650,48 @@ export default function RealtimeBoardCanvas({
               const isPolygonShape =
                 objectItem.type === "triangle" || objectItem.type === "star";
 
-              if (isConnector && resolvedConnector && connectorFrame) {
+              if (isConnector && connectorRoute && connectorFrame) {
                 const strokeWidth = 3;
-                const fromOffset = {
+                const resolvedConnector = connectorRoute.resolved;
+                const relativeRoutePoints = connectorRoute.geometry.points.map((point) => ({
+                  x: point.x - connectorFrame.left,
+                  y: point.y - connectorFrame.top
+                }));
+                const connectorPath = toRoundedConnectorPath(relativeRoutePoints, 16);
+                const fromOffset = relativeRoutePoints[0] ?? {
                   x: resolvedConnector.from.x - connectorFrame.left,
                   y: resolvedConnector.from.y - connectorFrame.top
                 };
-                const toOffset = {
+                const toOffset = relativeRoutePoints[relativeRoutePoints.length - 1] ?? {
                   x: resolvedConnector.to.x - connectorFrame.left,
                   y: resolvedConnector.to.y - connectorFrame.top
                 };
-                const vector = {
-                  x: toOffset.x - fromOffset.x,
-                  y: toOffset.y - fromOffset.y
-                };
-                const vectorLength = Math.hypot(vector.x, vector.y);
-                const unit =
-                  vectorLength > 0.001
-                    ? { x: vector.x / vectorLength, y: vector.y / vectorLength }
-                    : { x: 1, y: 0 };
-                const perpendicular = {
-                  x: -unit.y,
-                  y: unit.x
-                };
+                const startDirection = connectorRoute.geometry.startDirection;
+                const endDirection = connectorRoute.geometry.endDirection;
+                const isEndpointDragActive =
+                  connectorEndpointDragStateRef.current?.objectId === objectItem.id;
 
                 const buildArrowHeadPoints = (
                   tip: BoardPoint,
                   direction: BoardPoint
                 ): string => {
+                  const directionMagnitude = Math.hypot(direction.x, direction.y);
+                  const normalizedDirection =
+                    directionMagnitude > 0.0001
+                      ? {
+                          x: direction.x / directionMagnitude,
+                          y: direction.y / directionMagnitude
+                        }
+                      : { x: 1, y: 0 };
+                  const perpendicular = {
+                    x: -normalizedDirection.y,
+                    y: normalizedDirection.x
+                  };
                   const arrowLength = 12;
                   const arrowWidth = 6;
                   const backPoint = {
-                    x: tip.x - direction.x * arrowLength,
-                    y: tip.y - direction.y * arrowLength
+                    x: tip.x - normalizedDirection.x * arrowLength,
+                    y: tip.y - normalizedDirection.y * arrowLength
                   };
                   const leftPoint = {
                     x: backPoint.x + perpendicular.x * arrowWidth,
@@ -4189,7 +4729,10 @@ export default function RealtimeBoardCanvas({
                       width: connectorFrame.width,
                       height: connectorFrame.height,
                       overflow: "visible",
-                      boxShadow: "none"
+                      boxShadow: "none",
+                      transition: isEndpointDragActive
+                        ? "none"
+                        : "left 95ms cubic-bezier(0.22, 1, 0.36, 1), top 95ms cubic-bezier(0.22, 1, 0.36, 1), width 95ms cubic-bezier(0.22, 1, 0.36, 1), height 95ms cubic-bezier(0.22, 1, 0.36, 1)"
                     }}
                   >
                     <svg
@@ -4212,26 +4755,33 @@ export default function RealtimeBoardCanvas({
                         filter: isSelected ? "drop-shadow(0 0 5px rgba(37, 99, 235, 0.45))" : "none"
                       }}
                     >
-                      <line
-                        x1={fromOffset.x}
-                        y1={fromOffset.y}
-                        x2={toOffset.x}
-                        y2={toOffset.y}
+                      <path
+                        d={connectorPath}
                         stroke={objectItem.color}
                         strokeWidth={strokeWidth}
                         strokeLinecap="round"
+                        strokeLinejoin="round"
+                        fill="none"
+                        style={{
+                          transition: isEndpointDragActive
+                            ? "none"
+                            : "d 95ms cubic-bezier(0.22, 1, 0.36, 1)"
+                        }}
                       />
                       {showFromArrow ? (
                         <polygon
                           points={buildArrowHeadPoints(fromOffset, {
-                            x: -unit.x,
-                            y: -unit.y
+                            x: -startDirection.x,
+                            y: -startDirection.y
                           })}
                           fill={objectItem.color}
                         />
                       ) : null}
                       {showToArrow ? (
-                        <polygon points={buildArrowHeadPoints(toOffset, unit)} fill={objectItem.color} />
+                        <polygon
+                          points={buildArrowHeadPoints(toOffset, endDirection)}
+                          fill={objectItem.color}
+                        />
                       ) : null}
                     </svg>
 
@@ -4245,13 +4795,34 @@ export default function RealtimeBoardCanvas({
                           aria-label="Adjust connector start"
                           style={{
                             position: "absolute",
-                            left: fromOffset.x - CONNECTOR_HANDLE_SIZE / 2,
-                            top: fromOffset.y - CONNECTOR_HANDLE_SIZE / 2,
-                            width: CONNECTOR_HANDLE_SIZE,
-                            height: CONNECTOR_HANDLE_SIZE,
+                            left:
+                              fromOffset.x -
+                              (resolvedConnector.from.connected
+                                ? CONNECTOR_HANDLE_SIZE
+                                : CONNECTOR_DISCONNECTED_HANDLE_SIZE) /
+                                2,
+                            top:
+                              fromOffset.y -
+                              (resolvedConnector.from.connected
+                                ? CONNECTOR_HANDLE_SIZE
+                                : CONNECTOR_DISCONNECTED_HANDLE_SIZE) /
+                                2,
+                            width: resolvedConnector.from.connected
+                              ? CONNECTOR_HANDLE_SIZE
+                              : CONNECTOR_DISCONNECTED_HANDLE_SIZE,
+                            height: resolvedConnector.from.connected
+                              ? CONNECTOR_HANDLE_SIZE
+                              : CONNECTOR_DISCONNECTED_HANDLE_SIZE,
                             borderRadius: "50%",
-                            border: "1px solid #1d4ed8",
-                            background: resolvedConnector.from.connected ? "#dbeafe" : "white",
+                            border: resolvedConnector.from.connected
+                              ? "1.5px solid #1d4ed8"
+                              : "2px solid #b45309",
+                            background: resolvedConnector.from.connected
+                              ? "#dbeafe"
+                              : "#fff7ed",
+                            boxShadow: resolvedConnector.from.connected
+                              ? "0 0 0 2px rgba(59, 130, 246, 0.2)"
+                              : "0 0 0 3px rgba(245, 158, 11, 0.28)",
                             cursor: "move"
                           }}
                         />
@@ -4263,13 +4834,34 @@ export default function RealtimeBoardCanvas({
                           aria-label="Adjust connector end"
                           style={{
                             position: "absolute",
-                            left: toOffset.x - CONNECTOR_HANDLE_SIZE / 2,
-                            top: toOffset.y - CONNECTOR_HANDLE_SIZE / 2,
-                            width: CONNECTOR_HANDLE_SIZE,
-                            height: CONNECTOR_HANDLE_SIZE,
+                            left:
+                              toOffset.x -
+                              (resolvedConnector.to.connected
+                                ? CONNECTOR_HANDLE_SIZE
+                                : CONNECTOR_DISCONNECTED_HANDLE_SIZE) /
+                                2,
+                            top:
+                              toOffset.y -
+                              (resolvedConnector.to.connected
+                                ? CONNECTOR_HANDLE_SIZE
+                                : CONNECTOR_DISCONNECTED_HANDLE_SIZE) /
+                                2,
+                            width: resolvedConnector.to.connected
+                              ? CONNECTOR_HANDLE_SIZE
+                              : CONNECTOR_DISCONNECTED_HANDLE_SIZE,
+                            height: resolvedConnector.to.connected
+                              ? CONNECTOR_HANDLE_SIZE
+                              : CONNECTOR_DISCONNECTED_HANDLE_SIZE,
                             borderRadius: "50%",
-                            border: "1px solid #1d4ed8",
-                            background: resolvedConnector.to.connected ? "#dbeafe" : "white",
+                            border: resolvedConnector.to.connected
+                              ? "1.5px solid #1d4ed8"
+                              : "2px solid #b45309",
+                            background: resolvedConnector.to.connected
+                              ? "#dbeafe"
+                              : "#fff7ed",
+                            boxShadow: resolvedConnector.to.connected
+                              ? "0 0 0 2px rgba(59, 130, 246, 0.2)"
+                              : "0 0 0 3px rgba(245, 158, 11, 0.28)",
                             cursor: "move"
                           }}
                         />
@@ -4280,13 +4872,14 @@ export default function RealtimeBoardCanvas({
                           <span
                             style={{
                               position: "absolute",
-                              left: fromOffset.x - 4,
-                              top: fromOffset.y - 4,
-                              width: 8,
-                              height: 8,
+                              left: fromOffset.x - 6,
+                              top: fromOffset.y - 6,
+                              width: 12,
+                              height: 12,
                               borderRadius: "50%",
-                              border: "1px solid #475569",
-                              background: "white",
+                              border: "2px solid #b45309",
+                              background: "#fff7ed",
+                              boxShadow: "0 0 0 2px rgba(245, 158, 11, 0.2)",
                               pointerEvents: "none"
                             }}
                           />
@@ -4295,13 +4888,14 @@ export default function RealtimeBoardCanvas({
                           <span
                             style={{
                               position: "absolute",
-                              left: toOffset.x - 4,
-                              top: toOffset.y - 4,
-                              width: 8,
-                              height: 8,
+                              left: toOffset.x - 6,
+                              top: toOffset.y - 6,
+                              width: 12,
+                              height: 12,
                               borderRadius: "50%",
-                              border: "1px solid #475569",
-                              background: "white",
+                              border: "2px solid #b45309",
+                              background: "#fff7ed",
+                              boxShadow: "0 0 0 2px rgba(245, 158, 11, 0.2)",
                               pointerEvents: "none"
                             }}
                           />

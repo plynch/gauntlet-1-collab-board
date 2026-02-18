@@ -119,6 +119,12 @@ export type BoardToolCall =
       };
     }
   | {
+      tool: "deleteObjects";
+      args: {
+        objectIds: string[];
+      };
+    }
+  | {
       tool: "getBoardState";
       args?: Record<string, never>;
     };

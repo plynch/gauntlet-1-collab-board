@@ -212,6 +212,89 @@ function toPlan(options: {
   };
 }
 
+function isClearBoardCommand(message: string): boolean {
+  const lower = normalizeMessage(message);
+  return (
+    /\bclear(?:\s+the)?\s+board\b/.test(lower) ||
+    /\bdelete\s+all\s+shapes\b/.test(lower) ||
+    /\bremove\s+all\s+shapes\b/.test(lower)
+  );
+}
+
+function planClearBoard(input: PlannerInput): DeterministicCommandPlanResult | null {
+  if (!isClearBoardCommand(input.message)) {
+    return null;
+  }
+
+  if (input.boardState.length === 0) {
+    return {
+      planned: false,
+      intent: "clear-board-empty",
+      assistantMessage: "Board is already empty."
+    };
+  }
+
+  return {
+    planned: true,
+    intent: "clear-board",
+    assistantMessage: `Cleared board and deleted ${input.boardState.length} object${input.boardState.length === 1 ? "" : "s"}.`,
+    plan: toPlan({
+      id: "command.clear-board",
+      name: "Clear Board",
+      operations: [
+        {
+          tool: "deleteObjects",
+          args: {
+            objectIds: input.boardState.map((objectItem) => objectItem.id)
+          }
+        }
+      ]
+    })
+  };
+}
+
+function isDeleteSelectedCommand(message: string): boolean {
+  const lower = normalizeMessage(message);
+  return (
+    /\b(delete|remove|clear)\b[\w\s]*\bselected\b/.test(lower) ||
+    /\bdelete\s+selection\b/.test(lower) ||
+    /\bremove\s+selection\b/.test(lower)
+  );
+}
+
+function planDeleteSelected(input: PlannerInput): DeterministicCommandPlanResult | null {
+  if (!isDeleteSelectedCommand(input.message)) {
+    return null;
+  }
+
+  const selectedObjects = getSelectedObjects(input.boardState, input.selectedObjectIds);
+  if (selectedObjects.length === 0) {
+    return {
+      planned: false,
+      intent: "delete-selected",
+      assistantMessage: "Select one or more objects first, then run delete selected."
+    };
+  }
+
+  return {
+    planned: true,
+    intent: "delete-selected",
+    assistantMessage: `Deleted ${selectedObjects.length} selected object${selectedObjects.length === 1 ? "" : "s"}.`,
+    plan: toPlan({
+      id: "command.delete-selected",
+      name: "Delete Selected Objects",
+      operations: [
+        {
+          tool: "deleteObjects",
+          args: {
+            objectIds: selectedObjects.map((objectItem) => objectItem.id)
+          }
+        }
+      ]
+    })
+  };
+}
+
 function planCreateSticky(input: PlannerInput): DeterministicCommandPlanResult | null {
   const lower = normalizeMessage(input.message);
   if (!/\b(add|create)\b/.test(lower) || !/\bsticky(?:\s+note)?s?\b/.test(lower)) {
@@ -619,6 +702,8 @@ export function planDeterministicCommand(
   input: PlannerInput
 ): DeterministicCommandPlanResult {
   const planners = [
+    planClearBoard,
+    planDeleteSelected,
     planCreateSticky,
     planCreateFrame,
     planCreateShape,
@@ -640,6 +725,6 @@ export function planDeterministicCommand(
     planned: false,
     intent: "unsupported-command",
     assistantMessage:
-      "I could not map that command yet. Try a supported command like creating shapes/stickies, moving selected objects, resizing selected objects, changing selected color, or creating a SWOT template."
+      "I could not map that command yet. Try creating shapes/stickies, move/resize selected objects, delete selected, clear the board, change selected color, or create a SWOT template."
   };
 }

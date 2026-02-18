@@ -124,6 +124,21 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
     }
   },
   {
+    name: "deleteObjects",
+    description: "Delete one or more objects by id.",
+    parameters: {
+      type: "object",
+      properties: {
+        objectIds: {
+          type: "array",
+          items: { type: "string" }
+        }
+      },
+      required: ["objectIds"],
+      additionalProperties: false
+    }
+  },
+  {
     name: "getBoardState",
     description: "Retrieve current board objects for context.",
     parameters: {

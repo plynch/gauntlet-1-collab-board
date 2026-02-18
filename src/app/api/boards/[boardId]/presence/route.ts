@@ -1,7 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 
-import { getFirebaseAdminDb } from "@/lib/firebase/admin";
+import { assertFirestoreWritesAllowedInDev, getFirebaseAdminDb } from "@/lib/firebase/admin";
 import { AuthError, requireUser } from "@/server/auth/require-user";
 import { canUserReadBoard, parseBoardDoc } from "@/server/boards/board-access";
 
@@ -69,6 +69,8 @@ function parsePresencePayload(input: unknown): PresencePatchPayload | null {
 
 export async function PATCH(request: NextRequest, context: BoardPresenceRouteContext) {
   try {
+    assertFirestoreWritesAllowedInDev();
+
     const user = await requireUser(request);
     const params = await context.params;
     const boardId = params.boardId?.trim();

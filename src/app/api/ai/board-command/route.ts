@@ -26,7 +26,10 @@ import { instantiateLocalTemplate } from "@/features/ai/templates/local-template
 import { SWOT_TEMPLATE_ID } from "@/features/ai/templates/template-types";
 import { BoardToolExecutor } from "@/features/ai/tools/board-tools";
 import type { BoardBounds, BoardObjectSnapshot } from "@/features/ai/types";
-import { getFirebaseAdminDb } from "@/lib/firebase/admin";
+import {
+  assertFirestoreWritesAllowedInDev,
+  getFirebaseAdminDb
+} from "@/lib/firebase/admin";
 import { AuthError, requireUser } from "@/server/auth/require-user";
 import {
   canUserEditBoard,
@@ -167,6 +170,10 @@ export async function POST(request: NextRequest) {
 
     const intent = detectBoardCommandIntent(parsedPayload.message);
     const canEdit = canUserEditBoard(board, user.uid);
+
+    if (canEdit) {
+      assertFirestoreWritesAllowedInDev();
+    }
 
     if (intent === "stub" && !canEdit) {
       const traceId = randomUUID();

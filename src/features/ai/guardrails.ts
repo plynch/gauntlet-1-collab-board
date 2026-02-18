@@ -2,6 +2,7 @@ import type { BoardToolCall, TemplatePlan } from "@/features/ai/types";
 
 export const MAX_AI_OPERATIONS_PER_COMMAND = 20;
 export const MAX_AI_CREATED_OBJECTS_PER_COMMAND = 12;
+export const MAX_AI_DELETIONS_PER_TOOL_CALL = 2_000;
 export const MAX_AI_COMMANDS_PER_USER_PER_WINDOW = 20;
 export const AI_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1_000;
 export const AI_BOARD_LOCK_TTL_MS = 15_000;
@@ -52,6 +53,19 @@ export function validateTemplatePlan(plan: TemplatePlan): {
       ok: false,
       status: 400,
       error: `Template exceeds max created objects (${MAX_AI_CREATED_OBJECTS_PER_COMMAND}).`
+    };
+  }
+
+  const oversizedDelete = plan.operations.find(
+    (operation) =>
+      operation.tool === "deleteObjects" &&
+      operation.args.objectIds.length > MAX_AI_DELETIONS_PER_TOOL_CALL
+  );
+  if (oversizedDelete && oversizedDelete.tool === "deleteObjects") {
+    return {
+      ok: false,
+      status: 400,
+      error: `Delete operation exceeds max object ids (${MAX_AI_DELETIONS_PER_TOOL_CALL}).`
     };
   }
 

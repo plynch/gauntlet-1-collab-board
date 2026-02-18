@@ -30,6 +30,26 @@ describe("validateTemplatePlan", () => {
 
     expect(result.ok).toBe(true);
   });
+
+  it("rejects oversized deleteObjects calls", () => {
+    const result = validateTemplatePlan({
+      templateId: SWOT_TEMPLATE_ID,
+      templateName: "Clear board",
+      operations: [
+        {
+          tool: "deleteObjects",
+          args: {
+            objectIds: Array.from({ length: 2_001 }, (_, index) => `obj-${index}`)
+          }
+        }
+      ]
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(400);
+    }
+  });
 });
 
 describe("checkUserRateLimit", () => {

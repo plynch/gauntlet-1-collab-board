@@ -18,12 +18,26 @@ npm install
 
 2. Add Firebase environment variables in `.env.local` (see `.env.example`).
 
-3. Start dev server:
+3. For no-paid local development, enable strict Firestore emulator mode in `.env.local`:
+```bash
+NEXT_PUBLIC_USE_FIRESTORE_EMULATOR=true
+NEXT_PUBLIC_USE_AUTH_EMULATOR=false
+NEXT_PUBLIC_DEV_REQUIRE_FIRESTORE_EMULATOR=true
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
+DEV_REQUIRE_FIRESTORE_EMULATOR=true
+```
+
+4. Start emulators (Terminal 1):
+```bash
+npm run firebase:emulators
+```
+
+5. Start app (Terminal 2):
 ```bash
 npm run dev
 ```
 
-4. Open:
+6. Open:
 `http://localhost:3000`
 
 Useful scripts:

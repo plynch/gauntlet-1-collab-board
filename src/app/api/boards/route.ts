@@ -2,7 +2,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 
 import { MAX_OWNED_BOARDS, type BoardSummary } from "@/features/boards/types";
-import { getFirebaseAdminDb } from "@/lib/firebase/admin";
+import { assertFirestoreWritesAllowedInDev, getFirebaseAdminDb } from "@/lib/firebase/admin";
 import { AuthError, requireUser } from "@/server/auth/require-user";
 
 export const runtime = "nodejs";
@@ -107,6 +107,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    assertFirestoreWritesAllowedInDev();
+
     const user = await requireUser(request);
     const db = getFirebaseAdminDb();
 

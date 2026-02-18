@@ -2,7 +2,11 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 
 import type { BoardDetail } from "@/features/boards/types";
-import { getFirebaseAdminAuth, getFirebaseAdminDb } from "@/lib/firebase/admin";
+import {
+  assertFirestoreWritesAllowedInDev,
+  getFirebaseAdminAuth,
+  getFirebaseAdminDb
+} from "@/lib/firebase/admin";
 import { AuthError, requireUser } from "@/server/auth/require-user";
 import {
   parseBoardDoc,
@@ -117,6 +121,8 @@ function normalizeEmail(value: string): string {
 
 export async function PATCH(request: NextRequest, context: BoardAccessRouteContext) {
   try {
+    assertFirestoreWritesAllowedInDev();
+
     const user = await requireUser(request);
     const params = await context.params;
     const boardId = params.boardId?.trim();

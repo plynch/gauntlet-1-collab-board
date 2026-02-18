@@ -33,6 +33,64 @@ const BOARD_STATE: BoardObjectSnapshot[] = [
 ];
 
 describe("planDeterministicCommand", () => {
+  it("plans clear board commands", () => {
+    const result = planDeterministicCommand({
+      message: "clear the board",
+      boardState: BOARD_STATE,
+      selectedObjectIds: []
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("clear-board");
+      expect(result.plan.operations).toHaveLength(1);
+      expect(result.plan.operations[0]?.tool).toBe("deleteObjects");
+    }
+  });
+
+  it("returns a no-op clear-board message when already empty", () => {
+    const result = planDeterministicCommand({
+      message: "remove all shapes",
+      boardState: [],
+      selectedObjectIds: []
+    });
+
+    expect(result.planned).toBe(false);
+    expect(result.intent).toBe("clear-board-empty");
+  });
+
+  it("treats delete all shapes as clear-board command", () => {
+    const result = planDeterministicCommand({
+      message: "delete all shapes",
+      boardState: BOARD_STATE,
+      selectedObjectIds: []
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("clear-board");
+      expect(result.plan.operations[0]?.tool).toBe("deleteObjects");
+    }
+  });
+
+  it("plans delete selected command", () => {
+    const result = planDeterministicCommand({
+      message: "delete selected",
+      boardState: BOARD_STATE,
+      selectedObjectIds: ["obj-1", "obj-2"]
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("delete-selected");
+      expect(result.plan.operations).toHaveLength(1);
+      expect(result.plan.operations[0]?.tool).toBe("deleteObjects");
+      if (result.plan.operations[0]?.tool === "deleteObjects") {
+        expect(result.plan.operations[0].args.objectIds).toEqual(["obj-1", "obj-2"]);
+      }
+    }
+  });
+
   it("plans create sticky note commands", () => {
     const result = planDeterministicCommand({
       message: "Add a yellow sticky note that says User Research",

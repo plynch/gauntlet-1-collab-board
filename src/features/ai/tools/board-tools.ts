@@ -11,7 +11,10 @@ import { getFirebaseAdminDb } from "@/lib/firebase/admin";
 type ExecuteToolResult = {
   tool: BoardToolCall["tool"];
   objectId?: string;
+  deletedCount?: number;
 };
+
+const DELETE_BATCH_CHUNK_SIZE = 400;
 
 type BoardToolExecutorOptions = {
   boardId: string;
@@ -450,6 +453,34 @@ export class BoardToolExecutor {
     return { tool: "changeColor", objectId: args.objectId };
   }
 
+  async deleteObjects(args: { objectIds: string[] }): Promise<ExecuteToolResult> {
+    await this.ensureLoadedObjects();
+
+    const uniqueObjectIds = Array.from(new Set(args.objectIds.map((value) => value.trim()))).filter(
+      (value) => value.length > 0
+    );
+    const existingObjectIds = uniqueObjectIds.filter((objectId) => this.objectsById.has(objectId));
+
+    if (existingObjectIds.length === 0) {
+      return { tool: "deleteObjects", deletedCount: 0 };
+    }
+
+    for (let index = 0; index < existingObjectIds.length; index += DELETE_BATCH_CHUNK_SIZE) {
+      const chunk = existingObjectIds.slice(index, index + DELETE_BATCH_CHUNK_SIZE);
+      const batch = this.db.batch();
+      chunk.forEach((objectId) => {
+        batch.delete(this.objectsCollection.doc(objectId));
+      });
+      await batch.commit();
+    }
+
+    existingObjectIds.forEach((objectId) => {
+      this.objectsById.delete(objectId);
+    });
+
+    return { tool: "deleteObjects", deletedCount: existingObjectIds.length };
+  }
+
   async executeToolCall(toolCall: BoardToolCall): Promise<ExecuteToolResult> {
     switch (toolCall.tool) {
       case "getBoardState":
@@ -471,6 +502,8 @@ export class BoardToolExecutor {
         return this.updateText(toolCall.args);
       case "changeColor":
         return this.changeColor(toolCall.args);
+      case "deleteObjects":
+        return this.deleteObjects(toolCall.args);
       default: {
         const exhaustiveCheck: never = toolCall;
         throw new Error(`Unsupported tool call: ${JSON.stringify(exhaustiveCheck)}`);

@@ -31,12 +31,20 @@ import type {
 } from "@/features/boards/types";
 import { getFirebaseClientDb } from "@/lib/firebase/client";
 
-const CURSOR_THROTTLE_MS = 100;
-const DRAG_THROTTLE_MS = 40;
+// Cost/perf tradeoff: keep cursors smooth while cutting high-frequency write churn.
+const CURSOR_THROTTLE_MS = 120;
+const DRAG_THROTTLE_MS = 45;
 const DRAG_CLICK_SLOP_PX = 3;
-const STICKY_TEXT_SYNC_THROTTLE_MS = 120;
+const STICKY_TEXT_SYNC_THROTTLE_MS = 180;
 const PRESENCE_HEARTBEAT_MS = 10_000;
 const PRESENCE_TTL_MS = 15_000;
+// Ignore tiny pointer jitter; remote users still see smooth cursor motion.
+const CURSOR_MIN_MOVE_DISTANCE = 2;
+// Quantize transform writes so near-identical pointer deltas coalesce.
+const POSITION_WRITE_STEP = 0.5;
+const POSITION_WRITE_EPSILON = 0.1;
+const GEOMETRY_WRITE_EPSILON = 0.3;
+const GEOMETRY_ROTATION_EPSILON_DEG = 0.35;
 const MIN_SCALE = 0.05;
 const MAX_SCALE = 2;
 const ZOOM_SLIDER_MIN_PERCENT = Math.round(MIN_SCALE * 100);
@@ -116,6 +124,11 @@ type ObjectGeometry = {
   rotationDeg: number;
 };
 
+type ObjectWriteOptions = {
+  includeUpdatedAt?: boolean;
+  force?: boolean;
+};
+
 type CornerResizeState = {
   objectId: string;
   objectType: Exclude<BoardObjectKind, "line">;
@@ -145,6 +158,7 @@ type RotateState = {
 type StickyTextSyncState = {
   pendingText: string | null;
   lastSentAt: number;
+  lastSentText: string | null;
   timerId: number | null;
 };
 
@@ -263,6 +277,10 @@ function getSpawnOffset(index: number, step: number): BoardPoint {
     x: gridX * step,
     y: gridY * step
   };
+}
+
+function createChatMessageId(prefix: "u" | "a"): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 function getString(value: unknown, fallback = ""): string {
@@ -432,8 +450,48 @@ function toDegrees(radians: number): number {
   return (radians * 180) / Math.PI;
 }
 
+function roundToStep(value: number, step: number): number {
+  return Math.round(value / step) * step;
+}
+
+function toWritePoint(point: BoardPoint): BoardPoint {
+  return {
+    x: roundToStep(point.x, POSITION_WRITE_STEP),
+    y: roundToStep(point.y, POSITION_WRITE_STEP)
+  };
+}
+
+function getDistance(left: BoardPoint, right: BoardPoint): number {
+  return Math.hypot(left.x - right.x, left.y - right.y);
+}
+
+function arePointsClose(left: BoardPoint, right: BoardPoint, epsilon: number): boolean {
+  return Math.abs(left.x - right.x) <= epsilon && Math.abs(left.y - right.y) <= epsilon;
+}
+
 function normalizeRotationDeg(rotationDeg: number): number {
   return ((rotationDeg % 360) + 360) % 360;
+}
+
+function getRotationDelta(leftRotationDeg: number, rightRotationDeg: number): number {
+  const normalizedLeft = normalizeRotationDeg(leftRotationDeg);
+  const normalizedRight = normalizeRotationDeg(rightRotationDeg);
+  const rawDelta = Math.abs(normalizedLeft - normalizedRight);
+  return Math.min(rawDelta, 360 - rawDelta);
+}
+
+function areGeometriesClose(
+  leftGeometry: ObjectGeometry,
+  rightGeometry: ObjectGeometry
+): boolean {
+  return (
+    Math.abs(leftGeometry.x - rightGeometry.x) <= GEOMETRY_WRITE_EPSILON &&
+    Math.abs(leftGeometry.y - rightGeometry.y) <= GEOMETRY_WRITE_EPSILON &&
+    Math.abs(leftGeometry.width - rightGeometry.width) <= GEOMETRY_WRITE_EPSILON &&
+    Math.abs(leftGeometry.height - rightGeometry.height) <= GEOMETRY_WRITE_EPSILON &&
+    getRotationDelta(leftGeometry.rotationDeg, rightGeometry.rotationDeg) <=
+      GEOMETRY_ROTATION_EPSILON_DEG
+  );
 }
 
 function hasMeaningfulRotation(rotationDeg: number): boolean {
@@ -797,6 +855,10 @@ export default function RealtimeBoardCanvas({
   const stickyTextSyncStateRef = useRef<Map<string, StickyTextSyncState>>(new Map());
   const sendCursorAtRef = useRef(0);
   const canEditRef = useRef(canEdit);
+  const lastCursorWriteRef = useRef<BoardPoint | null>(null);
+  const lastPositionWriteByIdRef = useRef<Map<string, BoardPoint>>(new Map());
+  const lastGeometryWriteByIdRef = useRef<Map<string, ObjectGeometry>>(new Map());
+  const lastStickyWriteByIdRef = useRef<Map<string, string>>(new Map());
 
   const [viewport, setViewport] = useState<ViewportState>(INITIAL_VIEWPORT);
   const [objects, setObjects] = useState<BoardObject[]>([]);
@@ -816,6 +878,7 @@ export default function RealtimeBoardCanvas({
   const [aiFooterHeight, setAiFooterHeight] = useState(AI_FOOTER_DEFAULT_HEIGHT);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
+  const [isAiSubmitting, setIsAiSubmitting] = useState(false);
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [selectionHudSize, setSelectionHudSize] = useState({ width: 0, height: 0 });
 
@@ -843,6 +906,16 @@ export default function RealtimeBoardCanvas({
 
   useEffect(() => {
     objectsByIdRef.current = new Map(objects.map((item) => [item.id, item]));
+
+    const objectIds = new Set(objects.map((item) => item.id));
+    [lastPositionWriteByIdRef.current, lastGeometryWriteByIdRef.current, lastStickyWriteByIdRef.current]
+      .forEach((cache) => {
+        Array.from(cache.keys()).forEach((objectId) => {
+          if (!objectIds.has(objectId)) {
+            cache.delete(objectId);
+          }
+        });
+      });
   }, [objects]);
 
   useEffect(() => {
@@ -984,6 +1057,8 @@ export default function RealtimeBoardCanvas({
 
   const markPresenceInactive = useCallback(
     (keepalive: boolean) => {
+      lastCursorWriteRef.current = null;
+
       const payload = {
         active: false,
         cursorX: null,
@@ -1158,19 +1233,54 @@ export default function RealtimeBoardCanvas({
   }, []);
 
   const updateObjectGeometry = useCallback(
-    async (objectId: string, geometry: ObjectGeometry) => {
+    async (objectId: string, geometry: ObjectGeometry, options: ObjectWriteOptions = {}) => {
       if (!canEditRef.current) {
         return;
       }
 
+      const includeUpdatedAt = options.includeUpdatedAt ?? true;
+      const force = options.force ?? false;
+      const nextGeometry: ObjectGeometry = {
+        x: roundToStep(geometry.x, POSITION_WRITE_STEP),
+        y: roundToStep(geometry.y, POSITION_WRITE_STEP),
+        width: roundToStep(geometry.width, POSITION_WRITE_STEP),
+        height: roundToStep(geometry.height, POSITION_WRITE_STEP),
+        rotationDeg: geometry.rotationDeg
+      };
+      const objectItem = objectsByIdRef.current.get(objectId);
+      const previousGeometry =
+        lastGeometryWriteByIdRef.current.get(objectId) ??
+        (objectItem
+          ? {
+              x: objectItem.x,
+              y: objectItem.y,
+              width: objectItem.width,
+              height: objectItem.height,
+              rotationDeg: objectItem.rotationDeg
+            }
+          : null);
+
+      if (!force && previousGeometry && areGeometriesClose(previousGeometry, nextGeometry)) {
+        return;
+      }
+
       try {
-        await updateDoc(doc(db, `boards/${boardId}/objects/${objectId}`), {
-          x: geometry.x,
-          y: geometry.y,
-          width: geometry.width,
-          height: geometry.height,
-          rotationDeg: geometry.rotationDeg,
-          updatedAt: serverTimestamp()
+        const payload: Record<string, unknown> = {
+          x: nextGeometry.x,
+          y: nextGeometry.y,
+          width: nextGeometry.width,
+          height: nextGeometry.height,
+          rotationDeg: nextGeometry.rotationDeg
+        };
+        if (includeUpdatedAt) {
+          payload.updatedAt = serverTimestamp();
+        }
+
+        await updateDoc(doc(db, `boards/${boardId}/objects/${objectId}`), payload);
+        lastGeometryWriteByIdRef.current.set(objectId, nextGeometry);
+        lastPositionWriteByIdRef.current.set(objectId, {
+          x: nextGeometry.x,
+          y: nextGeometry.y
         });
       } catch (error) {
         console.error("Failed to update object transform", error);
@@ -1183,12 +1293,14 @@ export default function RealtimeBoardCanvas({
   const updateObjectPositionsBatch = useCallback(
     async (
       nextPositionsById: Record<string, BoardPoint>,
-      includeUpdatedAt: boolean
+      options: ObjectWriteOptions = {}
     ) => {
       if (!canEditRef.current) {
         return;
       }
 
+      const includeUpdatedAt = options.includeUpdatedAt ?? false;
+      const force = options.force ?? false;
       const entries = Object.entries(nextPositionsById);
       if (entries.length === 0) {
         return;
@@ -1196,26 +1308,52 @@ export default function RealtimeBoardCanvas({
 
       try {
         const batch = writeBatch(db);
-        let hasWrites = false;
+        const writeEntries: Array<[string, BoardPoint]> = [];
 
         entries.forEach(([objectId, position]) => {
+          const nextPosition = toWritePoint(position);
+          const objectItem = objectsByIdRef.current.get(objectId);
+          const previousPosition =
+            lastPositionWriteByIdRef.current.get(objectId) ??
+            (objectItem
+              ? {
+                  x: objectItem.x,
+                  y: objectItem.y
+                }
+              : null);
+
+          if (!force && previousPosition && arePointsClose(previousPosition, nextPosition, POSITION_WRITE_EPSILON)) {
+            return;
+          }
+
           const updatePayload: Record<string, unknown> = {
-            x: position.x,
-            y: position.y
+            x: nextPosition.x,
+            y: nextPosition.y
           };
           if (includeUpdatedAt) {
             updatePayload.updatedAt = serverTimestamp();
           }
 
           batch.update(doc(db, `boards/${boardId}/objects/${objectId}`), updatePayload);
-          hasWrites = true;
+          writeEntries.push([objectId, nextPosition]);
         });
 
-        if (!hasWrites) {
+        if (writeEntries.length === 0) {
           return;
         }
 
         await batch.commit();
+        writeEntries.forEach(([objectId, position]) => {
+          lastPositionWriteByIdRef.current.set(objectId, position);
+          const previousGeometry = lastGeometryWriteByIdRef.current.get(objectId);
+          if (previousGeometry) {
+            lastGeometryWriteByIdRef.current.set(objectId, {
+              ...previousGeometry,
+              x: position.x,
+              y: position.y
+            });
+          }
+        });
       } catch (error) {
         console.error("Failed to update object positions", error);
         setBoardError(toBoardErrorMessage(error, "Failed to update object positions."));
@@ -1396,7 +1534,9 @@ export default function RealtimeBoardCanvas({
         const now = Date.now();
         if (canEditRef.current && now - cornerResizeState.lastSentAt >= RESIZE_THROTTLE_MS) {
           cornerResizeState.lastSentAt = now;
-          void updateObjectGeometry(cornerResizeState.objectId, nextGeometry);
+          void updateObjectGeometry(cornerResizeState.objectId, nextGeometry, {
+            includeUpdatedAt: false
+          });
         }
         return;
       }
@@ -1427,7 +1567,9 @@ export default function RealtimeBoardCanvas({
           now - lineEndpointResizeState.lastSentAt >= RESIZE_THROTTLE_MS
         ) {
           lineEndpointResizeState.lastSentAt = now;
-          void updateObjectGeometry(lineEndpointResizeState.objectId, nextGeometry);
+          void updateObjectGeometry(lineEndpointResizeState.objectId, nextGeometry, {
+            includeUpdatedAt: false
+          });
         }
         return;
       }
@@ -1475,7 +1617,9 @@ export default function RealtimeBoardCanvas({
         const now = Date.now();
         if (canEditRef.current && now - rotateState.lastSentAt >= ROTATE_THROTTLE_MS) {
           rotateState.lastSentAt = now;
-          void updateObjectGeometry(rotateState.objectId, nextGeometry);
+          void updateObjectGeometry(rotateState.objectId, nextGeometry, {
+            includeUpdatedAt: false
+          });
         }
         return;
       }
@@ -1557,7 +1701,9 @@ export default function RealtimeBoardCanvas({
         const now = Date.now();
         if (canEditRef.current && now - dragState.lastSentAt >= DRAG_THROTTLE_MS) {
           dragState.lastSentAt = now;
-          void updateObjectPositionsBatch(nextPositionsById, false);
+          void updateObjectPositionsBatch(nextPositionsById, {
+            includeUpdatedAt: false
+          });
         }
       }
     };
@@ -1575,7 +1721,10 @@ export default function RealtimeBoardCanvas({
         clearDraftGeometry(cornerResizeState.objectId);
 
         if (finalGeometry && canEditRef.current) {
-          void updateObjectGeometry(cornerResizeState.objectId, finalGeometry);
+          void updateObjectGeometry(cornerResizeState.objectId, finalGeometry, {
+            includeUpdatedAt: true,
+            force: true
+          });
         }
         return;
       }
@@ -1587,7 +1736,10 @@ export default function RealtimeBoardCanvas({
         clearDraftGeometry(lineEndpointResizeState.objectId);
 
         if (finalGeometry && canEditRef.current) {
-          void updateObjectGeometry(lineEndpointResizeState.objectId, finalGeometry);
+          void updateObjectGeometry(lineEndpointResizeState.objectId, finalGeometry, {
+            includeUpdatedAt: true,
+            force: true
+          });
         }
         return;
       }
@@ -1599,7 +1751,10 @@ export default function RealtimeBoardCanvas({
         clearDraftGeometry(rotateState.objectId);
 
         if (finalGeometry && canEditRef.current) {
-          void updateObjectGeometry(rotateState.objectId, finalGeometry);
+          void updateObjectGeometry(rotateState.objectId, finalGeometry, {
+            includeUpdatedAt: true,
+            force: true
+          });
         }
         return;
       }
@@ -1671,7 +1826,10 @@ export default function RealtimeBoardCanvas({
           };
         });
 
-        void updateObjectPositionsBatch(nextPositionsById, true);
+        void updateObjectPositionsBatch(nextPositionsById, {
+          includeUpdatedAt: true,
+          force: true
+        });
       } else {
         dragState.objectIds.forEach((objectId) => {
           clearDraftGeometry(objectId);
@@ -1714,19 +1872,38 @@ export default function RealtimeBoardCanvas({
   );
 
   const updateCursor = useCallback(
-    async (cursor: BoardPoint | null) => {
+    async (cursor: BoardPoint | null, options: { force?: boolean } = {}) => {
+      const force = options.force ?? false;
+      const nextCursor = cursor ? toWritePoint(cursor) : null;
+      const previousCursor = lastCursorWriteRef.current;
+
+      if (!force) {
+        if (nextCursor === null && previousCursor === null) {
+          return;
+        }
+
+        if (
+          nextCursor !== null &&
+          previousCursor !== null &&
+          getDistance(nextCursor, previousCursor) < CURSOR_MIN_MOVE_DISTANCE
+        ) {
+          return;
+        }
+      }
+
       try {
         await setDoc(
           selfPresenceRef,
           {
-            cursorX: cursor?.x ?? null,
-            cursorY: cursor?.y ?? null,
+            cursorX: nextCursor?.x ?? null,
+            cursorY: nextCursor?.y ?? null,
             active: true,
             lastSeenAtMs: Date.now(),
             lastSeenAt: serverTimestamp()
           },
           { merge: true }
         );
+        lastCursorWriteRef.current = nextCursor;
       } catch {
         // Ignore cursor write failures to avoid interrupting interactions.
       }
@@ -1794,6 +1971,9 @@ export default function RealtimeBoardCanvas({
           window.clearTimeout(syncState.timerId);
         }
         stickyTextSyncStateRef.current.delete(objectId);
+        lastStickyWriteByIdRef.current.delete(objectId);
+        lastPositionWriteByIdRef.current.delete(objectId);
+        lastGeometryWriteByIdRef.current.delete(objectId);
         setTextDrafts((previous) => {
           if (!(objectId in previous)) {
             return previous;
@@ -1819,10 +1999,27 @@ export default function RealtimeBoardCanvas({
       }
 
       try {
+        const normalizedText = nextText.slice(0, 1_000);
+        const lastWrittenText = lastStickyWriteByIdRef.current.get(objectId);
+        if (lastWrittenText === normalizedText) {
+          return;
+        }
+
+        const objectItem = objectsByIdRef.current.get(objectId);
+        if (objectItem && objectItem.text === normalizedText) {
+          lastStickyWriteByIdRef.current.set(objectId, normalizedText);
+          return;
+        }
+
         await updateDoc(doc(db, `boards/${boardId}/objects/${objectId}`), {
-          text: nextText.slice(0, 1_000),
+          text: normalizedText,
           updatedAt: serverTimestamp()
         });
+        lastStickyWriteByIdRef.current.set(objectId, normalizedText);
+        const syncState = stickyTextSyncStateRef.current.get(objectId);
+        if (syncState) {
+          syncState.lastSentText = normalizedText;
+        }
       } catch (error) {
         console.error("Failed to update sticky text", error);
         setBoardError(toBoardErrorMessage(error, "Failed to update sticky text."));
@@ -1866,12 +2063,27 @@ export default function RealtimeBoardCanvas({
       let syncState = syncStates.get(objectId);
 
       if (!syncState) {
+        const objectItem = objectsByIdRef.current.get(objectId);
         syncState = {
           pendingText: null,
           lastSentAt: 0,
+          lastSentText:
+            lastStickyWriteByIdRef.current.get(objectId) ?? objectItem?.text ?? null,
           timerId: null
         };
         syncStates.set(objectId, syncState);
+      }
+
+      const objectItem = objectsByIdRef.current.get(objectId);
+      const lastSavedText =
+        syncState.lastSentText ?? lastStickyWriteByIdRef.current.get(objectId) ?? null;
+      if (normalizedText === lastSavedText || (objectItem && objectItem.text === normalizedText)) {
+        syncState.pendingText = null;
+        if (syncState.timerId !== null) {
+          window.clearTimeout(syncState.timerId);
+          syncState.timerId = null;
+        }
+        return;
       }
 
       syncState.pendingText = normalizedText;
@@ -2075,27 +2287,75 @@ export default function RealtimeBoardCanvas({
     (event: ReactFormEvent<HTMLFormElement>) => {
       event.preventDefault();
       const nextMessage = chatInput.trim();
-      if (nextMessage.length === 0) {
+      if (nextMessage.length === 0 || isAiSubmitting) {
         return;
       }
 
-      const now = Date.now();
-      setChatMessages((previous) => [
-        ...previous,
-        {
-          id: `u-${now}`,
+      setChatMessages((previous) => {
+        const next = [...previous];
+        next.push({
+          id: createChatMessageId("u"),
           role: "user",
           text: nextMessage
-        },
-        {
-          id: `a-${now + 1}`,
-          role: "assistant",
-          text: "AI agent coming soon!"
-        }
-      ]);
+        });
+        return next;
+      });
       setChatInput("");
+      setIsAiSubmitting(true);
+
+      void (async () => {
+        try {
+          const idToken = idTokenRef.current ?? (await user.getIdToken());
+          idTokenRef.current = idToken;
+
+          const response = await fetch("/api/ai/board-command", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${idToken}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              boardId,
+              message: nextMessage,
+              selectedObjectIds: Array.from(selectedObjectIdsRef.current)
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`AI route failed (${response.status})`);
+          }
+
+          const payload = (await response.json()) as {
+            assistantMessage?: unknown;
+          };
+          const assistantMessage =
+            typeof payload.assistantMessage === "string" && payload.assistantMessage.trim()
+              ? payload.assistantMessage
+              : "AI agent coming soon!";
+
+          setChatMessages((previous) => [
+            ...previous,
+            {
+              id: createChatMessageId("a"),
+              role: "assistant",
+              text: assistantMessage
+            }
+          ]);
+        } catch {
+          setChatMessages((previous) => [
+            ...previous,
+            {
+              id: createChatMessageId("a"),
+              role: "assistant",
+              text: "AI agent coming soon!"
+            }
+          ]);
+        } finally {
+          setIsAiSubmitting(false);
+        }
+      })();
     },
-    [chatInput]
+    [boardId, chatInput, isAiSubmitting, user]
   );
 
   const handleStagePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
@@ -2165,7 +2425,7 @@ export default function RealtimeBoardCanvas({
   );
 
   const handleStagePointerLeave = useCallback(() => {
-    void updateCursor(null);
+    void updateCursor(null, { force: true });
   }, [updateCursor]);
 
   const setScaleAtClientPoint = useCallback(
@@ -3854,6 +4114,7 @@ export default function RealtimeBoardCanvas({
                 <input
                   value={chatInput}
                   onChange={(event) => setChatInput(event.target.value)}
+                  disabled={isAiSubmitting}
                   placeholder="Ask AI agent..."
                   style={{
                     flex: 1,
@@ -3861,8 +4122,11 @@ export default function RealtimeBoardCanvas({
                     padding: "0.48rem 0.58rem"
                   }}
                 />
-                <button type="submit" disabled={chatInput.trim().length === 0}>
-                  Send
+                <button
+                  type="submit"
+                  disabled={isAiSubmitting || chatInput.trim().length === 0}
+                >
+                  {isAiSubmitting ? "Sending..." : "Send"}
                 </button>
               </div>
             </form>

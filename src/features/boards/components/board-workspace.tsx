@@ -96,26 +96,30 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
         }}
       >
         <div>
-          <Link
-            href="/"
-            title="Back to My Boards"
-            aria-label="Back to My Boards"
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: "50%",
-              border: "1px solid #cbd5e1",
-              background: "#f8fafc",
-              color: "#0f172a",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              textDecoration: "none",
-              fontSize: 18
-            }}
-          >
-            {"<"}
-          </Link>
+          {user ? (
+            <Link
+              href="/"
+              title="Back to My Boards"
+              aria-label="Back to My Boards"
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: "50%",
+                border: "1px solid #cbd5e1",
+                background: "#f8fafc",
+                color: "#0f172a",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                textDecoration: "none",
+                fontSize: 18
+              }}
+            >
+              {"<"}
+            </Link>
+          ) : (
+            <div style={{ width: 34, height: 34 }} />
+          )}
         </div>
         <h1
           style={{

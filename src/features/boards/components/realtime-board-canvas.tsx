@@ -167,8 +167,8 @@ const RESIZE_HANDLE_SIZE = 10;
 const LINE_MIN_LENGTH = 40;
 const SELECTED_OBJECT_HALO = "0 0 0 2px rgba(59, 130, 246, 0.45), 0 8px 14px rgba(0,0,0,0.14)";
 const OBJECT_SPAWN_STEP_PX = 20;
-const PANEL_SEPARATOR_COLOR = "#94a3b8";
-const PANEL_SEPARATOR_WIDTH = 3;
+const PANEL_SEPARATOR_COLOR = "#6f8196";
+const PANEL_SEPARATOR_WIDTH = 4;
 const LEFT_PANEL_WIDTH = 232;
 const RIGHT_PANEL_WIDTH = 238;
 const COLLAPSED_PANEL_WIDTH = 48;
@@ -2692,19 +2692,32 @@ export default function RealtimeBoardCanvas({
                 height: "100%",
                 display: "flex",
                 flexDirection: "column",
-                alignItems: "center",
-                paddingTop: "0.55rem",
+                alignItems: "flex-end",
+                justifyContent: "space-between",
+                padding: "0.55rem 0.35rem 0.55rem 0.2rem",
                 gap: "0.55rem"
               }}
             >
+              <span
+                style={{
+                  writingMode: "vertical-rl",
+                  transform: "rotate(180deg)",
+                  color: "#334155",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: "0.04em"
+                }}
+              >
+                TOOLS
+              </span>
               <button
                 type="button"
                 onClick={() => setIsLeftPanelCollapsed(false)}
                 title="Expand tools panel"
                 aria-label="Expand tools panel"
                 style={{
-                  width: 34,
-                  height: 34,
+                  width: 36,
+                  height: 36,
                   borderRadius: 10,
                   border: "2px solid #334155",
                   background: "#e2e8f0",
@@ -2722,25 +2735,29 @@ export default function RealtimeBoardCanvas({
                 style={{
                   padding: "0.6rem 0.7rem",
                   borderBottom: "1px solid #dbe3eb",
-                  display: "grid",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-end",
                   gap: "0.45rem"
                 }}
               >
-                <strong style={{ fontSize: 13, color: "#111827", lineHeight: 1.2 }}>Tools</strong>
+                <strong style={{ fontSize: 13, color: "#111827", lineHeight: 1.2 }}>
+                  Tools
+                </strong>
                 <button
                   type="button"
                   onClick={() => setIsLeftPanelCollapsed(true)}
                   title="Collapse tools panel"
                   aria-label="Collapse tools panel"
                   style={{
-                    width: 34,
-                    height: 34,
+                    width: 36,
+                    height: 36,
                     border: "2px solid #334155",
                     borderRadius: 10,
                     background: "#e2e8f0",
                     color: "#0f172a",
                     fontWeight: 700,
-                    justifySelf: "start",
+                    alignSelf: "flex-end",
                     cursor: "pointer"
                   }}
                 >
@@ -2752,6 +2769,7 @@ export default function RealtimeBoardCanvas({
                 style={{
                   minHeight: 0,
                   overflowY: "auto",
+                  overflowX: "hidden",
                   padding: "0.65rem",
                   display: "grid",
                   gap: "0.7rem",
@@ -2820,18 +2838,31 @@ export default function RealtimeBoardCanvas({
                   </button>
                 ) : null}
 
-                <button type="button" onClick={() => setViewport(INITIAL_VIEWPORT)}>
+                <button
+                  type="button"
+                  onClick={() => setViewport(INITIAL_VIEWPORT)}
+                  style={{
+                    width: "100%",
+                    height: 32,
+                    borderRadius: 8,
+                    border: "1px solid #cbd5e1",
+                    background: "white",
+                    fontSize: 12
+                  }}
+                >
                   Reset view
                 </button>
 
                 <div
                   style={{
-                    display: "inline-flex",
+                    display: "grid",
+                    gridTemplateColumns: "22px minmax(0, 1fr) 22px auto",
                     alignItems: "center",
                     gap: "0.35rem",
-                    padding: "0.2rem 0.45rem",
+                    width: "100%",
+                    padding: "0.2rem 0.35rem",
                     border: "1px solid #d1d5db",
-                    borderRadius: 999,
+                    borderRadius: 10,
                     background: "white"
                   }}
                 >
@@ -2843,7 +2874,7 @@ export default function RealtimeBoardCanvas({
                     style={{
                       width: 22,
                       height: 22,
-                      borderRadius: 999,
+                      borderRadius: 6,
                       border: "1px solid #d1d5db",
                       background: "#f8fafc",
                       lineHeight: 1,
@@ -2864,7 +2895,8 @@ export default function RealtimeBoardCanvas({
                     }}
                     aria-label="Zoom level"
                     style={{
-                      width: 112,
+                      width: "100%",
+                      minWidth: 0,
                       accentColor: "#2563eb"
                     }}
                   />
@@ -2876,7 +2908,7 @@ export default function RealtimeBoardCanvas({
                     style={{
                       width: 22,
                       height: 22,
-                      borderRadius: 999,
+                      borderRadius: 6,
                       border: "1px solid #d1d5db",
                       background: "#f8fafc",
                       lineHeight: 1,
@@ -2888,8 +2920,8 @@ export default function RealtimeBoardCanvas({
                   <span
                     style={{
                       color: "#6b7280",
-                      fontSize: 12,
-                      minWidth: 40,
+                      fontSize: 11,
+                      minWidth: 34,
                       textAlign: "right",
                       fontVariantNumeric: "tabular-nums"
                     }}
@@ -2898,7 +2930,14 @@ export default function RealtimeBoardCanvas({
                   </span>
                 </div>
 
-                <span style={{ color: selectedObjectCount > 0 ? "#111827" : "#6b7280", fontSize: 13 }}>
+                <span
+                  style={{
+                    color: selectedObjectCount > 0 ? "#111827" : "#6b7280",
+                    fontSize: 12,
+                    lineHeight: 1.25,
+                    wordBreak: "break-word"
+                  }}
+                >
                   Selected:{" "}
                   {selectedObjectCount > 0
                     ? `${selectedObjectCount} object${selectedObjectCount === 1 ? "" : "s"}`
@@ -3509,8 +3548,9 @@ export default function RealtimeBoardCanvas({
                 height: "100%",
                 display: "flex",
                 flexDirection: "column",
-                alignItems: "center",
-                paddingTop: "0.55rem",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                padding: "0.55rem 0.2rem 0.55rem 0.35rem",
                 gap: "0.55rem"
               }}
             >
@@ -3520,8 +3560,8 @@ export default function RealtimeBoardCanvas({
                 title="Expand online users panel"
                 aria-label="Expand online users panel"
                 style={{
-                  width: 34,
-                  height: 34,
+                  width: 36,
+                  height: 36,
                   borderRadius: 10,
                   border: "2px solid #334155",
                   background: "#e2e8f0",
@@ -3532,6 +3572,18 @@ export default function RealtimeBoardCanvas({
               >
                 {"<"}
               </button>
+              <span
+                style={{
+                  writingMode: "vertical-rl",
+                  transform: "rotate(180deg)",
+                  color: "#334155",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: "0.04em"
+                }}
+              >
+                ONLINE USERS
+              </span>
             </div>
           ) : (
             <>
@@ -3562,8 +3614,8 @@ export default function RealtimeBoardCanvas({
                   title="Collapse online users panel"
                   aria-label="Collapse online users panel"
                   style={{
-                    width: 34,
-                    height: 34,
+                    width: 36,
+                    height: 36,
                     border: "2px solid #334155",
                     borderRadius: 10,
                     background: "#e2e8f0",
@@ -3640,16 +3692,26 @@ export default function RealtimeBoardCanvas({
           <div
             style={{
               height: "100%",
-              display: "flex",
+              display: "grid",
               alignItems: "center",
-              justifyContent: "space-between",
-              padding: "0 0.9rem"
+              padding: "0 clamp(0.8rem, 2vw, 1.5rem)"
             }}
           >
-            <strong style={{ fontSize: 13, color: "#0f172a" }}>AI Assistant</strong>
-            <button type="button" onClick={() => setIsAiFooterCollapsed(false)}>
-              Open
-            </button>
+            <div
+              style={{
+                width: "min(100%, 800px)",
+                margin: "0 auto",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "0.75rem"
+              }}
+            >
+              <strong style={{ fontSize: 13, color: "#0f172a" }}>AI Assistant</strong>
+              <button type="button" onClick={() => setIsAiFooterCollapsed(false)}>
+                ^
+              </button>
+            </div>
           </div>
         ) : (
           <>
@@ -3678,81 +3740,107 @@ export default function RealtimeBoardCanvas({
 
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "0.45rem 0.75rem",
+                display: "grid",
+                padding: "0.45rem clamp(0.8rem, 2vw, 1.5rem)",
                 borderBottom: "1px solid #e5e7eb",
                 gap: "0.5rem"
               }}
             >
-              <strong style={{ fontSize: 13, color: "#0f172a" }}>AI Assistant</strong>
-              <button type="button" onClick={() => setIsAiFooterCollapsed(true)}>
-                Collapse
-              </button>
+              <div
+                style={{
+                  width: "min(100%, 800px)",
+                  margin: "0 auto",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "0.75rem"
+                }}
+              >
+                <strong style={{ fontSize: 13, color: "#0f172a" }}>AI Assistant</strong>
+                <button type="button" onClick={() => setIsAiFooterCollapsed(true)}>
+                  v
+                </button>
+              </div>
             </div>
 
             <div
-              ref={chatMessagesRef}
               style={{
                 flex: 1,
                 minHeight: 0,
-                overflowY: "auto",
-                padding: "0.6rem 0.75rem",
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.5rem",
-                background: "#f8fafc"
+                padding: "0.6rem clamp(0.8rem, 2vw, 1.5rem)",
+                background: "#f8fafc",
+                overflow: "hidden"
               }}
             >
-              {chatMessages.length === 0 ? (
-                <span style={{ color: "#64748b", fontSize: 13 }}>
-                  Ask the board assistant something. It will reply with a stub for now.
-                </span>
-              ) : (
-                chatMessages.map((message) => (
-                  <div
-                    key={message.id}
-                    style={{
-                      alignSelf: message.role === "user" ? "flex-end" : "flex-start",
-                      maxWidth: "min(520px, 92%)",
-                      padding: "0.42rem 0.58rem",
-                      borderRadius: 8,
-                      background: message.role === "user" ? "#dbeafe" : "#e2e8f0",
-                      color: "#0f172a",
-                      fontSize: 13,
-                      lineHeight: 1.35
-                    }}
-                  >
-                    {message.text}
-                  </div>
-                ))
-              )}
+              <div
+                ref={chatMessagesRef}
+                style={{
+                  height: "100%",
+                  width: "min(100%, 800px)",
+                  margin: "0 auto",
+                  overflowY: "auto",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.5rem"
+                }}
+              >
+                {chatMessages.length === 0 ? (
+                  <span style={{ color: "#64748b", fontSize: 13 }}>
+                    Ask the board assistant something. It will reply with a stub for now.
+                  </span>
+                ) : (
+                  chatMessages.map((message) => (
+                    <div
+                      key={message.id}
+                      style={{
+                        alignSelf: message.role === "user" ? "flex-end" : "flex-start",
+                        maxWidth: "min(520px, 92%)",
+                        padding: "0.42rem 0.58rem",
+                        borderRadius: 8,
+                        background: message.role === "user" ? "#dbeafe" : "#e2e8f0",
+                        color: "#0f172a",
+                        fontSize: 13,
+                        lineHeight: 1.35
+                      }}
+                    >
+                      {message.text}
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
 
             <form
               onSubmit={handleAiChatSubmit}
               style={{
-                display: "flex",
-                gap: "0.5rem",
-                alignItems: "center",
-                padding: "0.55rem 0.75rem",
+                display: "grid",
+                padding: "0.55rem clamp(0.8rem, 2vw, 1.5rem)",
                 borderTop: "1px solid #e5e7eb"
               }}
             >
-              <input
-                value={chatInput}
-                onChange={(event) => setChatInput(event.target.value)}
-                placeholder="Ask AI agent..."
+              <div
                 style={{
-                  flex: 1,
-                  minWidth: 0,
-                  padding: "0.48rem 0.58rem"
+                  width: "min(100%, 800px)",
+                  margin: "0 auto",
+                  display: "flex",
+                  gap: "0.5rem",
+                  alignItems: "center"
                 }}
-              />
-              <button type="submit" disabled={chatInput.trim().length === 0}>
-                Send
-              </button>
+              >
+                <input
+                  value={chatInput}
+                  onChange={(event) => setChatInput(event.target.value)}
+                  placeholder="Ask AI agent..."
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    padding: "0.48rem 0.58rem"
+                  }}
+                />
+                <button type="submit" disabled={chatInput.trim().length === 0}>
+                  Send
+                </button>
+              </div>
             </form>
           </>
         )}

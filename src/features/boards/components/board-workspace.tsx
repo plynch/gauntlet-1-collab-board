@@ -130,42 +130,50 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
         >
           {board?.title ?? "Board"}
         </h1>
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <Link
-            href="/account"
-            aria-label="Open account settings"
-            title="Account settings"
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: "50%",
-              border: "1px solid #cbd5e1",
-              background: "#e2e8f0",
-              color: "#0f172a",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              textDecoration: "none",
-              overflow: "hidden",
-              fontWeight: 600,
-              textTransform: "uppercase"
-            }}
-          >
-            {user?.photoURL ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={user.photoURL}
-                alt={profileLabel}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover"
-                }}
-              />
-            ) : (
-              <span>{avatarInitial}</span>
-            )}
-          </Link>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            minWidth: 34
+          }}
+        >
+          {user ? (
+            <Link
+              href="/account"
+              aria-label="Open account settings"
+              title="Account settings"
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: "50%",
+                border: "1px solid #cbd5e1",
+                background: "#e2e8f0",
+                color: "#0f172a",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                textDecoration: "none",
+                overflow: "hidden",
+                fontWeight: 600,
+                textTransform: "uppercase"
+              }}
+            >
+              {user.photoURL ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={user.photoURL}
+                  alt={profileLabel}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover"
+                  }}
+                />
+              ) : (
+                <span>{avatarInitial}</span>
+              )}
+            </Link>
+          ) : null}
         </div>
       </header>
 

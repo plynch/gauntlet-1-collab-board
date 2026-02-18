@@ -11,6 +11,10 @@ type CreateBoardResponse = {
   board: BoardSummary;
 };
 
+type UpdateBoardResponse = {
+  board: BoardSummary;
+};
+
 function getErrorMessage(payload: unknown, fallback: string): string {
   if (typeof payload === "object" && payload !== null && "error" in payload) {
     const message = (payload as { error?: unknown }).error;
@@ -75,6 +79,28 @@ function AccessIcon() {
   );
 }
 
+function EditIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M3 11.8 3.6 9.3l6.8-6.8a1.2 1.2 0 0 1 1.7 0l1.4 1.4a1.2 1.2 0 0 1 0 1.7L6.7 12.4 4.2 13z"
+        stroke="#0f172a"
+        strokeWidth="1.25"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8.8 3.9 12.1 7.2"
+        stroke="#0f172a"
+        strokeWidth="1.25"
+        fill="none"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function DeleteIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -115,6 +141,7 @@ function GoogleBrandIcon() {
 
 export default function BoardsPage() {
   const [creatingBoard, setCreatingBoard] = useState(false);
+  const [renamingBoardId, setRenamingBoardId] = useState<string | null>(null);
   const [deletingBoardId, setDeletingBoardId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const {
@@ -156,7 +183,9 @@ export default function BoardsPage() {
           Authorization: `Bearer ${idToken}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({})
+        body: JSON.stringify({
+          title: "Untitled board"
+        })
       });
 
       const payload = (await response.json()) as CreateBoardResponse | { error?: string };
@@ -203,6 +232,52 @@ export default function BoardsPage() {
         setErrorMessage(error instanceof Error ? error.message : "Failed to delete board.");
       } finally {
         setDeletingBoardId(null);
+      }
+    },
+    [idToken]
+  );
+
+  const handleRenameBoard = useCallback(
+    async (board: BoardSummary) => {
+      if (!idToken) {
+        return;
+      }
+
+      const promptedTitle = window.prompt("Rename board", board.title);
+      if (promptedTitle === null) {
+        return;
+      }
+
+      const nextTitle = promptedTitle.trim();
+      const normalizedTitle = nextTitle.length > 0 ? nextTitle : "Untitled board";
+
+      setRenamingBoardId(board.id);
+      setErrorMessage(null);
+
+      try {
+        const response = await fetch(`/api/boards/${board.id}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${idToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            title: normalizedTitle
+          })
+        });
+
+        const payload = (await response.json()) as UpdateBoardResponse | { error?: string };
+        if (!response.ok) {
+          throw new Error(getErrorMessage(payload, "Failed to rename board."));
+        }
+
+        if (!("board" in payload)) {
+          throw new Error("Malformed rename board response.");
+        }
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "Failed to rename board.");
+      } finally {
+        setRenamingBoardId(null);
       }
     },
     [idToken]
@@ -477,8 +552,27 @@ export default function BoardsPage() {
                       </p>
                     </div>
                     <div style={{ display: "flex", gap: "0.4rem" }}>
+                      <button
+                        type="button"
+                        onClick={() => void handleRenameBoard(board)}
+                        disabled={renamingBoardId === board.id}
+                        className="icon-tooltip-trigger"
+                        data-tooltip={
+                          renamingBoardId === board.id ? "Renaming..." : "Rename board"
+                        }
+                        title={renamingBoardId === board.id ? "Renaming..." : "Rename board"}
+                        aria-label={`Rename board ${board.title}`}
+                        style={{
+                          ...boardActionButtonStyle,
+                          opacity: renamingBoardId === board.id ? 0.75 : 1
+                        }}
+                      >
+                        <EditIcon />
+                      </button>
                       <Link
                         href={`/boards/${board.id}`}
+                        className="icon-tooltip-trigger"
+                        data-tooltip="Open board"
                         title="Open board"
                         aria-label={`Open board ${board.title}`}
                         style={boardActionButtonStyle}
@@ -487,6 +581,8 @@ export default function BoardsPage() {
                       </Link>
                       <Link
                         href={`/boards/${board.id}/settings`}
+                        className="icon-tooltip-trigger"
+                        data-tooltip="Manage access"
                         title="Control access"
                         aria-label={`Control access for ${board.title}`}
                         style={boardActionButtonStyle}
@@ -497,6 +593,10 @@ export default function BoardsPage() {
                         type="button"
                         onClick={() => void handleDeleteBoard(board.id)}
                         disabled={deletingBoardId === board.id}
+                        className="icon-tooltip-trigger"
+                        data-tooltip={
+                          deletingBoardId === board.id ? "Deleting board..." : "Delete board"
+                        }
                         title={
                           deletingBoardId === board.id ? "Deleting board..." : "Delete board"
                         }

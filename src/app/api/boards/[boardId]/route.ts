@@ -1,3 +1,4 @@
+import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 
 import type { BoardDetail, BoardPermissions } from "@/features/boards/types";
@@ -35,6 +36,24 @@ function getDebugMessage(error: unknown): string | undefined {
   }
 
   return undefined;
+}
+
+function parseBoardTitle(value: unknown): string {
+  if (typeof value !== "string") {
+    return "Untitled board";
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return "Untitled board";
+  }
+
+  const lowered = normalized.toLowerCase();
+  if (lowered === "create new board" || lowered === "create board") {
+    return "Untitled board";
+  }
+
+  return normalized.slice(0, 80);
 }
 
 function toBoardDetail(
@@ -152,6 +171,72 @@ export async function DELETE(request: NextRequest, context: BoardRouteContext) {
     return NextResponse.json(
       {
         error: "Failed to delete board.",
+        debug: getDebugMessage(error)
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request: NextRequest, context: BoardRouteContext) {
+  try {
+    const user = await requireUser(request);
+    const params = await context.params;
+    const boardId = params.boardId?.trim();
+
+    if (!boardId) {
+      return NextResponse.json({ error: "Missing board id." }, { status: 400 });
+    }
+
+    const db = getFirebaseAdminDb();
+    const boardRef = db.collection("boards").doc(boardId);
+    const boardSnapshot = await boardRef.get();
+
+    if (!boardSnapshot.exists) {
+      return NextResponse.json({ error: "Board not found." }, { status: 404 });
+    }
+
+    const board = parseBoardDoc(boardSnapshot.data());
+    if (!board) {
+      return NextResponse.json({ error: "Invalid board data." }, { status: 500 });
+    }
+
+    if (board.ownerId !== user.uid) {
+      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+    }
+
+    let requestBody: { title?: unknown } = {};
+    try {
+      requestBody = (await request.json()) as { title?: unknown };
+    } catch {
+      requestBody = {};
+    }
+
+    const title = parseBoardTitle(requestBody.title);
+
+    await boardRef.update({
+      title,
+      updatedAt: FieldValue.serverTimestamp()
+    });
+
+    const updatedSnapshot = await boardRef.get();
+    const updatedBoard = parseBoardDoc(updatedSnapshot.data());
+    if (!updatedBoard) {
+      return NextResponse.json({ error: "Invalid board data." }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      board: toBoardDetail(updatedSnapshot.id, updatedBoard, [], [])
+    });
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
+    console.error("Failed to update board", error);
+    return NextResponse.json(
+      {
+        error: "Failed to update board.",
         debug: getDebugMessage(error)
       },
       { status: 500 }

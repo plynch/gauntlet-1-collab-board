@@ -47,6 +47,11 @@ function parseBoardTitle(value: unknown): string {
     return "Untitled board";
   }
 
+  const lowered = normalized.toLowerCase();
+  if (lowered === "create new board" || lowered === "create board") {
+    return "Untitled board";
+  }
+
   return normalized.slice(0, 80);
 }
 

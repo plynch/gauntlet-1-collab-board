@@ -18,3 +18,31 @@ body {
 main {
   min-height: 100vh;
 }
+
+.icon-tooltip-trigger {
+  position: relative;
+}
+
+.icon-tooltip-trigger::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  background: #0f172a;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  border-radius: 6px;
+  padding: 5px 7px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+  z-index: 40;
+}
+
+.icon-tooltip-trigger:hover::after,
+.icon-tooltip-trigger:focus-visible::after {
+  opacity: 1;
+}

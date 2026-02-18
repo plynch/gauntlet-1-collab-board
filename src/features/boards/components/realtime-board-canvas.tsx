@@ -27,6 +27,7 @@ import type {
   BoardObject,
   BoardObjectKind,
   BoardPermissions,
+  ConnectorAnchor,
   PresenceUser
 } from "@/features/boards/types";
 import {
@@ -124,6 +125,7 @@ type MarqueeSelectionState = {
 
 type ResizeCorner = "nw" | "ne" | "sw" | "se";
 type LineEndpoint = "start" | "end";
+type ConnectorEndpoint = "from" | "to";
 
 type ObjectGeometry = {
   x: number;
@@ -140,7 +142,10 @@ type ObjectWriteOptions = {
 
 type CornerResizeState = {
   objectId: string;
-  objectType: Exclude<BoardObjectKind, "line">;
+  objectType: Exclude<
+    BoardObjectKind,
+    "line" | "connectorUndirected" | "connectorArrow" | "connectorBidirectional"
+  >;
   corner: ResizeCorner;
   startClientX: number;
   startClientY: number;
@@ -154,6 +159,31 @@ type LineEndpointResizeState = {
   fixedPoint: BoardPoint;
   handleHeight: number;
   lastSentAt: number;
+};
+
+type ConnectorEndpointDragState = {
+  objectId: string;
+  endpoint: ConnectorEndpoint;
+  lastSentAt: number;
+};
+
+type ConnectorDraft = {
+  fromObjectId: string | null;
+  toObjectId: string | null;
+  fromAnchor: ConnectorAnchor | null;
+  toAnchor: ConnectorAnchor | null;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+};
+
+type ResolvedConnectorEndpoint = {
+  x: number;
+  y: number;
+  objectId: string | null;
+  anchor: ConnectorAnchor | null;
+  connected: boolean;
 };
 
 type RotateState = {
@@ -180,7 +210,9 @@ const BOARD_TOOLS: BoardObjectKind[] = [
   "sticky",
   "rect",
   "circle",
-  "line",
+  "connectorUndirected",
+  "connectorArrow",
+  "connectorBidirectional",
   "triangle",
   "star"
 ];
@@ -212,6 +244,18 @@ const BOARD_COLOR_SWATCHES: ColorSwatch[] = [
   { name: "Gray", value: "#d1d5db" },
   { name: "Tan", value: "#d2b48c" }
 ];
+
+const CONNECTOR_MIN_SEGMENT_SIZE = 12;
+const CONNECTOR_HIT_PADDING = 16;
+const CONNECTOR_HANDLE_SIZE = 12;
+const CONNECTOR_SNAP_DISTANCE_PX = 20;
+
+const CONNECTOR_TYPES: readonly BoardObjectKind[] = [
+  "connectorUndirected",
+  "connectorArrow",
+  "connectorBidirectional"
+];
+const CONNECTOR_ANCHORS: readonly ConnectorAnchor[] = ["top", "right", "bottom", "left"];
 
 const INITIAL_VIEWPORT: ViewportState = {
   x: 120,
@@ -354,9 +398,25 @@ function isBoardObjectKind(value: unknown): value is BoardObjectKind {
     value === "rect" ||
     value === "circle" ||
     value === "line" ||
+    value === "connectorUndirected" ||
+    value === "connectorArrow" ||
+    value === "connectorBidirectional" ||
     value === "triangle" ||
     value === "star"
   );
+}
+
+function isConnectorKind(value: BoardObjectKind): boolean {
+  return CONNECTOR_TYPES.includes(value);
+}
+
+function isConnectableShapeKind(
+  value: BoardObjectKind
+): value is Exclude<
+  BoardObjectKind,
+  "line" | "connectorUndirected" | "connectorArrow" | "connectorBidirectional"
+> {
+  return value !== "line" && !isConnectorKind(value);
 }
 
 function getDefaultObjectSize(kind: BoardObjectKind): { width: number; height: number } {
@@ -380,6 +440,10 @@ function getDefaultObjectSize(kind: BoardObjectKind): { width: number; height: n
     return { width: 180, height: 180 };
   }
 
+  if (isConnectorKind(kind)) {
+    return { width: 220, height: 120 };
+  }
+
   return { width: 240, height: 64 };
 }
 
@@ -398,6 +462,10 @@ function getMinimumObjectSize(kind: BoardObjectKind): { width: number; height: n
 
   if (kind === "triangle" || kind === "star") {
     return { width: 80, height: 80 };
+  }
+
+  if (isConnectorKind(kind)) {
+    return { width: 1, height: 1 };
   }
 
   return { width: LINE_MIN_LENGTH, height: 32 };
@@ -424,6 +492,18 @@ function getDefaultObjectColor(kind: BoardObjectKind): string {
     return "#fcd34d";
   }
 
+  if (kind === "connectorUndirected") {
+    return "#334155";
+  }
+
+  if (kind === "connectorArrow") {
+    return "#1d4ed8";
+  }
+
+  if (kind === "connectorBidirectional") {
+    return "#0f766e";
+  }
+
   return "#1f2937";
 }
 
@@ -446,6 +526,18 @@ function getObjectLabel(kind: BoardObjectKind): string {
 
   if (kind === "star") {
     return "Star";
+  }
+
+  if (kind === "connectorUndirected") {
+    return "Connector";
+  }
+
+  if (kind === "connectorArrow") {
+    return "Arrow connector";
+  }
+
+  if (kind === "connectorBidirectional") {
+    return "Double-arrow connector";
   }
 
   return "Line";
@@ -615,6 +707,71 @@ function getLineEndpointOffsets(geometry: ObjectGeometry): {
   };
 }
 
+function rotatePointAroundCenter(point: BoardPoint, center: BoardPoint, rotationDeg: number): BoardPoint {
+  const radians = toRadians(rotationDeg);
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const offsetX = point.x - center.x;
+  const offsetY = point.y - center.y;
+
+  return {
+    x: center.x + offsetX * cos - offsetY * sin,
+    y: center.y + offsetX * sin + offsetY * cos
+  };
+}
+
+function getAnchorPointForGeometry(
+  geometry: ObjectGeometry,
+  anchor: ConnectorAnchor
+): BoardPoint {
+  const center = {
+    x: geometry.x + geometry.width / 2,
+    y: geometry.y + geometry.height / 2
+  };
+
+  const unrotatedPoint =
+    anchor === "top"
+      ? { x: center.x, y: geometry.y }
+      : anchor === "right"
+        ? { x: geometry.x + geometry.width, y: center.y }
+        : anchor === "bottom"
+          ? { x: center.x, y: geometry.y + geometry.height }
+          : { x: geometry.x, y: center.y };
+
+  if (Math.abs(geometry.rotationDeg) < 0.001) {
+    return unrotatedPoint;
+  }
+
+  return rotatePointAroundCenter(unrotatedPoint, center, geometry.rotationDeg);
+}
+
+function getConnectorBoundsFromEndpoints(
+  fromPoint: BoardPoint,
+  toPoint: BoardPoint,
+  padding = 0
+): ObjectBounds {
+  return {
+    left: Math.min(fromPoint.x, toPoint.x) - padding,
+    right: Math.max(fromPoint.x, toPoint.x) + padding,
+    top: Math.min(fromPoint.y, toPoint.y) - padding,
+    bottom: Math.max(fromPoint.y, toPoint.y) + padding
+  };
+}
+
+function toConnectorGeometryFromEndpoints(
+  fromPoint: BoardPoint,
+  toPoint: BoardPoint
+): ObjectGeometry {
+  const bounds = getConnectorBoundsFromEndpoints(fromPoint, toPoint);
+  return {
+    x: bounds.left,
+    y: bounds.top,
+    width: Math.max(CONNECTOR_MIN_SEGMENT_SIZE, bounds.right - bounds.left),
+    height: Math.max(CONNECTOR_MIN_SEGMENT_SIZE, bounds.bottom - bounds.top),
+    rotationDeg: 0
+  };
+}
+
 function ToolIcon({ kind }: { kind: BoardObjectKind }) {
   if (kind === "sticky") {
     return (
@@ -639,6 +796,36 @@ function ToolIcon({ kind }: { kind: BoardObjectKind }) {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
         <circle cx="8" cy="8" r="5.5" fill="#86efac" stroke="#15803d" />
+      </svg>
+    );
+  }
+
+  if (kind === "connectorUndirected") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+        <line x1="3" y1="8" x2="13" y2="8" stroke="#334155" strokeWidth="2.2" />
+        <circle cx="3" cy="8" r="1.6" fill="white" stroke="#334155" strokeWidth="1" />
+        <circle cx="13" cy="8" r="1.6" fill="white" stroke="#334155" strokeWidth="1" />
+      </svg>
+    );
+  }
+
+  if (kind === "connectorArrow") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+        <line x1="2.8" y1="8" x2="12.3" y2="8" stroke="#1d4ed8" strokeWidth="2.2" />
+        <polygon points="12.3,5.5 14.6,8 12.3,10.5" fill="#1d4ed8" />
+        <circle cx="2.8" cy="8" r="1.3" fill="white" stroke="#1d4ed8" strokeWidth="1" />
+      </svg>
+    );
+  }
+
+  if (kind === "connectorBidirectional") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+        <line x1="3.6" y1="8" x2="12.4" y2="8" stroke="#0f766e" strokeWidth="2.2" />
+        <polygon points="3.6,5.6 1.4,8 3.6,10.4" fill="#0f766e" />
+        <polygon points="12.4,5.6 14.6,8 12.4,10.4" fill="#0f766e" />
       </svg>
     );
   }
@@ -759,6 +946,19 @@ function getCornerPositionStyle(corner: ResizeCorner): {
   return { right: 0, bottom: 0, transform: "translate(50%, 50%)" };
 }
 
+function getConnectorAnchor(value: unknown): ConnectorAnchor | null {
+  if (
+    value === "top" ||
+    value === "right" ||
+    value === "bottom" ||
+    value === "left"
+  ) {
+    return value;
+  }
+
+  return null;
+}
+
 function toBoardObject(rawId: string, rawData: Record<string, unknown>): BoardObject | null {
   const type = rawData.type;
   if (!isBoardObjectKind(type)) {
@@ -779,6 +979,14 @@ function toBoardObject(rawId: string, rawData: Record<string, unknown>): BoardOb
     rotationDeg: getNumber(rawData.rotationDeg, 0),
     color: getString(rawData.color, getDefaultObjectColor(type)),
     text: getString(rawData.text, type === "sticky" ? "New sticky note" : ""),
+    fromObjectId: getNullableString(rawData.fromObjectId),
+    toObjectId: getNullableString(rawData.toObjectId),
+    fromAnchor: getConnectorAnchor(rawData.fromAnchor),
+    toAnchor: getConnectorAnchor(rawData.toAnchor),
+    fromX: getFiniteNumber(rawData.fromX),
+    fromY: getFiniteNumber(rawData.fromY),
+    toX: getFiniteNumber(rawData.toX),
+    toY: getFiniteNumber(rawData.toY),
     updatedAt: getTimestampIso(rawData.updatedAt)
   };
 }
@@ -853,6 +1061,7 @@ export default function RealtimeBoardCanvas({
   const dragStateRef = useRef<DragState | null>(null);
   const cornerResizeStateRef = useRef<CornerResizeState | null>(null);
   const lineEndpointResizeStateRef = useRef<LineEndpointResizeState | null>(null);
+  const connectorEndpointDragStateRef = useRef<ConnectorEndpointDragState | null>(null);
   const rotateStateRef = useRef<RotateState | null>(null);
   const marqueeSelectionStateRef = useRef<MarqueeSelectionState | null>(null);
   const aiFooterResizeStateRef = useRef<AiFooterResizeState | null>(null);
@@ -861,6 +1070,7 @@ export default function RealtimeBoardCanvas({
   const objectSpawnSequenceRef = useRef(0);
   const selectedObjectIdsRef = useRef<Set<string>>(new Set());
   const draftGeometryByIdRef = useRef<Record<string, ObjectGeometry>>({});
+  const draftConnectorByIdRef = useRef<Record<string, ConnectorDraft>>({});
   const stickyTextSyncStateRef = useRef<Map<string, StickyTextSyncState>>(new Map());
   const sendCursorAtRef = useRef(0);
   const canEditRef = useRef(canEdit);
@@ -875,6 +1085,9 @@ export default function RealtimeBoardCanvas({
   const [presenceUsers, setPresenceUsers] = useState<PresenceUser[]>([]);
   const [textDrafts, setTextDrafts] = useState<Record<string, string>>({});
   const [draftGeometryById, setDraftGeometryById] = useState<Record<string, ObjectGeometry>>(
+    {}
+  );
+  const [draftConnectorById, setDraftConnectorById] = useState<Record<string, ConnectorDraft>>(
     {}
   );
   const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>([]);
@@ -931,6 +1144,10 @@ export default function RealtimeBoardCanvas({
   useEffect(() => {
     draftGeometryByIdRef.current = draftGeometryById;
   }, [draftGeometryById]);
+
+  useEffect(() => {
+    draftConnectorByIdRef.current = draftConnectorById;
+  }, [draftConnectorById]);
 
   useEffect(() => {
     selectedObjectIdsRef.current = new Set(selectedObjectIds);
@@ -1257,6 +1474,162 @@ export default function RealtimeBoardCanvas({
     });
   }, []);
 
+  const setDraftConnector = useCallback((objectId: string, draft: ConnectorDraft) => {
+    setDraftConnectorById((previous) => ({
+      ...previous,
+      [objectId]: draft
+    }));
+  }, []);
+
+  const clearDraftConnector = useCallback((objectId: string) => {
+    setDraftConnectorById((previous) => {
+      if (!(objectId in previous)) {
+        return previous;
+      }
+
+      const next = { ...previous };
+      delete next[objectId];
+      return next;
+    });
+  }, []);
+
+  const getConnectorDraftForObject = useCallback(
+    (objectItem: BoardObject): ConnectorDraft | null => {
+      if (!isConnectorKind(objectItem.type)) {
+        return null;
+      }
+
+      const draft = draftConnectorByIdRef.current[objectItem.id];
+      if (draft) {
+        return draft;
+      }
+
+      const objectGeometry = getCurrentObjectGeometry(objectItem.id);
+      const fallbackGeometry: ObjectGeometry =
+        objectGeometry ?? {
+          x: objectItem.x,
+          y: objectItem.y,
+          width: objectItem.width,
+          height: objectItem.height,
+          rotationDeg: objectItem.rotationDeg
+        };
+
+      const defaultFromX =
+        objectItem.fromX ??
+        fallbackGeometry.x + Math.max(CONNECTOR_MIN_SEGMENT_SIZE, fallbackGeometry.width) * 0.1;
+      const defaultFromY =
+        objectItem.fromY ??
+        fallbackGeometry.y + Math.max(CONNECTOR_MIN_SEGMENT_SIZE, fallbackGeometry.height) * 0.5;
+      const defaultToX =
+        objectItem.toX ??
+        fallbackGeometry.x + Math.max(CONNECTOR_MIN_SEGMENT_SIZE, fallbackGeometry.width) * 0.9;
+      const defaultToY =
+        objectItem.toY ??
+        fallbackGeometry.y + Math.max(CONNECTOR_MIN_SEGMENT_SIZE, fallbackGeometry.height) * 0.5;
+
+      return {
+        fromObjectId: objectItem.fromObjectId ?? null,
+        toObjectId: objectItem.toObjectId ?? null,
+        fromAnchor: objectItem.fromAnchor ?? null,
+        toAnchor: objectItem.toAnchor ?? null,
+        fromX: defaultFromX,
+        fromY: defaultFromY,
+        toX: defaultToX,
+        toY: defaultToY
+      };
+    },
+    [getCurrentObjectGeometry]
+  );
+
+  const resolveConnectorEndpoint = useCallback(
+    (
+      objectId: string | null,
+      anchor: ConnectorAnchor | null,
+      fallbackPoint: BoardPoint
+    ): ResolvedConnectorEndpoint => {
+      if (!objectId || !anchor) {
+        return {
+          x: fallbackPoint.x,
+          y: fallbackPoint.y,
+          objectId: null,
+          anchor: null,
+          connected: false
+        };
+      }
+
+      const anchorObject = objectsByIdRef.current.get(objectId);
+      if (!anchorObject || !isConnectableShapeKind(anchorObject.type)) {
+        return {
+          x: fallbackPoint.x,
+          y: fallbackPoint.y,
+          objectId: null,
+          anchor: null,
+          connected: false
+        };
+      }
+
+      const geometry = getCurrentObjectGeometry(objectId);
+      if (!geometry) {
+        return {
+          x: fallbackPoint.x,
+          y: fallbackPoint.y,
+          objectId: null,
+          anchor: null,
+          connected: false
+        };
+      }
+
+      const anchorPoint = getAnchorPointForGeometry(geometry, anchor);
+      return {
+        x: anchorPoint.x,
+        y: anchorPoint.y,
+        objectId,
+        anchor,
+        connected: true
+      };
+    },
+    [getCurrentObjectGeometry]
+  );
+
+  const getResolvedConnectorEndpoints = useCallback(
+    (
+      objectItem: BoardObject
+    ): {
+      from: ResolvedConnectorEndpoint;
+      to: ResolvedConnectorEndpoint;
+      draft: ConnectorDraft;
+    } | null => {
+      if (!isConnectorKind(objectItem.type)) {
+        return null;
+      }
+
+      const connectorDraft = getConnectorDraftForObject(objectItem);
+      if (!connectorDraft) {
+        return null;
+      }
+
+      const from = resolveConnectorEndpoint(
+        connectorDraft.fromObjectId,
+        connectorDraft.fromAnchor,
+        {
+          x: connectorDraft.fromX,
+          y: connectorDraft.fromY
+        }
+      );
+      const to = resolveConnectorEndpoint(connectorDraft.toObjectId, connectorDraft.toAnchor, {
+        x: connectorDraft.toX,
+        y: connectorDraft.toY
+      });
+
+      return {
+        from,
+        to,
+        draft: connectorDraft
+      };
+    },
+    [getConnectorDraftForObject, resolveConnectorEndpoint]
+  );
+
   const updateObjectGeometry = useCallback(
     async (objectId: string, geometry: ObjectGeometry, options: ObjectWriteOptions = {}) => {
       const writeMetrics = writeMetricsRef.current;
@@ -1319,6 +1692,60 @@ export default function RealtimeBoardCanvas({
       }
     },
     [boardId, db]
+  );
+
+  const updateConnectorDraft = useCallback(
+    async (
+      objectId: string,
+      draft: ConnectorDraft,
+      options: ObjectWriteOptions = {}
+    ) => {
+      if (!canEditRef.current) {
+        return;
+      }
+
+      const includeUpdatedAt = options.includeUpdatedAt ?? true;
+
+      const resolvedFrom = resolveConnectorEndpoint(
+        draft.fromObjectId,
+        draft.fromAnchor,
+        { x: draft.fromX, y: draft.fromY }
+      );
+      const resolvedTo = resolveConnectorEndpoint(
+        draft.toObjectId,
+        draft.toAnchor,
+        { x: draft.toX, y: draft.toY }
+      );
+      const geometry = toConnectorGeometryFromEndpoints(resolvedFrom, resolvedTo);
+
+      const payload: Record<string, unknown> = {
+        x: geometry.x,
+        y: geometry.y,
+        width: geometry.width,
+        height: geometry.height,
+        rotationDeg: 0,
+        fromObjectId: resolvedFrom.connected ? resolvedFrom.objectId : null,
+        toObjectId: resolvedTo.connected ? resolvedTo.objectId : null,
+        fromAnchor: resolvedFrom.connected ? resolvedFrom.anchor : null,
+        toAnchor: resolvedTo.connected ? resolvedTo.anchor : null,
+        fromX: resolvedFrom.x,
+        fromY: resolvedFrom.y,
+        toX: resolvedTo.x,
+        toY: resolvedTo.y
+      };
+
+      if (includeUpdatedAt) {
+        payload.updatedAt = serverTimestamp();
+      }
+
+      try {
+        await updateDoc(doc(db, `boards/${boardId}/objects/${objectId}`), payload);
+      } catch (error) {
+        console.error("Failed to update connector", error);
+        setBoardError(toBoardErrorMessage(error, "Failed to update connector."));
+      }
+    },
+    [boardId, db, resolveConnectorEndpoint]
   );
 
   const updateObjectPositionsBatch = useCallback(
@@ -1407,6 +1834,13 @@ export default function RealtimeBoardCanvas({
 
   const getObjectSelectionBounds = useCallback(
     (objectItem: BoardObject) => {
+      if (isConnectorKind(objectItem.type)) {
+        const resolved = getResolvedConnectorEndpoints(objectItem);
+        if (resolved) {
+          return getConnectorBoundsFromEndpoints(resolved.from, resolved.to, CONNECTOR_HIT_PADDING);
+        }
+      }
+
       const geometry = getCurrentObjectGeometry(objectItem.id);
       if (!geometry) {
         return {
@@ -1419,7 +1853,7 @@ export default function RealtimeBoardCanvas({
 
       return getObjectVisualBounds(objectItem.type, geometry);
     },
-    [getCurrentObjectGeometry]
+    [getCurrentObjectGeometry, getResolvedConnectorEndpoints]
   );
 
   const getObjectsIntersectingRect = useCallback(
@@ -1443,6 +1877,38 @@ export default function RealtimeBoardCanvas({
     },
     [getObjectSelectionBounds]
   );
+
+  const getConnectableAnchorPoints = useCallback(() => {
+    const anchors: Array<{
+      objectId: string;
+      anchor: ConnectorAnchor;
+      x: number;
+      y: number;
+    }> = [];
+
+    objectsByIdRef.current.forEach((objectItem) => {
+      if (!isConnectableShapeKind(objectItem.type)) {
+        return;
+      }
+
+      const geometry = getCurrentObjectGeometry(objectItem.id);
+      if (!geometry) {
+        return;
+      }
+
+      CONNECTOR_ANCHORS.forEach((anchor) => {
+        const point = getAnchorPointForGeometry(geometry, anchor);
+        anchors.push({
+          objectId: objectItem.id,
+          anchor,
+          x: point.x,
+          y: point.y
+        });
+      });
+    });
+
+    return anchors;
+  }, [getCurrentObjectGeometry]);
 
   const getResizedGeometry = useCallback(
     (
@@ -1578,6 +2044,98 @@ export default function RealtimeBoardCanvas({
         if (canEditRef.current && now - cornerResizeState.lastSentAt >= RESIZE_THROTTLE_MS) {
           cornerResizeState.lastSentAt = now;
           void updateObjectGeometry(cornerResizeState.objectId, nextGeometry, {
+            includeUpdatedAt: false
+          });
+        }
+        return;
+      }
+
+      const connectorEndpointDragState = connectorEndpointDragStateRef.current;
+      if (connectorEndpointDragState) {
+        const stageElement = stageRef.current;
+        if (!stageElement) {
+          return;
+        }
+
+        const rect = stageElement.getBoundingClientRect();
+        const movingPoint = {
+          x: (event.clientX - rect.left - viewportRef.current.x) / scale,
+          y: (event.clientY - rect.top - viewportRef.current.y) / scale
+        };
+
+        const connectorObject = objectsByIdRef.current.get(connectorEndpointDragState.objectId);
+        if (!connectorObject || !isConnectorKind(connectorObject.type)) {
+          return;
+        }
+
+        const currentDraft =
+          draftConnectorByIdRef.current[connectorObject.id] ??
+          getConnectorDraftForObject(connectorObject);
+        if (!currentDraft) {
+          return;
+        }
+
+        const snapThreshold = CONNECTOR_SNAP_DISTANCE_PX / Math.max(viewportRef.current.scale, 0.1);
+        const anchorCandidates = getConnectableAnchorPoints();
+        const nearestAnchor = anchorCandidates.reduce<{
+          objectId: string;
+          anchor: ConnectorAnchor;
+          x: number;
+          y: number;
+          distance: number;
+        } | null>((closest, candidate) => {
+          const distance = Math.hypot(candidate.x - movingPoint.x, candidate.y - movingPoint.y);
+          if (distance > snapThreshold) {
+            return closest;
+          }
+
+          if (!closest || distance < closest.distance) {
+            return {
+              ...candidate,
+              distance
+            };
+          }
+
+          return closest;
+        }, null);
+
+        const endpointPatch = nearestAnchor
+          ? {
+              objectId: nearestAnchor.objectId,
+              anchor: nearestAnchor.anchor,
+              x: nearestAnchor.x,
+              y: nearestAnchor.y
+            }
+          : {
+              objectId: null,
+              anchor: null,
+              x: movingPoint.x,
+              y: movingPoint.y
+            };
+
+        const nextDraft: ConnectorDraft =
+          connectorEndpointDragState.endpoint === "from"
+            ? {
+                ...currentDraft,
+                fromObjectId: endpointPatch.objectId,
+                fromAnchor: endpointPatch.anchor,
+                fromX: endpointPatch.x,
+                fromY: endpointPatch.y
+              }
+            : {
+                ...currentDraft,
+                toObjectId: endpointPatch.objectId,
+                toAnchor: endpointPatch.anchor,
+                toX: endpointPatch.x,
+                toY: endpointPatch.y
+              };
+
+        setDraftConnector(connectorObject.id, nextDraft);
+
+        const now = Date.now();
+        if (canEditRef.current && now - connectorEndpointDragState.lastSentAt >= RESIZE_THROTTLE_MS) {
+          connectorEndpointDragState.lastSentAt = now;
+          void updateConnectorDraft(connectorObject.id, nextDraft, {
             includeUpdatedAt: false
           });
         }
@@ -1787,6 +2345,20 @@ export default function RealtimeBoardCanvas({
         return;
       }
 
+      const connectorEndpointDragState = connectorEndpointDragStateRef.current;
+      if (connectorEndpointDragState) {
+        connectorEndpointDragStateRef.current = null;
+        const finalDraft = draftConnectorByIdRef.current[connectorEndpointDragState.objectId];
+        clearDraftConnector(connectorEndpointDragState.objectId);
+
+        if (finalDraft && canEditRef.current) {
+          void updateConnectorDraft(connectorEndpointDragState.objectId, finalDraft, {
+            includeUpdatedAt: true
+          });
+        }
+        return;
+      }
+
       const rotateState = rotateStateRef.current;
       if (rotateState) {
         rotateStateRef.current = null;
@@ -1888,12 +2460,17 @@ export default function RealtimeBoardCanvas({
       window.removeEventListener("pointerup", handleWindowPointerUp);
     };
   }, [
+    clearDraftConnector,
     clearDraftGeometry,
+    getConnectableAnchorPoints,
+    getConnectorDraftForObject,
     getObjectsIntersectingRect,
     getCurrentObjectGeometry,
     getLineGeometryFromEndpointDrag,
     getResizedGeometry,
+    setDraftConnector,
     setDraftGeometry,
+    updateConnectorDraft,
     updateObjectGeometry,
     updateObjectPositionsBatch
   ]);
@@ -1983,22 +2560,55 @@ export default function RealtimeBoardCanvas({
         0
       );
       const nextZIndex = highestZIndex + 1;
+      const startX = centerX - width / 2 + spawnOffset.x;
+      const startY = centerY - height / 2 + spawnOffset.y;
+      const isConnector = isConnectorKind(kind);
 
       try {
-        await addDoc(objectsCollectionRef, {
+        const connectorFrom = isConnector
+          ? {
+              x: startX,
+              y: startY + height / 2
+            }
+          : null;
+        const connectorTo = isConnector
+          ? {
+              x: startX + width,
+              y: startY + height / 2
+            }
+          : null;
+        const connectorGeometry =
+          connectorFrom && connectorTo
+            ? toConnectorGeometryFromEndpoints(connectorFrom, connectorTo)
+            : null;
+
+        const payload: Record<string, unknown> = {
           type: kind,
           zIndex: nextZIndex,
-          x: centerX - width / 2 + spawnOffset.x,
-          y: centerY - height / 2 + spawnOffset.y,
-          width,
-          height,
+          x: connectorGeometry ? connectorGeometry.x : startX,
+          y: connectorGeometry ? connectorGeometry.y : startY,
+          width: connectorGeometry ? connectorGeometry.width : width,
+          height: connectorGeometry ? connectorGeometry.height : height,
           rotationDeg: 0,
           color: getDefaultObjectColor(kind),
           text: kind === "sticky" ? "New sticky note" : "",
           createdBy: user.uid,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
-        });
+        };
+
+        if (connectorFrom && connectorTo) {
+          payload.fromObjectId = null;
+          payload.toObjectId = null;
+          payload.fromAnchor = null;
+          payload.toAnchor = null;
+          payload.fromX = connectorFrom.x;
+          payload.fromY = connectorFrom.y;
+          payload.toX = connectorTo.x;
+          payload.toY = connectorTo.y;
+        }
+
+        await addDoc(objectsCollectionRef, payload);
       } catch (error) {
         console.error("Failed to create object", error);
         setBoardError(toBoardErrorMessage(error, "Failed to create object."));
@@ -2033,12 +2643,13 @@ export default function RealtimeBoardCanvas({
           return next;
         });
         setSelectedObjectIds((previous) => previous.filter((id) => id !== objectId));
+        clearDraftConnector(objectId);
       } catch (error) {
         console.error("Failed to delete object", error);
         setBoardError(toBoardErrorMessage(error, "Failed to delete object."));
       }
     },
-    [boardId, canEdit, db]
+    [boardId, canEdit, clearDraftConnector, db]
   );
 
   const saveStickyText = useCallback(
@@ -2618,12 +3229,21 @@ export default function RealtimeBoardCanvas({
         return;
       }
 
+      const sourceObject = objectsByIdRef.current.get(objectId);
+      if (sourceObject && isConnectorKind(sourceObject.type)) {
+        selectSingleObject(objectId);
+        return;
+      }
+
       const currentSelectedIds = selectedObjectIdsRef.current;
       const shouldPrepareGroupDrag =
         currentSelectedIds.has(objectId) && currentSelectedIds.size > 1;
-      const dragObjectIds = shouldPrepareGroupDrag
-        ? Array.from(currentSelectedIds)
-        : [objectId];
+      const dragObjectIds = (shouldPrepareGroupDrag ? Array.from(currentSelectedIds) : [objectId]).filter(
+        (candidateId) => {
+          const candidateObject = objectsByIdRef.current.get(candidateId);
+          return candidateObject ? !isConnectorKind(candidateObject.type) : false;
+        }
+      );
 
       if (!shouldPrepareGroupDrag) {
         selectSingleObject(objectId);
@@ -2669,7 +3289,7 @@ export default function RealtimeBoardCanvas({
       event.stopPropagation();
 
       const objectItem = objectsByIdRef.current.get(objectId);
-      if (!objectItem || objectItem.type === "line") {
+      if (!objectItem || !isConnectableShapeKind(objectItem.type)) {
         return;
       }
 
@@ -2717,7 +3337,7 @@ export default function RealtimeBoardCanvas({
       event.stopPropagation();
 
       const objectItem = objectsByIdRef.current.get(objectId);
-      if (!objectItem || objectItem.type === "line") {
+      if (!objectItem || !isConnectableShapeKind(objectItem.type)) {
         return;
       }
 
@@ -2780,6 +3400,44 @@ export default function RealtimeBoardCanvas({
       };
     },
     [canEdit, getCurrentObjectGeometry, selectSingleObject]
+  );
+
+  const startConnectorEndpointDrag = useCallback(
+    (
+      objectId: string,
+      endpoint: ConnectorEndpoint,
+      event: ReactPointerEvent<HTMLButtonElement>
+    ) => {
+      if (!canEdit) {
+        return;
+      }
+
+      if (event.button !== 0) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const objectItem = objectsByIdRef.current.get(objectId);
+      if (!objectItem || !isConnectorKind(objectItem.type)) {
+        return;
+      }
+
+      const currentDraft = getConnectorDraftForObject(objectItem);
+      if (!currentDraft) {
+        return;
+      }
+
+      setDraftConnector(objectId, currentDraft);
+      selectSingleObject(objectId);
+      connectorEndpointDragStateRef.current = {
+        objectId,
+        endpoint,
+        lastSentAt: 0
+      };
+    },
+    [canEdit, getConnectorDraftForObject, selectSingleObject, setDraftConnector]
   );
 
   const onlineUsers = useMemo(
@@ -2848,11 +3506,22 @@ export default function RealtimeBoardCanvas({
   const selectedObjectBounds = useMemo(
     () =>
       mergeBounds(
-        selectedObjects.map((selectedObject) =>
-          getObjectVisualBounds(selectedObject.object.type, selectedObject.geometry)
-        )
+        selectedObjects.map((selectedObject) => {
+          if (isConnectorKind(selectedObject.object.type)) {
+            const resolved = getResolvedConnectorEndpoints(selectedObject.object);
+            if (resolved) {
+              return getConnectorBoundsFromEndpoints(
+                resolved.from,
+                resolved.to,
+                CONNECTOR_HIT_PADDING
+              );
+            }
+          }
+
+          return getObjectVisualBounds(selectedObject.object.type, selectedObject.geometry);
+        })
       ),
-    [selectedObjects]
+    [getResolvedConnectorEndpoints, selectedObjects]
   );
   const selectedColor = useMemo(() => {
     if (selectedObjects.length === 0) {
@@ -2908,7 +3577,9 @@ export default function RealtimeBoardCanvas({
     const singleSelectedObject =
       selectedObjects.length === 1 ? selectedObjects[0].object : null;
     const preferSidePlacement =
-      singleSelectedObject !== null && singleSelectedObject.type !== "line";
+      singleSelectedObject !== null &&
+      singleSelectedObject.type !== "line" &&
+      !isConnectorKind(singleSelectedObject.type);
 
     const candidates = preferSidePlacement
       ? [
@@ -2945,6 +3616,18 @@ export default function RealtimeBoardCanvas({
       objects.some((item) => selectedObjectIds.includes(item.id)),
     [canEdit, objects, selectedObjectIds]
   );
+  const hasSelectedConnector = useMemo(
+    () =>
+      selectedObjectIds.some((objectId) => {
+        const item = objects.find((candidate) => candidate.id === objectId);
+        return item ? isConnectorKind(item.type) : false;
+      }),
+    [objects, selectedObjectIds]
+  );
+  const isConnectorEndpointDragging = connectorEndpointDragStateRef.current !== null;
+  const shouldShowConnectorAnchors =
+    canEdit && (hasSelectedConnector || isConnectorEndpointDragging);
+  const connectorAnchorPoints = shouldShowConnectorAnchors ? getConnectableAnchorPoints() : [];
 
   useEffect(() => {
     if (!canShowSelectionHud) {
@@ -3405,6 +4088,7 @@ export default function RealtimeBoardCanvas({
               const objectText = textDrafts[objectItem.id] ?? objectItem.text;
               const isSelected = selectedObjectIds.includes(objectItem.id);
               const isSingleSelected = selectedObjectIds.length === 1 && isSelected;
+              const isConnector = isConnectorKind(objectItem.type);
               const objectGeometry: ObjectGeometry = {
                 x: objectX,
                 y: objectY,
@@ -3412,10 +4096,221 @@ export default function RealtimeBoardCanvas({
                 height: objectHeight,
                 rotationDeg: objectRotationDeg
               };
+              const resolvedConnector = isConnector
+                ? getResolvedConnectorEndpoints(objectItem)
+                : null;
+              const connectorBounds = resolvedConnector
+                ? getConnectorBoundsFromEndpoints(
+                    resolvedConnector.from,
+                    resolvedConnector.to,
+                    CONNECTOR_HIT_PADDING
+                  )
+                : null;
+              const connectorFrame = connectorBounds
+                ? {
+                    left: connectorBounds.left,
+                    top: connectorBounds.top,
+                    width: Math.max(1, connectorBounds.right - connectorBounds.left),
+                    height: Math.max(1, connectorBounds.bottom - connectorBounds.top)
+                  }
+                : null;
               const lineEndpointOffsets =
                 objectItem.type === "line" ? getLineEndpointOffsets(objectGeometry) : null;
               const isPolygonShape =
                 objectItem.type === "triangle" || objectItem.type === "star";
+
+              if (isConnector && resolvedConnector && connectorFrame) {
+                const strokeWidth = 3;
+                const fromOffset = {
+                  x: resolvedConnector.from.x - connectorFrame.left,
+                  y: resolvedConnector.from.y - connectorFrame.top
+                };
+                const toOffset = {
+                  x: resolvedConnector.to.x - connectorFrame.left,
+                  y: resolvedConnector.to.y - connectorFrame.top
+                };
+                const vector = {
+                  x: toOffset.x - fromOffset.x,
+                  y: toOffset.y - fromOffset.y
+                };
+                const vectorLength = Math.hypot(vector.x, vector.y);
+                const unit =
+                  vectorLength > 0.001
+                    ? { x: vector.x / vectorLength, y: vector.y / vectorLength }
+                    : { x: 1, y: 0 };
+                const perpendicular = {
+                  x: -unit.y,
+                  y: unit.x
+                };
+
+                const buildArrowHeadPoints = (
+                  tip: BoardPoint,
+                  direction: BoardPoint
+                ): string => {
+                  const arrowLength = 12;
+                  const arrowWidth = 6;
+                  const backPoint = {
+                    x: tip.x - direction.x * arrowLength,
+                    y: tip.y - direction.y * arrowLength
+                  };
+                  const leftPoint = {
+                    x: backPoint.x + perpendicular.x * arrowWidth,
+                    y: backPoint.y + perpendicular.y * arrowWidth
+                  };
+                  const rightPoint = {
+                    x: backPoint.x - perpendicular.x * arrowWidth,
+                    y: backPoint.y - perpendicular.y * arrowWidth
+                  };
+                  return `${tip.x},${tip.y} ${leftPoint.x},${leftPoint.y} ${rightPoint.x},${rightPoint.y}`;
+                };
+
+                const showFromArrow = objectItem.type === "connectorBidirectional";
+                const showToArrow =
+                  objectItem.type === "connectorArrow" ||
+                  objectItem.type === "connectorBidirectional";
+
+                return (
+                  <article
+                    key={objectItem.id}
+                    data-board-object="true"
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      if (event.shiftKey) {
+                        toggleObjectSelection(objectItem.id);
+                        return;
+                      }
+
+                      selectSingleObject(objectItem.id);
+                    }}
+                    style={{
+                      position: "absolute",
+                      left: connectorFrame.left,
+                      top: connectorFrame.top,
+                      width: connectorFrame.width,
+                      height: connectorFrame.height,
+                      overflow: "visible",
+                      boxShadow: "none"
+                    }}
+                  >
+                    <svg
+                      onPointerDown={(event) => {
+                        event.stopPropagation();
+                        if (event.shiftKey) {
+                          toggleObjectSelection(objectItem.id);
+                          return;
+                        }
+
+                        selectSingleObject(objectItem.id);
+                      }}
+                      viewBox={`0 0 ${connectorFrame.width} ${connectorFrame.height}`}
+                      width={connectorFrame.width}
+                      height={connectorFrame.height}
+                      style={{
+                        display: "block",
+                        overflow: "visible",
+                        cursor: canEdit ? "pointer" : "default",
+                        filter: isSelected ? "drop-shadow(0 0 5px rgba(37, 99, 235, 0.45))" : "none"
+                      }}
+                    >
+                      <line
+                        x1={fromOffset.x}
+                        y1={fromOffset.y}
+                        x2={toOffset.x}
+                        y2={toOffset.y}
+                        stroke={objectItem.color}
+                        strokeWidth={strokeWidth}
+                        strokeLinecap="round"
+                      />
+                      {showFromArrow ? (
+                        <polygon
+                          points={buildArrowHeadPoints(fromOffset, {
+                            x: -unit.x,
+                            y: -unit.y
+                          })}
+                          fill={objectItem.color}
+                        />
+                      ) : null}
+                      {showToArrow ? (
+                        <polygon points={buildArrowHeadPoints(toOffset, unit)} fill={objectItem.color} />
+                      ) : null}
+                    </svg>
+
+                    {isSingleSelected && canEdit ? (
+                      <>
+                        <button
+                          type="button"
+                          onPointerDown={(event) =>
+                            startConnectorEndpointDrag(objectItem.id, "from", event)
+                          }
+                          aria-label="Adjust connector start"
+                          style={{
+                            position: "absolute",
+                            left: fromOffset.x - CONNECTOR_HANDLE_SIZE / 2,
+                            top: fromOffset.y - CONNECTOR_HANDLE_SIZE / 2,
+                            width: CONNECTOR_HANDLE_SIZE,
+                            height: CONNECTOR_HANDLE_SIZE,
+                            borderRadius: "50%",
+                            border: "1px solid #1d4ed8",
+                            background: resolvedConnector.from.connected ? "#dbeafe" : "white",
+                            cursor: "move"
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onPointerDown={(event) =>
+                            startConnectorEndpointDrag(objectItem.id, "to", event)
+                          }
+                          aria-label="Adjust connector end"
+                          style={{
+                            position: "absolute",
+                            left: toOffset.x - CONNECTOR_HANDLE_SIZE / 2,
+                            top: toOffset.y - CONNECTOR_HANDLE_SIZE / 2,
+                            width: CONNECTOR_HANDLE_SIZE,
+                            height: CONNECTOR_HANDLE_SIZE,
+                            borderRadius: "50%",
+                            border: "1px solid #1d4ed8",
+                            background: resolvedConnector.to.connected ? "#dbeafe" : "white",
+                            cursor: "move"
+                          }}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        {!resolvedConnector.from.connected ? (
+                          <span
+                            style={{
+                              position: "absolute",
+                              left: fromOffset.x - 4,
+                              top: fromOffset.y - 4,
+                              width: 8,
+                              height: 8,
+                              borderRadius: "50%",
+                              border: "1px solid #475569",
+                              background: "white",
+                              pointerEvents: "none"
+                            }}
+                          />
+                        ) : null}
+                        {!resolvedConnector.to.connected ? (
+                          <span
+                            style={{
+                              position: "absolute",
+                              left: toOffset.x - 4,
+                              top: toOffset.y - 4,
+                              width: 8,
+                              height: 8,
+                              borderRadius: "50%",
+                              border: "1px solid #475569",
+                              background: "white",
+                              pointerEvents: "none"
+                            }}
+                          />
+                        ) : null}
+                      </>
+                    )}
+                  </article>
+                );
+              }
 
               if (objectItem.type === "sticky") {
                 return (
@@ -3803,6 +4698,26 @@ export default function RealtimeBoardCanvas({
               );
             })}
           </div>
+
+          {shouldShowConnectorAnchors
+            ? connectorAnchorPoints.map((anchorPoint) => (
+                <span
+                  key={`${anchorPoint.objectId}-${anchorPoint.anchor}`}
+                  style={{
+                    position: "absolute",
+                    left: viewport.x + anchorPoint.x * viewport.scale - 4,
+                    top: viewport.y + anchorPoint.y * viewport.scale - 4,
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    border: "1px solid #0f172a",
+                    background: "#ffffff",
+                    pointerEvents: "none",
+                    zIndex: 38
+                  }}
+                />
+              ))
+            : null}
 
           {marqueeRect ? (
             <div

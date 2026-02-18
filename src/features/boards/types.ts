@@ -34,8 +34,13 @@ export type BoardObjectKind =
   | "rect"
   | "circle"
   | "line"
+  | "connectorUndirected"
+  | "connectorArrow"
+  | "connectorBidirectional"
   | "triangle"
   | "star";
+
+export type ConnectorAnchor = "top" | "right" | "bottom" | "left";
 
 export type BoardObject = {
   id: string;
@@ -48,6 +53,14 @@ export type BoardObject = {
   rotationDeg: number;
   color: string;
   text: string;
+  fromObjectId?: string | null;
+  toObjectId?: string | null;
+  fromAnchor?: ConnectorAnchor | null;
+  toAnchor?: ConnectorAnchor | null;
+  fromX?: number | null;
+  fromY?: number | null;
+  toX?: number | null;
+  toY?: number | null;
   updatedAt: string | null;
 };
 

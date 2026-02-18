@@ -1,8 +1,13 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
+import type { DeterministicCommandPlanResult } from "@/features/ai/commands/deterministic-command-planner";
 import { withTimeout } from "@/features/ai/guardrails";
-import type { TemplateInstantiateInput, TemplateInstantiateOutput } from "@/features/ai/types";
+import type {
+  BoardObjectSnapshot,
+  TemplateInstantiateInput,
+  TemplateInstantiateOutput
+} from "@/features/ai/types";
 
 type TemplateMcpClientOptions = {
   endpointUrl: URL;
@@ -12,6 +17,12 @@ type TemplateMcpClientOptions = {
 
 type CallTemplateOptions = TemplateMcpClientOptions & {
   input: TemplateInstantiateInput;
+};
+
+type CallCommandPlanOptions = TemplateMcpClientOptions & {
+  message: string;
+  selectedObjectIds: string[];
+  boardState: BoardObjectSnapshot[];
 };
 
 function parseTemplateInstantiateOutput(value: unknown): TemplateInstantiateOutput | null {
@@ -48,6 +59,41 @@ function parseTemplateInstantiateOutput(value: unknown): TemplateInstantiateOutp
   }
 
   return value as TemplateInstantiateOutput;
+}
+
+function parseCommandPlanOutput(value: unknown): DeterministicCommandPlanResult | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const candidate = value as {
+    planned?: unknown;
+    intent?: unknown;
+    assistantMessage?: unknown;
+    plan?: unknown;
+  };
+
+  if (
+    typeof candidate.planned !== "boolean" ||
+    typeof candidate.intent !== "string" ||
+    typeof candidate.assistantMessage !== "string"
+  ) {
+    return null;
+  }
+
+  if (!candidate.planned) {
+    return {
+      planned: false,
+      intent: candidate.intent,
+      assistantMessage: candidate.assistantMessage
+    };
+  }
+
+  if (!candidate.plan || typeof candidate.plan !== "object") {
+    return null;
+  }
+
+  return value as DeterministicCommandPlanResult;
 }
 
 async function withMcpClient<T>(
@@ -96,6 +142,33 @@ export async function callTemplateInstantiateTool(
     const parsed = parseTemplateInstantiateOutput(structured);
     if (!parsed) {
       throw new Error("Template MCP returned invalid structured output.");
+    }
+
+    return parsed;
+  });
+}
+
+export async function callCommandPlanTool(
+  options: CallCommandPlanOptions
+): Promise<DeterministicCommandPlanResult> {
+  return withMcpClient(options, async (client) => {
+    const result = await withTimeout(
+      client.callTool({
+        name: "command.plan",
+        arguments: {
+          message: options.message,
+          selectedObjectIds: options.selectedObjectIds,
+          boardState: options.boardState
+        }
+      }),
+      options.timeoutMs,
+      "MCP command planner timed out."
+    );
+
+    const structured = (result as { structuredContent?: unknown }).structuredContent;
+    const parsed = parseCommandPlanOutput(structured);
+    if (!parsed) {
+      throw new Error("MCP command planner returned invalid structured output.");
     }
 
     return parsed;

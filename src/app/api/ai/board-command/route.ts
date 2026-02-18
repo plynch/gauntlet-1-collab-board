@@ -18,9 +18,10 @@ import {
   validateTemplatePlan,
   withTimeout
 } from "@/features/ai/guardrails";
-import { callTemplateInstantiateTool } from "@/features/ai/mcp/template-mcp-client";
+import { callCommandPlanTool, callTemplateInstantiateTool } from "@/features/ai/mcp/template-mcp-client";
 import { flushLangfuseClient } from "@/features/ai/observability/langfuse-client";
 import { createAiTraceRun } from "@/features/ai/observability/trace-run";
+import { planDeterministicCommand } from "@/features/ai/commands/deterministic-command-planner";
 import { instantiateLocalTemplate } from "@/features/ai/templates/local-template-provider";
 import { SWOT_TEMPLATE_ID } from "@/features/ai/templates/template-types";
 import { BoardToolExecutor } from "@/features/ai/tools/board-tools";
@@ -167,7 +168,7 @@ export async function POST(request: NextRequest) {
     const intent = detectBoardCommandIntent(parsedPayload.message);
     const canEdit = canUserEditBoard(board, user.uid);
 
-    if (intent === "stub") {
+    if (intent === "stub" && !canEdit) {
       const traceId = randomUUID();
       activeTrace = createAiTraceRun({
         traceName: "board-command",
@@ -201,6 +202,195 @@ export async function POST(request: NextRequest) {
         mode: "stub"
       });
       return NextResponse.json(responseWithTrace);
+    }
+
+    if (intent === "stub" && canEdit) {
+      const rateLimitResult = checkUserRateLimit(user.uid);
+      if (!rateLimitResult.ok) {
+        return NextResponse.json(
+          { error: rateLimitResult.error },
+          { status: rateLimitResult.status }
+        );
+      }
+
+      const lockResult = acquireBoardCommandLock(parsedPayload.boardId);
+      if (!lockResult.ok) {
+        return NextResponse.json({ error: lockResult.error }, { status: lockResult.status });
+      }
+      boardLockId = parsedPayload.boardId;
+
+      const traceId = randomUUID();
+      activeTrace = createAiTraceRun({
+        traceName: "board-command",
+        traceId,
+        userId: user.uid,
+        boardId: parsedPayload.boardId,
+        message: parsedPayload.message,
+        metadata: {
+          intent: "deterministic-command-planner"
+        }
+      });
+
+      const response = await withTimeout(
+        (async () => {
+          const executor = new BoardToolExecutor({
+            boardId: parsedPayload.boardId,
+            userId: user.uid
+          });
+
+          const stateSpan = activeTrace.startSpan("ai.request.received", {
+            selectedObjectCount: parsedPayload.selectedObjectIds?.length ?? 0
+          });
+          const boardObjects = await executor.getBoardState();
+          stateSpan.end({
+            existingObjectCount: boardObjects.length
+          });
+
+          let plannerResult;
+          let fallbackUsed = false;
+          let mcpUsed = true;
+          const selectedObjectIds = parsedPayload.selectedObjectIds ?? [];
+
+          const mcpSpan = activeTrace.startSpan("mcp.call", {
+            endpoint: "/api/mcp/templates",
+            tool: "command.plan"
+          });
+          try {
+            const token = getInternalMcpToken();
+            if (!token) {
+              throw new Error("MCP_INTERNAL_TOKEN is missing.");
+            }
+
+            plannerResult = await callCommandPlanTool({
+              endpointUrl: new URL("/api/mcp/templates", request.nextUrl.origin),
+              internalToken: token,
+              timeoutMs: MCP_TEMPLATE_TIMEOUT_MS,
+              message: parsedPayload.message,
+              selectedObjectIds,
+              boardState: boardObjects
+            });
+            mcpSpan.end({
+              fallbackUsed: false
+            });
+          } catch (error) {
+            fallbackUsed = true;
+            mcpUsed = false;
+            mcpSpan.fail("MCP command planner failed.", {
+              reason: getDebugMessage(error) ?? "Unknown error"
+            });
+            plannerResult = planDeterministicCommand({
+              message: parsedPayload.message,
+              boardState: boardObjects,
+              selectedObjectIds
+            });
+          }
+
+          const intentSpan = activeTrace.startSpan("ai.intent.detected", {
+            intent: plannerResult.intent
+          });
+          intentSpan.end({
+            deterministic: true,
+            planned: plannerResult.planned
+          });
+
+          if (!plannerResult.planned) {
+            const payload = buildDeterministicBoardCommandResponse({
+              assistantMessage: plannerResult.assistantMessage,
+              traceId,
+              execution: {
+                intent: plannerResult.intent,
+                mode: "deterministic",
+                mcpUsed,
+                fallbackUsed,
+                toolCalls: 0,
+                objectsCreated: 0
+              }
+            });
+
+            const responseSpan = activeTrace.startSpan("ai.response.sent", {
+              status: 200,
+              provider: payload.provider
+            });
+            responseSpan.end({
+              traceId: payload.traceId ?? null
+            });
+            activeTrace.finishSuccess({
+              intent: plannerResult.intent,
+              planned: false,
+              mcpUsed,
+              fallbackUsed
+            });
+            return payload;
+          }
+
+          const validation = validateTemplatePlan(plannerResult.plan);
+          if (!validation.ok) {
+            throw createHttpError(validation.status, validation.error);
+          }
+
+          const executeSpan = activeTrace.startSpan("tool.execute", {
+            operationCount: plannerResult.plan.operations.length
+          });
+          const executionResult = await executor.executeTemplatePlan(plannerResult.plan);
+          executeSpan.end({
+            toolCalls: executionResult.results.length
+          });
+
+          const commitSpan = activeTrace.startSpan("board.write.commit", {
+            operationCount: plannerResult.plan.operations.length
+          });
+          commitSpan.end({
+            createdObjectCount: executionResult.createdObjectIds.length
+          });
+
+          const payload = buildDeterministicBoardCommandResponse({
+            assistantMessage: plannerResult.assistantMessage,
+            traceId,
+            execution: {
+              intent: plannerResult.intent,
+              mode: "deterministic",
+              mcpUsed,
+              fallbackUsed,
+              toolCalls: executionResult.results.length,
+              objectsCreated: executionResult.createdObjectIds.length
+            }
+          });
+
+          await writeAiAuditLogIfEnabled({
+            boardId: parsedPayload.boardId,
+            userId: user.uid,
+            message: parsedPayload.message,
+            traceId,
+            fallbackUsed,
+            mcpUsed,
+            toolCalls: executionResult.results.length,
+            objectsCreated: executionResult.createdObjectIds.length,
+            intent: plannerResult.intent
+          });
+
+          const responseSpan = activeTrace.startSpan("ai.response.sent", {
+            status: 200,
+            provider: payload.provider
+          });
+          responseSpan.end({
+            traceId: payload.traceId ?? null
+          });
+
+          activeTrace.finishSuccess({
+            intent: plannerResult.intent,
+            toolCalls: executionResult.results.length,
+            objectsCreated: executionResult.createdObjectIds.length,
+            fallbackUsed,
+            mcpUsed
+          });
+
+          return payload;
+        })(),
+        AI_ROUTE_TIMEOUT_MS,
+        "AI command timed out."
+      );
+
+      return NextResponse.json(response);
     }
 
     if (!canEdit) {

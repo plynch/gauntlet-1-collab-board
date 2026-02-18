@@ -3,11 +3,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
 
+import { planDeterministicCommand } from "@/features/ai/commands/deterministic-command-planner";
 import {
   instantiateLocalTemplate,
   listLocalTemplates
 } from "@/features/ai/templates/local-template-provider";
-import type { TemplateInstantiateInput } from "@/features/ai/types";
+import type { BoardObjectSnapshot, TemplateInstantiateInput } from "@/features/ai/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +47,37 @@ function toTemplateInstantiateInput(args: {
     selectedObjectIds: args.selectedObjectIds ?? [],
     existingObjectCount: args.existingObjectCount ?? 0
   };
+}
+
+function toBoardState(raw: unknown): BoardObjectSnapshot[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw
+    .filter((value): value is BoardObjectSnapshot => {
+      if (!value || typeof value !== "object") {
+        return false;
+      }
+
+      const candidate = value as Record<string, unknown>;
+      return (
+        typeof candidate.id === "string" &&
+        typeof candidate.type === "string" &&
+        typeof candidate.x === "number" &&
+        typeof candidate.y === "number" &&
+        typeof candidate.width === "number" &&
+        typeof candidate.height === "number" &&
+        typeof candidate.rotationDeg === "number" &&
+        typeof candidate.color === "string" &&
+        typeof candidate.text === "string" &&
+        typeof candidate.zIndex === "number"
+      );
+    })
+    .map((value) => ({
+      ...value,
+      updatedAt: value.updatedAt ?? null
+    }));
 }
 
 function createTemplateMcpServer(): McpServer {
@@ -109,6 +141,37 @@ function createTemplateMcpServer(): McpServer {
           }
         ],
         structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "command.plan",
+    {
+      description: "Plan deterministic board tool operations from a natural language command.",
+      inputSchema: {
+        message: z.string(),
+        selectedObjectIds: z.array(z.string()).optional(),
+        boardState: z.array(z.unknown()).optional()
+      }
+    },
+    async (args) => {
+      const result = planDeterministicCommand({
+        message: args.message,
+        selectedObjectIds: args.selectedObjectIds ?? [],
+        boardState: toBoardState(args.boardState)
+      });
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: result.planned
+              ? `Planned command intent: ${result.intent}.`
+              : `No deterministic plan generated (${result.intent}).`
+          }
+        ],
+        structuredContent: result
       };
     }
   );

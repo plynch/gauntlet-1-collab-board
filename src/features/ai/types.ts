@@ -20,6 +20,9 @@ export type BoardObjectToolKind =
   | "rect"
   | "circle"
   | "line"
+  | "connectorUndirected"
+  | "connectorArrow"
+  | "connectorBidirectional"
   | "triangle"
   | "star";
 
@@ -82,7 +85,7 @@ export type BoardToolCall =
       args: {
         fromId: string;
         toId: string;
-        style: "line" | "arrow";
+        style: "undirected" | "one-way-arrow" | "two-way-arrow";
       };
     }
   | {
@@ -139,7 +142,7 @@ export type TemplateInstantiateOutput = {
 };
 
 export type BoardCommandExecutionSummary = {
-  intent: "swot-template" | "stub";
+  intent: string;
   mode: "deterministic" | "stub";
   mcpUsed: boolean;
   fallbackUsed: boolean;

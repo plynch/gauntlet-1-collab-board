@@ -24,7 +24,7 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
       properties: {
         type: {
           type: "string",
-          enum: ["rect", "circle", "line", "triangle", "star"]
+          enum: ["rect", "circle", "triangle", "star"]
         },
         x: { type: "number" },
         y: { type: "number" },
@@ -54,13 +54,16 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
   },
   {
     name: "createConnector",
-    description: "Connect two objects with a line or arrow.",
+    description: "Connect two objects with an undirected or arrow connector.",
     parameters: {
       type: "object",
       properties: {
         fromId: { type: "string" },
         toId: { type: "string" },
-        style: { type: "string", enum: ["line", "arrow"] }
+        style: {
+          type: "string",
+          enum: ["undirected", "one-way-arrow", "two-way-arrow"]
+        }
       },
       required: ["fromId", "toId", "style"],
       additionalProperties: false
@@ -130,4 +133,3 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
     }
   }
 ];
-

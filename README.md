@@ -50,16 +50,23 @@ npm run build
 ## Runtime AI Agent (Phase 1)
 
 - ✅ Deterministic command routing for SWOT requests
+- ✅ Deterministic command routing for create/move/resize/color/text commands
 - ✅ Runtime MCP integration (in-app Streamable HTTP endpoint)
 - ✅ Local fallback template provider if MCP call fails/times out
 - ✅ Server-side board tool executor (create/move/resize/update/color/get state)
 - ✅ End-to-end trace spans through Langfuse (when configured)
 
+User guide:
+
+- `AI-AGENT-USER-GUIDE.md`
+
 Architecture (current):
 
 1. Board chat drawer sends command to `POST /api/ai/board-command`.
 2. Route authenticates user, validates board permissions, applies guardrails.
-3. Route calls internal MCP endpoint `POST /api/mcp/templates` (`template.instantiate` for `swot.v1`).
+3. Route calls internal MCP endpoint `POST /api/mcp/templates`:
+   - `template.instantiate` for `swot.v1`
+   - `command.plan` for deterministic object commands
 4. MCP returns a structured template plan (operations list).
 5. Route executes operations via server-side board tools, writing Firestore objects.
 6. Response returns assistant message + execution metadata + `traceId`.

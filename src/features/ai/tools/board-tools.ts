@@ -8,8 +8,6 @@ import type {
 } from "@/features/ai/types";
 import { getFirebaseAdminDb } from "@/lib/firebase/admin";
 
-const DEFAULT_LINE_HEIGHT = 4;
-
 type ExecuteToolResult = {
   tool: BoardToolCall["tool"];
   objectId?: string;
@@ -48,9 +46,74 @@ function isObjectKind(value: unknown): value is BoardObjectToolKind {
     value === "rect" ||
     value === "circle" ||
     value === "line" ||
+    value === "connectorUndirected" ||
+    value === "connectorArrow" ||
+    value === "connectorBidirectional" ||
     value === "triangle" ||
     value === "star"
   );
+}
+
+function isConnectorType(value: BoardObjectToolKind): boolean {
+  return (
+    value === "connectorUndirected" ||
+    value === "connectorArrow" ||
+    value === "connectorBidirectional"
+  );
+}
+
+function toAnchorPoint(
+  objectItem: BoardObjectSnapshot,
+  anchor: "top" | "right" | "bottom" | "left"
+): { x: number; y: number } {
+  if (anchor === "top") {
+    return {
+      x: objectItem.x + objectItem.width / 2,
+      y: objectItem.y
+    };
+  }
+
+  if (anchor === "right") {
+    return {
+      x: objectItem.x + objectItem.width,
+      y: objectItem.y + objectItem.height / 2
+    };
+  }
+
+  if (anchor === "bottom") {
+    return {
+      x: objectItem.x + objectItem.width / 2,
+      y: objectItem.y + objectItem.height
+    };
+  }
+
+  return {
+    x: objectItem.x,
+    y: objectItem.y + objectItem.height / 2
+  };
+}
+
+function pickAnchorsByDirection(
+  fromObject: BoardObjectSnapshot,
+  toObject: BoardObjectSnapshot
+): {
+  fromAnchor: "top" | "right" | "bottom" | "left";
+  toAnchor: "top" | "right" | "bottom" | "left";
+} {
+  const fromCenter = toObjectCenter(fromObject);
+  const toCenter = toObjectCenter(toObject);
+  const dx = toCenter.x - fromCenter.x;
+  const dy = toCenter.y - fromCenter.y;
+
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0
+      ? { fromAnchor: "right", toAnchor: "left" }
+      : { fromAnchor: "left", toAnchor: "right" };
+  }
+
+  return dy >= 0
+    ? { fromAnchor: "bottom", toAnchor: "top" }
+    : { fromAnchor: "top", toAnchor: "bottom" };
 }
 
 function timestampToIso(value: unknown): string | null {
@@ -228,15 +291,16 @@ export class BoardToolExecutor {
     height: number;
     color: string;
   }): Promise<ExecuteToolResult> {
+    if (args.type === "line" || isConnectorType(args.type)) {
+      throw new Error("createShape only supports non-connector board shapes.");
+    }
+
     const created = await this.createObject({
       type: args.type,
       x: args.x,
       y: args.y,
-      width: args.type === "line" ? Math.max(24, args.width) : Math.max(20, args.width),
-      height:
-        args.type === "line"
-          ? Math.max(DEFAULT_LINE_HEIGHT, args.height)
-          : Math.max(20, args.height),
+      width: Math.max(20, args.width),
+      height: Math.max(20, args.height),
       color: args.color
     });
 
@@ -266,7 +330,7 @@ export class BoardToolExecutor {
   async createConnector(args: {
     fromId: string;
     toId: string;
-    style: "line" | "arrow";
+    style: "undirected" | "one-way-arrow" | "two-way-arrow";
   }): Promise<ExecuteToolResult> {
     await this.ensureLoadedObjects();
     const fromObject = this.objectsById.get(args.fromId);
@@ -276,24 +340,74 @@ export class BoardToolExecutor {
       throw new Error("Connector endpoints were not found.");
     }
 
-    const fromCenter = toObjectCenter(fromObject);
-    const toCenter = toObjectCenter(toObject);
-    const dx = toCenter.x - fromCenter.x;
-    const dy = toCenter.y - fromCenter.y;
-    const length = Math.max(24, Math.sqrt(dx * dx + dy * dy));
-    const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
-    const centerX = (fromCenter.x + toCenter.x) / 2;
-    const centerY = (fromCenter.y + toCenter.y) / 2;
+    if (
+      fromObject.type === "line" ||
+      toObject.type === "line" ||
+      isConnectorType(fromObject.type) ||
+      isConnectorType(toObject.type)
+    ) {
+      throw new Error("Connectors must link two non-connector shapes.");
+    }
 
-    const created = await this.createObject({
-      type: "line",
-      x: centerX - length / 2,
-      y: centerY - DEFAULT_LINE_HEIGHT / 2,
-      width: length,
-      height: DEFAULT_LINE_HEIGHT,
-      rotationDeg: angleDeg,
-      color: args.style === "arrow" ? "#1d4ed8" : "#1f2937"
-    });
+    const { fromAnchor, toAnchor } = pickAnchorsByDirection(fromObject, toObject);
+    const fromPoint = toAnchorPoint(fromObject, fromAnchor);
+    const toPoint = toAnchorPoint(toObject, toAnchor);
+    const x = Math.min(fromPoint.x, toPoint.x);
+    const y = Math.min(fromPoint.y, toPoint.y);
+    const width = Math.max(12, Math.abs(toPoint.x - fromPoint.x));
+    const height = Math.max(12, Math.abs(toPoint.y - fromPoint.y));
+    const type: BoardObjectToolKind =
+      args.style === "one-way-arrow"
+        ? "connectorArrow"
+        : args.style === "two-way-arrow"
+          ? "connectorBidirectional"
+          : "connectorUndirected";
+    const color =
+      args.style === "one-way-arrow"
+        ? "#1d4ed8"
+        : args.style === "two-way-arrow"
+          ? "#0f766e"
+          : "#334155";
+
+    await this.ensureLoadedObjects();
+    const payload = {
+      type,
+      zIndex: this.nextZIndex++,
+      x,
+      y,
+      width,
+      height,
+      rotationDeg: 0,
+      color,
+      text: "",
+      fromObjectId: fromObject.id,
+      toObjectId: toObject.id,
+      fromAnchor,
+      toAnchor,
+      fromX: fromPoint.x,
+      fromY: fromPoint.y,
+      toX: toPoint.x,
+      toY: toPoint.y,
+      createdBy: this.userId,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    };
+
+    const createdRef = await this.objectsCollection.add(payload);
+    const created: BoardObjectSnapshot = {
+      id: createdRef.id,
+      type: payload.type,
+      zIndex: payload.zIndex,
+      x: payload.x,
+      y: payload.y,
+      width: payload.width,
+      height: payload.height,
+      rotationDeg: payload.rotationDeg,
+      color: payload.color,
+      text: payload.text,
+      updatedAt: null
+    };
+    this.objectsById.set(created.id, created);
 
     return { tool: "createConnector", objectId: created.id };
   }

@@ -167,10 +167,11 @@ const RESIZE_HANDLE_SIZE = 10;
 const LINE_MIN_LENGTH = 40;
 const SELECTED_OBJECT_HALO = "0 0 0 2px rgba(59, 130, 246, 0.45), 0 8px 14px rgba(0,0,0,0.14)";
 const OBJECT_SPAWN_STEP_PX = 20;
-const PANEL_SEPARATOR_COLOR = "#d1d5db";
-const LEFT_PANEL_WIDTH = 216;
+const PANEL_SEPARATOR_COLOR = "#94a3b8";
+const PANEL_SEPARATOR_WIDTH = 3;
+const LEFT_PANEL_WIDTH = 232;
 const RIGHT_PANEL_WIDTH = 238;
-const COLLAPSED_PANEL_WIDTH = 44;
+const COLLAPSED_PANEL_WIDTH = 48;
 const AI_FOOTER_DEFAULT_HEIGHT = 220;
 const AI_FOOTER_MIN_HEIGHT = 140;
 const AI_FOOTER_MAX_HEIGHT = 460;
@@ -2672,7 +2673,7 @@ export default function RealtimeBoardCanvas({
           minHeight: 0,
           minWidth: 0,
           display: "grid",
-          gridTemplateColumns: `${isLeftPanelCollapsed ? COLLAPSED_PANEL_WIDTH : LEFT_PANEL_WIDTH}px 2px minmax(0, 1fr) 2px ${isRightPanelCollapsed ? COLLAPSED_PANEL_WIDTH : RIGHT_PANEL_WIDTH}px`
+          gridTemplateColumns: `${isLeftPanelCollapsed ? COLLAPSED_PANEL_WIDTH : LEFT_PANEL_WIDTH}px ${PANEL_SEPARATOR_WIDTH}px minmax(0, 1fr) ${PANEL_SEPARATOR_WIDTH}px ${isRightPanelCollapsed ? COLLAPSED_PANEL_WIDTH : RIGHT_PANEL_WIDTH}px`
         }}
       >
         <aside
@@ -2702,11 +2703,13 @@ export default function RealtimeBoardCanvas({
                 title="Expand tools panel"
                 aria-label="Expand tools panel"
                 style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: "50%",
-                  border: "1px solid #cbd5e1",
-                  background: "white",
+                  width: 34,
+                  height: 34,
+                  borderRadius: 10,
+                  border: "2px solid #334155",
+                  background: "#e2e8f0",
+                  color: "#0f172a",
+                  fontWeight: 700,
                   cursor: "pointer"
                 }}
               >
@@ -2719,29 +2722,30 @@ export default function RealtimeBoardCanvas({
                 style={{
                   padding: "0.6rem 0.7rem",
                   borderBottom: "1px solid #dbe3eb",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "0.5rem"
+                  display: "grid",
+                  gap: "0.45rem"
                 }}
               >
-                <strong style={{ fontSize: 13, color: "#111827" }}>Tools</strong>
+                <strong style={{ fontSize: 13, color: "#111827", lineHeight: 1.2 }}>Tools</strong>
                 <button
                   type="button"
                   onClick={() => setIsLeftPanelCollapsed(true)}
                   title="Collapse tools panel"
                   aria-label="Collapse tools panel"
                   style={{
-                    width: 24,
-                    height: 24,
-                    border: "1px solid #cbd5e1",
-                    borderRadius: 7,
-                    background: "white",
+                    width: 34,
+                    height: 34,
+                    border: "2px solid #334155",
+                    borderRadius: 10,
+                    background: "#e2e8f0",
+                    color: "#0f172a",
+                    fontWeight: 700,
+                    justifySelf: "start",
                     cursor: "pointer"
                   }}
-                  >
-                    {"<"}
-                  </button>
+                >
+                  {"<"}
+                </button>
               </div>
 
               <div
@@ -2757,8 +2761,10 @@ export default function RealtimeBoardCanvas({
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                    gap: "0.35rem"
+                    gridTemplateColumns: "repeat(2, 42px)",
+                    justifyContent: "center",
+                    gap: "0.45rem",
+                    overflow: "visible"
                   }}
                 >
                   {BOARD_TOOLS.map((toolKind) => (
@@ -2772,10 +2778,17 @@ export default function RealtimeBoardCanvas({
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
+                        width: 42,
+                        minWidth: 42,
+                        maxWidth: 42,
+                        minHeight: 42,
                         border: "1px solid #d1d5db",
-                        borderRadius: 8,
+                        borderRadius: 10,
                         background: "white",
-                        height: 34
+                        height: 42,
+                        padding: 0,
+                        lineHeight: 0,
+                        overflow: "visible"
                       }}
                     >
                       <ToolIcon kind={toolKind} />
@@ -2902,7 +2915,8 @@ export default function RealtimeBoardCanvas({
 
         <div
           style={{
-            background: PANEL_SEPARATOR_COLOR
+            background: PANEL_SEPARATOR_COLOR,
+            boxShadow: "inset 0 0 0 1px rgba(15, 23, 42, 0.14)"
           }}
         />
 
@@ -3474,7 +3488,8 @@ export default function RealtimeBoardCanvas({
 
         <div
           style={{
-            background: PANEL_SEPARATOR_COLOR
+            background: PANEL_SEPARATOR_COLOR,
+            boxShadow: "inset 0 0 0 1px rgba(15, 23, 42, 0.14)"
           }}
         />
 
@@ -3505,11 +3520,13 @@ export default function RealtimeBoardCanvas({
                 title="Expand online users panel"
                 aria-label="Expand online users panel"
                 style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: "50%",
-                  border: "1px solid #cbd5e1",
-                  background: "white",
+                  width: 34,
+                  height: 34,
+                  borderRadius: 10,
+                  border: "2px solid #334155",
+                  background: "#e2e8f0",
+                  color: "#0f172a",
+                  fontWeight: 700,
                   cursor: "pointer"
                 }}
               >
@@ -3522,32 +3539,42 @@ export default function RealtimeBoardCanvas({
                 style={{
                   padding: "0.6rem 0.7rem",
                   borderBottom: "1px solid #dbe3eb",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "0.5rem"
+                  display: "grid",
+                  gap: "0.45rem"
                 }}
               >
-                <strong style={{ fontSize: 13, color: "#111827" }}>Online users</strong>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.55rem" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "0.55rem"
+                  }}
+                >
+                  <strong style={{ fontSize: 13, color: "#111827", lineHeight: 1.2 }}>
+                    Online users
+                  </strong>
                   <span style={{ color: "#6b7280", fontSize: 13 }}>{onlineUsers.length}</span>
-                  <button
-                    type="button"
-                    onClick={() => setIsRightPanelCollapsed(true)}
-                    title="Collapse online users panel"
-                    aria-label="Collapse online users panel"
-                    style={{
-                      width: 24,
-                      height: 24,
-                      border: "1px solid #cbd5e1",
-                      borderRadius: 7,
-                      background: "white",
-                      cursor: "pointer"
-                    }}
-                  >
-                    {">"}
-                  </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setIsRightPanelCollapsed(true)}
+                  title="Collapse online users panel"
+                  aria-label="Collapse online users panel"
+                  style={{
+                    width: 34,
+                    height: 34,
+                    border: "2px solid #334155",
+                    borderRadius: 10,
+                    background: "#e2e8f0",
+                    color: "#0f172a",
+                    fontWeight: 700,
+                    justifySelf: "start",
+                    cursor: "pointer"
+                  }}
+                >
+                  {">"}
+                </button>
               </div>
 
               <div
@@ -3601,7 +3628,7 @@ export default function RealtimeBoardCanvas({
           height: isAiFooterCollapsed ? AI_FOOTER_COLLAPSED_HEIGHT : aiFooterHeight,
           minHeight: isAiFooterCollapsed ? AI_FOOTER_COLLAPSED_HEIGHT : aiFooterHeight,
           maxHeight: isAiFooterCollapsed ? AI_FOOTER_COLLAPSED_HEIGHT : aiFooterHeight,
-          borderTop: `2px solid ${PANEL_SEPARATOR_COLOR}`,
+          borderTop: `${PANEL_SEPARATOR_WIDTH}px solid ${PANEL_SEPARATOR_COLOR}`,
           background: "#ffffff",
           display: "flex",
           flexDirection: "column",

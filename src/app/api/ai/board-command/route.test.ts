@@ -5,7 +5,10 @@
 import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
 
-import { MAX_BOARD_COMMAND_CHARS } from "@/features/ai/board-command";
+import {
+  MAX_BOARD_COMMAND_CHARS,
+  MAX_BOARD_COMMAND_SELECTION_IDS
+} from "@/features/ai/board-command";
 
 import { POST } from "./route";
 
@@ -16,6 +19,16 @@ function createPostRequest(body: unknown): NextRequest {
       "Content-Type": "application/json"
     },
     body: JSON.stringify(body)
+  });
+}
+
+function createRawPostRequest(body: string): NextRequest {
+  return new NextRequest("http://localhost:3000/api/ai/board-command", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body
   });
 }
 
@@ -40,5 +53,29 @@ describe("POST /api/ai/board-command", () => {
     expect(response.status).toBe(400);
     expect(payload.error).toBe("Invalid board command payload.");
   });
-});
 
+  it("returns 400 for invalid JSON body", async () => {
+    const response = await POST(createRawPostRequest("{"));
+    const payload = (await response.json()) as { error?: string };
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe("Invalid JSON body.");
+  });
+
+  it("returns 400 when selected object ids exceed limit", async () => {
+    const response = await POST(
+      createPostRequest({
+        boardId: "board-1",
+        message: "do something",
+        selectedObjectIds: Array.from(
+          { length: MAX_BOARD_COMMAND_SELECTION_IDS + 1 },
+          (_, index) => `object-${index}`
+        )
+      })
+    );
+    const payload = (await response.json()) as { error?: string };
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe("Invalid board command payload.");
+  });
+});

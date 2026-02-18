@@ -6,6 +6,7 @@ import type {
 
 export const MAX_BOARD_COMMAND_CHARS = 500;
 export const MAX_BOARD_COMMAND_SELECTION_IDS = 100;
+export const AI_COMMAND_REQUEST_TIMEOUT_MS = 8_000;
 
 export function parseBoardCommandRequest(input: unknown): BoardCommandRequest | null {
   if (!input || typeof input !== "object") {
@@ -72,3 +73,29 @@ export function buildStubBoardCommandResponse(options: {
   };
 }
 
+export function getBoardCommandErrorMessage(options: {
+  status: number | null;
+  timedOut?: boolean;
+}): string {
+  if (options.timedOut) {
+    return "AI assistant request timed out. Please try again.";
+  }
+
+  if (options.status === 401) {
+    return "Your session expired. Please sign in again to use the AI assistant.";
+  }
+
+  if (options.status === 403) {
+    return "You do not have access to run AI commands on this board.";
+  }
+
+  if (options.status === 404) {
+    return "This board could not be found. Refresh and try again.";
+  }
+
+  if (options.status !== null && options.status >= 500) {
+    return "AI backend is temporarily unavailable. Please try again shortly.";
+  }
+
+  return "AI backend is temporarily unavailable. Please try again shortly.";
+}

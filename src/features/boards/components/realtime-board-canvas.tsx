@@ -263,6 +263,8 @@ const PANEL_SEPARATOR_WIDTH = 4;
 const LEFT_PANEL_WIDTH = 232;
 const RIGHT_PANEL_WIDTH = 238;
 const COLLAPSED_PANEL_WIDTH = 48;
+const PANEL_COLLAPSE_ANIMATION =
+  "220ms cubic-bezier(0.22, 1, 0.36, 1)";
 const AI_FOOTER_DEFAULT_HEIGHT = 220;
 const AI_FOOTER_MIN_HEIGHT = 140;
 const AI_FOOTER_MAX_HEIGHT = 460;
@@ -5915,6 +5917,7 @@ export default function RealtimeBoardCanvas({
           minWidth: 0,
           display: "grid",
           gridTemplateColumns: `${isLeftPanelCollapsed ? COLLAPSED_PANEL_WIDTH : LEFT_PANEL_WIDTH}px ${PANEL_SEPARATOR_WIDTH}px minmax(0, 1fr) ${PANEL_SEPARATOR_WIDTH}px ${isRightPanelCollapsed ? COLLAPSED_PANEL_WIDTH : RIGHT_PANEL_WIDTH}px`,
+          transition: `grid-template-columns ${PANEL_COLLAPSE_ANIMATION}`,
         }}
       >
         <aside
@@ -5933,10 +5936,6 @@ export default function RealtimeBoardCanvas({
                 height: "100%",
                 display: "flex",
                 flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "flex-start",
-                padding: "0.45rem 0.2rem",
-                gap: "0.55rem",
               }}
             >
               <button
@@ -5945,66 +5944,85 @@ export default function RealtimeBoardCanvas({
                 title="Expand tools panel"
                 aria-label="Expand tools panel"
                 style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 10,
-                  border: "2px solid #334155",
-                  background: "#e2e8f0",
+                  width: "100%",
+                  height: "100%",
+                  border: "none",
+                  borderRight: "1px solid #64748b",
+                  borderRadius: 0,
+                  background: "#dbe5f1",
                   color: "#0f172a",
                   fontWeight: 700,
+                  fontSize: 12,
+                  letterSpacing: 0.3,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "0.45rem",
                   cursor: "pointer",
                 }}
               >
-                {">"}
+                <span
+                  style={{
+                    fontSize: 16,
+                    lineHeight: 1,
+                  }}
+                >
+                  {">"}
+                </span>
+                <span
+                  style={{
+                    writingMode: "vertical-rl",
+                    transform: "rotate(180deg)",
+                  }}
+                >
+                  Tools
+                </span>
               </button>
-              <span
-                style={{
-                  writingMode: "vertical-rl",
-                  transform: "rotate(180deg)",
-                  color: "#334155",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  letterSpacing: "0.04em",
-                }}
-              >
-                TOOLS
-              </span>
             </div>
           ) : (
             <>
               <div
                 style={{
-                  padding: "0.6rem 0.7rem",
+                  padding: 0,
                   borderBottom: "1px solid #dbe3eb",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "flex-end",
-                  gap: "0.45rem",
+                  display: "grid",
                 }}
               >
-                <strong
-                  style={{ fontSize: 13, color: "#111827", lineHeight: 1.2 }}
-                >
-                  Tools
-                </strong>
                 <button
                   type="button"
                   onClick={() => setIsLeftPanelCollapsed(true)}
                   title="Collapse tools panel"
                   aria-label="Collapse tools panel"
                   style={{
-                    width: 36,
-                    height: 36,
-                    border: "2px solid #334155",
-                    borderRadius: 10,
-                    background: "#e2e8f0",
+                    width: "100%",
+                    height: 30,
+                    border: "none",
+                    borderRadius: 0,
+                    borderBottom: "1px solid #64748b",
+                    background: "#e5edf7",
                     color: "#0f172a",
                     fontWeight: 700,
-                    alignSelf: "flex-end",
+                    fontSize: 12,
+                    letterSpacing: 0.3,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "0.45rem",
                     cursor: "pointer",
+                    transition:
+                      "background-color 180ms ease, border-color 180ms ease, color 180ms ease",
                   }}
                 >
-                  {"<"}
+                  <span
+                    style={{
+                      fontSize: 16,
+                      lineHeight: 1,
+                    }}
+                  >
+                    {"<"}
+                  </span>
+                  <span>Tools</span>
                 </button>
               </div>
 
@@ -7296,10 +7314,6 @@ export default function RealtimeBoardCanvas({
                 height: "100%",
                 display: "flex",
                 flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "flex-start",
-                padding: "0.45rem 0.2rem",
-                gap: "0.55rem",
               }}
             >
               <button
@@ -7308,76 +7322,88 @@ export default function RealtimeBoardCanvas({
                 title="Expand online users panel"
                 aria-label="Expand online users panel"
                 style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 10,
-                  border: "2px solid #334155",
-                  background: "#e2e8f0",
+                  width: "100%",
+                  height: "100%",
+                  border: "none",
+                  borderLeft: "1px solid #64748b",
+                  borderRadius: 0,
+                  background: "#dbe5f1",
                   color: "#0f172a",
                   fontWeight: 700,
+                  fontSize: 12,
+                  letterSpacing: 0.3,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "0.45rem",
                   cursor: "pointer",
                 }}
               >
-                {"<"}
+                <span
+                  style={{
+                    fontSize: 16,
+                    lineHeight: 1,
+                  }}
+                >
+                  {"<"}
+                </span>
+                <span
+                  style={{
+                    writingMode: "vertical-rl",
+                    transform: "rotate(180deg)",
+                  }}
+                >
+                  Online users
+                </span>
               </button>
-              <span
-                style={{
-                  writingMode: "vertical-rl",
-                  transform: "rotate(180deg)",
-                  color: "#334155",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  letterSpacing: "0.04em",
-                }}
-              >
-                ONLINE USERS
-              </span>
             </div>
           ) : (
             <>
               <div
                 style={{
-                  padding: "0.6rem 0.7rem",
+                  padding: 0,
                   borderBottom: "1px solid #dbe3eb",
                   display: "grid",
-                  gap: "0.45rem",
                 }}
               >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "0.55rem",
-                  }}
-                >
-                  <strong
-                    style={{ fontSize: 13, color: "#111827", lineHeight: 1.2 }}
-                  >
-                    Online users
-                  </strong>
-                  <span style={{ color: "#6b7280", fontSize: 13 }}>
-                    {onlineUsers.length}
-                  </span>
-                </div>
                 <button
                   type="button"
                   onClick={() => setIsRightPanelCollapsed(true)}
                   title="Collapse online users panel"
                   aria-label="Collapse online users panel"
                   style={{
-                    width: 36,
-                    height: 36,
-                    border: "2px solid #334155",
-                    borderRadius: 10,
-                    background: "#e2e8f0",
+                    width: "100%",
+                    height: 30,
+                    border: "none",
+                    borderRadius: 0,
+                    borderBottom: "1px solid #64748b",
+                    background: "#e5edf7",
                     color: "#0f172a",
                     fontWeight: 700,
-                    justifySelf: "start",
+                    fontSize: 12,
+                    letterSpacing: 0.3,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "0.45rem",
                     cursor: "pointer",
+                    transition:
+                      "background-color 180ms ease, border-color 180ms ease, color 180ms ease",
                   }}
                 >
-                  {">"}
+                  <span>Online users</span>
+                  <span style={{ color: "#475569", fontWeight: 600 }}>
+                    ({onlineUsers.length})
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 16,
+                      lineHeight: 1,
+                    }}
+                  >
+                    {">"}
+                  </span>
                 </button>
               </div>
 

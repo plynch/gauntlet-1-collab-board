@@ -2091,7 +2091,7 @@ function toBoardObject(
     gridCellColors: getGridCellColors(rawData.gridCellColors),
     containerTitle:
       type === "gridContainer"
-        ? getString(rawData.containerTitle, "Grid container")
+        ? getString(rawData.containerTitle, "")
         : getNullableString(rawData.containerTitle),
     gridSectionTitles: getStringArray(rawData.gridSectionTitles),
     gridSectionNotes: getStringArray(rawData.gridSectionNotes),
@@ -4072,7 +4072,16 @@ export default function RealtimeBoardCanvas({
         (rect.width / 2 - viewportRef.current.x) / viewportRef.current.scale;
       const centerY =
         (rect.height / 2 - viewportRef.current.y) / viewportRef.current.scale;
-      const { width, height } = getDefaultObjectSize(kind);
+      const defaultSize = getDefaultObjectSize(kind);
+      let width = defaultSize.width;
+      let height = defaultSize.height;
+      if (kind === "gridContainer") {
+        const viewableWidth = rect.width / viewportRef.current.scale;
+        const viewableHeight = rect.height / viewportRef.current.scale;
+        const minimumSize = getMinimumObjectSize(kind);
+        width = Math.max(minimumSize.width, Math.round(viewableWidth * 0.9));
+        height = Math.max(minimumSize.height, Math.round(viewableHeight * 0.9));
+      }
       const spawnIndex =
         objectsByIdRef.current.size + objectSpawnSequenceRef.current;
       objectSpawnSequenceRef.current += 1;
@@ -4119,12 +4128,12 @@ export default function RealtimeBoardCanvas({
           updatedAt: serverTimestamp(),
         };
         if (kind === "gridContainer") {
-          const defaultSectionTitles = getDefaultSectionTitles(2, 2);
-          payload.gridRows = 2;
-          payload.gridCols = 2;
+          const defaultSectionTitles = getDefaultSectionTitles(1, 1);
+          payload.gridRows = 1;
+          payload.gridCols = 1;
           payload.gridGap = GRID_CONTAINER_DEFAULT_GAP;
-          payload.gridCellColors = ["#d1fae5", "#fee2e2", "#dbeafe", "#fef3c7"];
-          payload.containerTitle = "Grid container";
+          payload.gridCellColors = ["transparent"];
+          payload.containerTitle = "";
           payload.gridSectionTitles = defaultSectionTitles;
           payload.gridSectionNotes = Array.from(
             { length: defaultSectionTitles.length },
@@ -4366,10 +4375,7 @@ export default function RealtimeBoardCanvas({
       const sectionCount = rows * cols;
       const defaultSectionTitles = getDefaultSectionTitles(rows, cols);
       return {
-        containerTitle: (objectItem.containerTitle ?? "Grid container").slice(
-          0,
-          120,
-        ),
+        containerTitle: (objectItem.containerTitle ?? "").slice(0, 120),
         sectionTitles: normalizeSectionValues(
           objectItem.gridSectionTitles,
           sectionCount,
@@ -4416,8 +4422,7 @@ export default function RealtimeBoardCanvas({
       }
 
       const normalizedDraft: GridContainerContentDraft = {
-        containerTitle:
-          draft.containerTitle.trim().slice(0, 120) || "Grid container",
+        containerTitle: draft.containerTitle.trim().slice(0, 120),
         sectionTitles: draft.sectionTitles.map((value, index) => {
           const trimmed = value.trim();
           return (trimmed.length > 0 ? trimmed : `Section ${index + 1}`).slice(
@@ -6353,9 +6358,7 @@ export default function RealtimeBoardCanvas({
                   ? getGridDraftForObject(objectItem)
                   : null;
                 const gridContainerTitle =
-                  gridDraft?.containerTitle ??
-                  objectItem.containerTitle ??
-                  "Grid container";
+                  gridDraft?.containerTitle ?? objectItem.containerTitle ?? "";
                 const gridSectionTitles =
                   gridDraft?.sectionTitles ??
                   normalizeSectionValues(

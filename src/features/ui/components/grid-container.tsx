@@ -129,7 +129,7 @@ export function GridContainer({
     ),
   );
   const [internalContainerTitle, setInternalContainerTitle] = useState(
-    containerTitle ?? "Grid Container",
+    containerTitle ?? "",
   );
   const [internalSectionTitles, setInternalSectionTitles] = useState<string[]>(
     () => resolveValues(sectionTitles, fallbackTitles, cellCount),
@@ -149,8 +149,7 @@ export function GridContainer({
     resolveValues(sectionTitles, fallbackTitles, cellCount),
   );
 
-  const resolvedTitle =
-    (containerTitle ?? internalContainerTitle).trim() || "Grid Container";
+  const resolvedTitle = (containerTitle ?? internalContainerTitle).trim();
   const resolvedColors = Array.from(
     { length: cellCount },
     (_, index) => cellColors?.[index] ?? internalColors[index] ?? defaultColor,
@@ -193,7 +192,7 @@ export function GridContainer({
    * Handles commit container title.
    */
   const commitContainerTitle = () => {
-    const nextTitle = containerTitleDraft.trim() || "Grid Container";
+    const nextTitle = containerTitleDraft.trim().slice(0, 120);
     if (!containerTitle) {
       setInternalContainerTitle(nextTitle);
     }
@@ -255,6 +254,7 @@ export function GridContainer({
               onPointerDown={(event) => event.stopPropagation()}
               onChange={(event) => setContainerTitleDraft(event.target.value)}
               onBlur={commitContainerTitle}
+              placeholder="Container title"
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
                   event.preventDefault();
@@ -269,11 +269,11 @@ export function GridContainer({
               autoFocus
               className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm font-semibold text-slate-900"
             />
-          ) : (
+          ) : resolvedTitle.length > 0 ? (
             <h3 className="m-0 truncate text-sm font-semibold text-slate-800">
               {resolvedTitle}
             </h3>
-          )}
+          ) : null}
           {onContainerTitleChange && !isEditingContainerTitle ? (
             <button
               type="button"
@@ -282,11 +282,26 @@ export function GridContainer({
                 setContainerTitleDraft(resolvedTitle);
                 setIsEditingContainerTitle(true);
               }}
-              title="Rename container title"
-              aria-label="Rename container title"
-              className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+              title={
+                resolvedTitle.length > 0
+                  ? "Rename container title"
+                  : "Add container title"
+              }
+              aria-label={
+                resolvedTitle.length > 0
+                  ? "Rename container title"
+                  : "Add container title"
+              }
+              className={cn(
+                "inline-flex items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
+                resolvedTitle.length > 0
+                  ? "h-6 w-6"
+                  : "h-7 px-2 text-xs font-semibold",
+              )}
             >
-              <span aria-hidden="true">✎</span>
+              <span aria-hidden="true">
+                {resolvedTitle.length > 0 ? "✎" : "+ Add title"}
+              </span>
             </button>
           ) : null}
         </div>
@@ -365,8 +380,8 @@ export function GridContainer({
                 minHeight: minCellHeight,
               }}
             >
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-1.5">
+              <div className="mb-2 grid gap-1.5">
+                <div className="relative flex min-h-6 items-center justify-center">
                   {isEditingSection && onSectionTitleChange ? (
                     <input
                       value={sectionTitleDrafts[cellIndex] ?? cellTitle}
@@ -393,10 +408,10 @@ export function GridContainer({
                         }
                       }}
                       autoFocus
-                      className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm font-semibold text-slate-900"
+                      className="w-full rounded-md border border-slate-300 px-2 py-1 text-center text-sm font-semibold text-slate-900"
                     />
                   ) : (
-                    <strong className="truncate text-sm font-semibold text-slate-800">
+                    <strong className="max-w-full truncate text-center text-sm font-semibold text-slate-800">
                       {cellTitle}
                     </strong>
                   )}
@@ -414,7 +429,7 @@ export function GridContainer({
                       }}
                       title="Rename section title"
                       aria-label="Rename section title"
-                      className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                      className="absolute right-0 inline-flex h-5 w-5 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
                     >
                       <span aria-hidden="true">✎</span>
                     </button>
@@ -422,7 +437,7 @@ export function GridContainer({
                 </div>
 
                 {showCellColorPickers ? (
-                  <div className="ml-auto flex max-w-[124px] items-center gap-1 overflow-x-auto pl-1">
+                  <div className="flex w-full flex-wrap items-center justify-center gap-1 px-1">
                     {GRID_SWATCHES.map((swatch) => {
                       const isSelected =
                         resolvedColors[cellIndex]?.toLowerCase() ===

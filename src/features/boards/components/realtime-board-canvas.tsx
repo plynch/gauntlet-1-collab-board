@@ -183,6 +183,7 @@ type ResolvedConnectorEndpoint = {
   y: number;
   objectId: string | null;
   anchor: ConnectorAnchor | null;
+  direction: BoardPoint | null;
   connected: boolean;
 };
 
@@ -721,23 +722,192 @@ function rotatePointAroundCenter(point: BoardPoint, center: BoardPoint, rotation
   };
 }
 
+function rotateVector(vector: BoardPoint, rotationDeg: number): BoardPoint {
+  if (Math.abs(rotationDeg) < 0.001) {
+    return vector;
+  }
+
+  const radians = toRadians(rotationDeg);
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+
+  return {
+    x: vector.x * cos - vector.y * sin,
+    y: vector.x * sin + vector.y * cos
+  };
+}
+
+function getAnchorDirectionVector(anchor: ConnectorAnchor): BoardPoint {
+  if (anchor === "top") {
+    return { x: 0, y: -1 };
+  }
+  if (anchor === "right") {
+    return { x: 1, y: 0 };
+  }
+  if (anchor === "bottom") {
+    return { x: 0, y: 1 };
+  }
+  return { x: -1, y: 0 };
+}
+
+function getAnchorDirectionForGeometry(
+  anchor: ConnectorAnchor,
+  geometry: ObjectGeometry
+): BoardPoint {
+  return rotateVector(getAnchorDirectionVector(anchor), geometry.rotationDeg);
+}
+
+function getRayBoxIntersection(
+  direction: BoardPoint,
+  halfWidth: number,
+  halfHeight: number
+): BoardPoint {
+  const absDx = Math.abs(direction.x);
+  const absDy = Math.abs(direction.y);
+  const tX = absDx <= 0.000001 ? Number.POSITIVE_INFINITY : halfWidth / absDx;
+  const tY = absDy <= 0.000001 ? Number.POSITIVE_INFINITY : halfHeight / absDy;
+  const t = Math.min(tX, tY);
+
+  if (!Number.isFinite(t)) {
+    return { x: 0, y: 0 };
+  }
+
+  return {
+    x: direction.x * t,
+    y: direction.y * t
+  };
+}
+
+function getRayEllipseIntersection(
+  direction: BoardPoint,
+  halfWidth: number,
+  halfHeight: number
+): BoardPoint {
+  const denominator =
+    (direction.x * direction.x) / (halfWidth * halfWidth) +
+    (direction.y * direction.y) / (halfHeight * halfHeight);
+
+  if (denominator <= 0.000001) {
+    return { x: 0, y: 0 };
+  }
+
+  const t = 1 / Math.sqrt(denominator);
+  return {
+    x: direction.x * t,
+    y: direction.y * t
+  };
+}
+
+function cross2d(left: BoardPoint, right: BoardPoint): number {
+  return left.x * right.y - left.y * right.x;
+}
+
+function getRayPolygonIntersection(
+  direction: BoardPoint,
+  polygonPoints: BoardPoint[]
+): BoardPoint | null {
+  if (polygonPoints.length < 3) {
+    return null;
+  }
+
+  let bestT = Number.POSITIVE_INFINITY;
+  let bestPoint: BoardPoint | null = null;
+
+  for (let index = 0; index < polygonPoints.length; index += 1) {
+    const start = polygonPoints[index];
+    const end = polygonPoints[(index + 1) % polygonPoints.length];
+    const segmentVector = {
+      x: end.x - start.x,
+      y: end.y - start.y
+    };
+    const denominator = cross2d(direction, segmentVector);
+
+    if (Math.abs(denominator) <= 0.000001) {
+      continue;
+    }
+
+    const t = cross2d(start, segmentVector) / denominator;
+    const u = cross2d(start, direction) / denominator;
+    if (t < 0 || u < -0.000001 || u > 1.000001) {
+      continue;
+    }
+
+    if (t < bestT) {
+      bestT = t;
+      bestPoint = {
+        x: direction.x * t,
+        y: direction.y * t
+      };
+    }
+  }
+
+  return bestPoint;
+}
+
+function toLocalPolygonPoint(u: number, v: number, width: number, height: number): BoardPoint {
+  return {
+    x: (u - 0.5) * width,
+    y: (v - 0.5) * height
+  };
+}
+
+const TRIANGLE_POLYGON_NORMALIZED: ReadonlyArray<readonly [number, number]> = [
+  [0.5, 0.06],
+  [0.94, 0.92],
+  [0.06, 0.92]
+];
+
+const STAR_POLYGON_NORMALIZED: ReadonlyArray<readonly [number, number]> = [
+  [0.5, 0.07],
+  [0.61, 0.38],
+  [0.95, 0.38],
+  [0.67, 0.57],
+  [0.78, 0.9],
+  [0.5, 0.7],
+  [0.22, 0.9],
+  [0.33, 0.57],
+  [0.05, 0.38],
+  [0.39, 0.38]
+];
+
 function getAnchorPointForGeometry(
   geometry: ObjectGeometry,
-  anchor: ConnectorAnchor
+  anchor: ConnectorAnchor,
+  shapeType:
+    | "sticky"
+    | "rect"
+    | "circle"
+    | "triangle"
+    | "star" = "rect"
 ): BoardPoint {
   const center = {
     x: geometry.x + geometry.width / 2,
     y: geometry.y + geometry.height / 2
   };
+  const halfWidth = geometry.width / 2;
+  const halfHeight = geometry.height / 2;
+  const direction = getAnchorDirectionVector(anchor);
+  let localPoint: BoardPoint;
 
-  const unrotatedPoint =
-    anchor === "top"
-      ? { x: center.x, y: geometry.y }
-      : anchor === "right"
-        ? { x: geometry.x + geometry.width, y: center.y }
-        : anchor === "bottom"
-          ? { x: center.x, y: geometry.y + geometry.height }
-          : { x: geometry.x, y: center.y };
+  if (shapeType === "circle") {
+    localPoint = getRayEllipseIntersection(direction, halfWidth, halfHeight);
+  } else if (shapeType === "triangle" || shapeType === "star") {
+    const normalizedPoints =
+      shapeType === "triangle" ? TRIANGLE_POLYGON_NORMALIZED : STAR_POLYGON_NORMALIZED;
+    const polygonPoints = normalizedPoints.map(([u, v]) =>
+      toLocalPolygonPoint(u, v, geometry.width, geometry.height)
+    );
+    localPoint =
+      getRayPolygonIntersection(direction, polygonPoints) ??
+      getRayBoxIntersection(direction, halfWidth, halfHeight);
+  } else {
+    localPoint = getRayBoxIntersection(direction, halfWidth, halfHeight);
+  }
+
+  const unrotatedPoint = {
+    x: center.x + localPoint.x,
+    y: center.y + localPoint.y
+  };
 
   if (Math.abs(geometry.rotationDeg) < 0.001) {
     return unrotatedPoint;
@@ -1018,6 +1188,46 @@ function getAnchorDirection(anchor: ConnectorAnchor | null): BoardPoint | null {
   return null;
 }
 
+function scoreEndpointDirectionAlignment(
+  fromPoint: BoardPoint,
+  toPoint: BoardPoint,
+  fromDirection: BoardPoint | null,
+  toDirection: BoardPoint | null
+): number {
+  const deltaX = toPoint.x - fromPoint.x;
+  const deltaY = toPoint.y - fromPoint.y;
+  const distance = Math.hypot(deltaX, deltaY);
+  if (distance <= 0.0001) {
+    return 0;
+  }
+
+  let penalty = 0;
+  const forwardX = deltaX / distance;
+  const forwardY = deltaY / distance;
+
+  if (fromDirection) {
+    const fromAlignment = fromDirection.x * forwardX + fromDirection.y * forwardY;
+    if (fromAlignment < 0) {
+      penalty += 2500 + Math.abs(fromAlignment) * 1400;
+    } else {
+      penalty += (1 - fromAlignment) * 120;
+    }
+  }
+
+  if (toDirection) {
+    const toForwardX = -forwardX;
+    const toForwardY = -forwardY;
+    const toAlignment = toDirection.x * toForwardX + toDirection.y * toForwardY;
+    if (toAlignment < 0) {
+      penalty += 2500 + Math.abs(toAlignment) * 1400;
+    } else {
+      penalty += (1 - toAlignment) * 120;
+    }
+  }
+
+  return penalty;
+}
+
 function createOrthogonalRouteCandidates(
   fromPoint: BoardPoint,
   toPoint: BoardPoint,
@@ -1130,8 +1340,8 @@ function buildConnectorRouteGeometry(options: {
 }): ConnectorRouteGeometry {
   const start = { x: options.from.x, y: options.from.y };
   const end = { x: options.to.x, y: options.to.y };
-  const fromDirection = getAnchorDirection(options.from.anchor);
-  const toDirection = getAnchorDirection(options.to.anchor);
+  const fromDirection = options.from.direction ?? getAnchorDirection(options.from.anchor);
+  const toDirection = options.to.direction ?? getAnchorDirection(options.to.anchor);
   const leadDistance = 30;
 
   const startLead = fromDirection
@@ -1978,6 +2188,7 @@ export default function RealtimeBoardCanvas({
           y: fallbackPoint.y,
           objectId: null,
           anchor: null,
+          direction: null,
           connected: false
         };
       }
@@ -1989,6 +2200,7 @@ export default function RealtimeBoardCanvas({
           y: fallbackPoint.y,
           objectId: null,
           anchor: null,
+          direction: null,
           connected: false
         };
       }
@@ -2000,16 +2212,18 @@ export default function RealtimeBoardCanvas({
           y: fallbackPoint.y,
           objectId: null,
           anchor: null,
+          direction: null,
           connected: false
         };
       }
 
-      const anchorPoint = getAnchorPointForGeometry(geometry, anchor);
+      const anchorPoint = getAnchorPointForGeometry(geometry, anchor, anchorObject.type);
       return {
         x: anchorPoint.x,
         y: anchorPoint.y,
         objectId,
         anchor,
+        direction: getAnchorDirectionForGeometry(anchor, geometry),
         connected: true
       };
     },
@@ -2315,6 +2529,7 @@ export default function RealtimeBoardCanvas({
       if (!isConnectableShapeKind(objectItem.type)) {
         return;
       }
+      const connectableType = objectItem.type;
 
       const geometry = getCurrentObjectGeometry(objectItem.id);
       if (!geometry) {
@@ -2322,7 +2537,7 @@ export default function RealtimeBoardCanvas({
       }
 
       CONNECTOR_ANCHORS.forEach((anchor) => {
-        const point = getAnchorPointForGeometry(geometry, anchor);
+        const point = getAnchorPointForGeometry(geometry, anchor, connectableType);
         anchors.push({
           objectId: objectItem.id,
           anchor,
@@ -3928,30 +4143,50 @@ export default function RealtimeBoardCanvas({
         ),
     [draftGeometryById, objects, selectedObjectIds]
   );
+  const connectableGeometryById = useMemo(() => {
+    const geometries = new Map<string, ObjectGeometry>();
+    objects.forEach((objectItem) => {
+      if (!isConnectableShapeKind(objectItem.type)) {
+        return;
+      }
+
+      const draftGeometry = draftGeometryById[objectItem.id];
+      geometries.set(
+        objectItem.id,
+        draftGeometry ?? {
+          x: objectItem.x,
+          y: objectItem.y,
+          width: objectItem.width,
+          height: objectItem.height,
+          rotationDeg: objectItem.rotationDeg
+        }
+      );
+    });
+    return geometries;
+  }, [draftGeometryById, objects]);
+  const connectableTypeById = useMemo(() => {
+    const types = new Map<string, Exclude<BoardObjectKind, "line" | "connectorUndirected" | "connectorArrow" | "connectorBidirectional">>();
+    objects.forEach((objectItem) => {
+      if (isConnectableShapeKind(objectItem.type)) {
+        types.set(objectItem.id, objectItem.type);
+      }
+    });
+    return types;
+  }, [objects]);
   const connectorRoutingObstacles = useMemo(
     () =>
-      objects
-        .map((objectItem) => {
-          if (!isConnectableShapeKind(objectItem.type)) {
-            return null;
-          }
+      Array.from(connectableGeometryById.entries()).map(([objectId, geometry]) => {
+        const objectType = connectableTypeById.get(objectId);
+        if (!objectType) {
+          return null;
+        }
 
-          const draftGeometry = draftGeometryById[objectItem.id];
-          const geometry: ObjectGeometry = draftGeometry ?? {
-            x: objectItem.x,
-            y: objectItem.y,
-            width: objectItem.width,
-            height: objectItem.height,
-            rotationDeg: objectItem.rotationDeg
-          };
-
-          return {
-            objectId: objectItem.id,
-            bounds: inflateObjectBounds(getObjectVisualBounds(objectItem.type, geometry), 14)
-          };
-        })
-        .filter((item): item is ConnectorRoutingObstacle => item !== null),
-    [draftGeometryById, objects]
+        return {
+          objectId,
+          bounds: inflateObjectBounds(getObjectVisualBounds(objectType, geometry), 14)
+        };
+      }).filter((item): item is ConnectorRoutingObstacle => item !== null),
+    [connectableGeometryById, connectableTypeById]
   );
   const connectorRoutesById = useMemo(() => {
     const routes = new Map<
@@ -3971,47 +4206,201 @@ export default function RealtimeBoardCanvas({
         return;
       }
 
-      const localDraft = draftConnectorById[objectItem.id];
-      const connectorObjectForRouting = localDraft
-        ? {
-            ...objectItem,
-            fromObjectId: localDraft.fromObjectId,
-            toObjectId: localDraft.toObjectId,
-            fromAnchor: localDraft.fromAnchor,
-            toAnchor: localDraft.toAnchor,
-            fromX: localDraft.fromX,
-            fromY: localDraft.fromY,
-            toX: localDraft.toX,
-            toY: localDraft.toY
-          }
-        : objectItem;
+      const localDraft = draftConnectorById[objectItem.id] ?? null;
+      const connectorGeometryDraft =
+        draftGeometryById[objectItem.id] ?? {
+          x: objectItem.x,
+          y: objectItem.y,
+          width: objectItem.width,
+          height: objectItem.height,
+          rotationDeg: objectItem.rotationDeg
+        };
+      const defaultFromX =
+        objectItem.fromX ??
+        connectorGeometryDraft.x +
+          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, connectorGeometryDraft.width) * 0.1;
+      const defaultFromY =
+        objectItem.fromY ??
+        connectorGeometryDraft.y +
+          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, connectorGeometryDraft.height) * 0.5;
+      const defaultToX =
+        objectItem.toX ??
+        connectorGeometryDraft.x +
+          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, connectorGeometryDraft.width) * 0.9;
+      const defaultToY =
+        objectItem.toY ??
+        connectorGeometryDraft.y +
+          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, connectorGeometryDraft.height) * 0.5;
+      const connectorDraft: ConnectorDraft = localDraft ?? {
+        fromObjectId: objectItem.fromObjectId ?? null,
+        toObjectId: objectItem.toObjectId ?? null,
+        fromAnchor: objectItem.fromAnchor ?? null,
+        toAnchor: objectItem.toAnchor ?? null,
+        fromX: defaultFromX,
+        fromY: defaultFromY,
+        toX: defaultToX,
+        toY: defaultToY
+      };
+      const activeEndpointDrag = connectorEndpointDragStateRef.current;
 
-      const resolved = getResolvedConnectorEndpoints(connectorObjectForRouting);
-      if (!resolved) {
+      const buildEndpointCandidates = (
+        endpoint: "from" | "to"
+      ): ResolvedConnectorEndpoint[] => {
+        const objectId =
+          endpoint === "from" ? connectorDraft.fromObjectId : connectorDraft.toObjectId;
+        const fallbackPoint =
+          endpoint === "from"
+            ? { x: connectorDraft.fromX, y: connectorDraft.fromY }
+            : { x: connectorDraft.toX, y: connectorDraft.toY };
+        const selectedAnchor =
+          endpoint === "from" ? connectorDraft.fromAnchor : connectorDraft.toAnchor;
+
+        if (!objectId) {
+          return [
+            {
+              x: fallbackPoint.x,
+              y: fallbackPoint.y,
+              objectId: null,
+              anchor: null,
+              direction: null,
+              connected: false
+            }
+          ];
+        }
+
+        const endpointGeometry = connectableGeometryById.get(objectId);
+        if (!endpointGeometry) {
+          return [
+            {
+              x: fallbackPoint.x,
+              y: fallbackPoint.y,
+              objectId: null,
+              anchor: null,
+              direction: null,
+              connected: false
+            }
+          ];
+        }
+        const endpointType = connectableTypeById.get(objectId) ?? "rect";
+
+        const isDraggingThisEndpoint =
+          activeEndpointDrag?.objectId === objectItem.id &&
+          activeEndpointDrag.endpoint === endpoint;
+        const anchors = isDraggingThisEndpoint && selectedAnchor
+          ? [selectedAnchor]
+          : selectedAnchor
+            ? [selectedAnchor, ...CONNECTOR_ANCHORS.filter((anchor) => anchor !== selectedAnchor)]
+            : [...CONNECTOR_ANCHORS];
+
+        return anchors.map((anchor) => {
+          const point = getAnchorPointForGeometry(endpointGeometry, anchor, endpointType);
+          return {
+            x: point.x,
+            y: point.y,
+            objectId,
+            anchor,
+            direction: getAnchorDirectionForGeometry(anchor, endpointGeometry),
+            connected: true
+          };
+        });
+      };
+
+      const fromCandidates = buildEndpointCandidates("from");
+      const toCandidates = buildEndpointCandidates("to");
+      let bestResolved: {
+        from: ResolvedConnectorEndpoint;
+        to: ResolvedConnectorEndpoint;
+      } | null = null;
+      let bestGeometry: ConnectorRouteGeometry | null = null;
+      let bestScore = Number.POSITIVE_INFINITY;
+
+      for (const fromCandidate of fromCandidates) {
+        for (const toCandidate of toCandidates) {
+          if (
+            fromCandidate.connected &&
+            toCandidate.connected &&
+            fromCandidate.objectId === toCandidate.objectId &&
+            fromCandidate.anchor === toCandidate.anchor
+          ) {
+            continue;
+          }
+
+          const obstacles = connectorRoutingObstacles.filter(
+            (obstacle) =>
+              obstacle.objectId !== fromCandidate.objectId &&
+              obstacle.objectId !== toCandidate.objectId
+          );
+          const geometry = buildConnectorRouteGeometry({
+            from: fromCandidate,
+            to: toCandidate,
+            obstacles,
+            padding: CONNECTOR_HIT_PADDING
+          });
+
+          let score = scoreConnectorRoute(geometry.points, obstacles);
+          score += scoreEndpointDirectionAlignment(
+            fromCandidate,
+            toCandidate,
+            fromCandidate.direction,
+            toCandidate.direction
+          );
+          if (
+            fromCandidate.connected &&
+            connectorDraft.fromAnchor &&
+            fromCandidate.anchor !== connectorDraft.fromAnchor
+          ) {
+            score += 14;
+          }
+          if (
+            toCandidate.connected &&
+            connectorDraft.toAnchor &&
+            toCandidate.anchor !== connectorDraft.toAnchor
+          ) {
+            score += 14;
+          }
+
+          if (
+            fromCandidate.connected &&
+            toCandidate.connected &&
+            fromCandidate.objectId === toCandidate.objectId
+          ) {
+            score += 300;
+          }
+
+          if (score < bestScore) {
+            bestScore = score;
+            bestResolved = {
+              from: fromCandidate,
+              to: toCandidate
+            };
+            bestGeometry = geometry;
+          }
+        }
+      }
+
+      if (!bestResolved || !bestGeometry) {
         return;
       }
 
-      const obstacles = connectorRoutingObstacles.filter(
-        (obstacle) =>
-          obstacle.objectId !== resolved.from.objectId &&
-          obstacle.objectId !== resolved.to.objectId
-      );
-
-      const geometry = buildConnectorRouteGeometry({
-        from: resolved.from,
-        to: resolved.to,
-        obstacles,
-        padding: CONNECTOR_HIT_PADDING
-      });
-
       routes.set(objectItem.id, {
-        resolved,
-        geometry
+        resolved: {
+          from: bestResolved.from,
+          to: bestResolved.to,
+          draft: connectorDraft
+        },
+        geometry: bestGeometry
       });
     });
 
     return routes;
-  }, [connectorRoutingObstacles, draftConnectorById, getResolvedConnectorEndpoints, objects]);
+  }, [
+    connectableGeometryById,
+    connectableTypeById,
+    connectorRoutingObstacles,
+    draftConnectorById,
+    draftGeometryById,
+    objects
+  ]);
   const selectedObjectBounds = useMemo(
     () =>
       mergeBounds(

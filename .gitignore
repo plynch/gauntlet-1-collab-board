@@ -30,3 +30,7 @@ ui-debug.log
 
 # Local agent planning artifacts
 .agents/
+
+# Playwright artifacts
+playwright-report/
+test-results/

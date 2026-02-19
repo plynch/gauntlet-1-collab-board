@@ -44,9 +44,16 @@ Useful scripts:
 
 ```bash
 npm run test
+npm run test:e2e
 npm run lint
 npm run typecheck
 npm run build
+```
+
+Playwright first-run setup:
+
+```bash
+npx playwright install chromium
 ```
 
 ## Current Features

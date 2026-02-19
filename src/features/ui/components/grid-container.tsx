@@ -1,6 +1,13 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { cn } from "@/features/ui/lib/cn";
 
@@ -46,6 +53,31 @@ type GridContainerProps = {
 };
 
 /**
+ * Renders pencil edit icon.
+ */
+function PencilEditIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M3 11.8 3.6 9.3l6.8-6.8a1.2 1.2 0 0 1 1.7 0l1.4 1.4a1.2 1.2 0 0 1 0 1.7L6.7 12.4 4.2 13z"
+        stroke="#0f172a"
+        strokeWidth="1.25"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8.8 3.9 12.1 7.2"
+        stroke="#0f172a"
+        strokeWidth="1.25"
+        fill="none"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/**
  * Handles clamp dimension.
  */
 function clampDimension(value: number): number {
@@ -54,6 +86,13 @@ function clampDimension(value: number): number {
   }
 
   return Math.min(12, Math.max(1, Math.floor(value)));
+}
+
+/**
+ * Clamps grid dimension to configured bounds.
+ */
+function clampGridDimension(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, clampDimension(value)));
 }
 
 /**
@@ -88,7 +127,7 @@ export function GridContainer({
   className,
   cellClassName,
   containerTitle,
-  showCellColorPickers = false,
+  showCellColorPickers = true,
   cellColors,
   sectionTitles,
   sectionNotes,
@@ -107,8 +146,12 @@ export function GridContainer({
   maxCols = 6,
   renderCellContent,
 }: GridContainerProps) {
-  const safeRows = clampDimension(rows);
-  const safeCols = clampDimension(cols);
+  const safeMinRows = clampDimension(minRows);
+  const safeMaxRows = Math.max(safeMinRows, clampDimension(maxRows));
+  const safeMinCols = clampDimension(minCols);
+  const safeMaxCols = Math.max(safeMinCols, clampDimension(maxCols));
+  const safeRows = clampGridDimension(rows, safeMinRows, safeMaxRows);
+  const safeCols = clampGridDimension(cols, safeMinCols, safeMaxCols);
   const cellCount = safeRows * safeCols;
   const fallbackTitles = useMemo(
     () =>
@@ -148,6 +191,18 @@ export function GridContainer({
   const [sectionTitleDrafts, setSectionTitleDrafts] = useState<string[]>(() =>
     resolveValues(sectionTitles, fallbackTitles, cellCount),
   );
+  const [isDimensionPickerOpen, setIsDimensionPickerOpen] = useState(false);
+  const [isDimensionDragSelecting, setIsDimensionDragSelecting] =
+    useState(false);
+  const [dimensionPreview, setDimensionPreview] = useState(() => ({
+    rows: safeRows,
+    cols: safeCols,
+  }));
+  const dimensionTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const dimensionPickerRef = useRef<HTMLDivElement | null>(null);
+  const dimensionPreviewRef = useRef(dimensionPreview);
+  const previewRows = isDimensionPickerOpen ? dimensionPreview.rows : safeRows;
+  const previewCols = isDimensionPickerOpen ? dimensionPreview.cols : safeCols;
 
   const resolvedTitle = (containerTitle ?? internalContainerTitle).trim();
   const resolvedColors = Array.from(
@@ -164,14 +219,96 @@ export function GridContainer({
     internalSectionNotes.length > 0 ? internalSectionNotes : fallbackNotes,
     cellCount,
   );
-  const rowOptions = Array.from(
-    { length: Math.max(1, maxRows - minRows + 1) },
-    (_, index) => minRows + index,
+  /**
+   * Handles commit grid dimensions.
+   */
+  const commitGridDimensions = useCallback(
+    (nextRows: number, nextCols: number) => {
+      if (!onGridDimensionsChange) {
+        return;
+      }
+
+      const boundedRows = clampGridDimension(
+        nextRows,
+        safeMinRows,
+        safeMaxRows,
+      );
+      const boundedCols = clampGridDimension(
+        nextCols,
+        safeMinCols,
+        safeMaxCols,
+      );
+      setDimensionPreview({
+        rows: boundedRows,
+        cols: boundedCols,
+      });
+
+      if (boundedRows === safeRows && boundedCols === safeCols) {
+        return;
+      }
+
+      onGridDimensionsChange(boundedRows, boundedCols);
+    },
+    [
+      onGridDimensionsChange,
+      safeCols,
+      safeMaxCols,
+      safeMaxRows,
+      safeMinCols,
+      safeMinRows,
+      safeRows,
+    ],
   );
-  const colOptions = Array.from(
-    { length: Math.max(1, maxCols - minCols + 1) },
-    (_, index) => minCols + index,
-  );
+
+  useEffect(() => {
+    dimensionPreviewRef.current = dimensionPreview;
+  }, [dimensionPreview]);
+
+  useEffect(() => {
+    if (!isDimensionPickerOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const targetNode = event.target as Node | null;
+      if (!targetNode) {
+        return;
+      }
+
+      if (
+        dimensionPickerRef.current?.contains(targetNode) ||
+        dimensionTriggerRef.current?.contains(targetNode)
+      ) {
+        return;
+      }
+
+      setIsDimensionPickerOpen(false);
+      setIsDimensionDragSelecting(false);
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [isDimensionPickerOpen]);
+
+  useEffect(() => {
+    if (!isDimensionDragSelecting) {
+      return;
+    }
+
+    const handlePointerUp = () => {
+      setIsDimensionDragSelecting(false);
+      setIsDimensionPickerOpen(false);
+      const preview = dimensionPreviewRef.current;
+      commitGridDimensions(preview.rows, preview.cols);
+    };
+
+    window.addEventListener("pointerup", handlePointerUp);
+    return () => {
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [commitGridDimensions, isDimensionDragSelecting]);
 
   /**
    * Handles handle color change.
@@ -246,8 +383,8 @@ export function GridContainer({
         className,
       )}
     >
-      <div className="mb-3 grid gap-2">
-        <div className="flex min-w-0 items-center gap-1.5">
+      <div className="mb-3">
+        <div className="relative min-h-8">
           {isEditingContainerTitle && onContainerTitleChange ? (
             <input
               value={containerTitleDraft}
@@ -267,89 +404,149 @@ export function GridContainer({
                 }
               }}
               autoFocus
-              className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm font-semibold text-slate-900"
+              className="mx-auto block w-full max-w-[360px] rounded-md border border-slate-300 px-2 py-1 text-center text-sm font-semibold text-slate-900"
             />
-          ) : resolvedTitle.length > 0 ? (
-            <h3 className="m-0 truncate text-sm font-semibold text-slate-800">
-              {resolvedTitle}
-            </h3>
           ) : null}
-          {onContainerTitleChange && !isEditingContainerTitle ? (
-            <button
-              type="button"
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => {
-                setContainerTitleDraft(resolvedTitle);
-                setIsEditingContainerTitle(true);
-              }}
-              title={
-                resolvedTitle.length > 0
-                  ? "Rename container title"
-                  : "Add container title"
-              }
-              aria-label={
-                resolvedTitle.length > 0
-                  ? "Rename container title"
-                  : "Add container title"
-              }
-              className={cn(
-                "inline-flex items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
-                resolvedTitle.length > 0
-                  ? "h-6 w-6"
-                  : "h-7 px-2 text-xs font-semibold",
-              )}
-            >
-              <span aria-hidden="true">
-                {resolvedTitle.length > 0 ? "✎" : "+ Add title"}
+          {!isEditingContainerTitle ? (
+            <div className="mx-auto flex min-h-7 w-fit max-w-[70%] items-center justify-center gap-1.5">
+              {onContainerTitleChange ? (
+                <button
+                  type="button"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => {
+                    setContainerTitleDraft(resolvedTitle);
+                    setIsEditingContainerTitle(true);
+                  }}
+                  title={
+                    resolvedTitle.length > 0
+                      ? "Rename container title"
+                      : "Add container title"
+                  }
+                  aria-label={
+                    resolvedTitle.length > 0
+                      ? "Rename container title"
+                      : "Add container title"
+                  }
+                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                >
+                  <PencilEditIcon />
+                </button>
+              ) : null}
+              <h3 className="m-0 truncate text-center text-sm font-semibold text-slate-800">
+                {resolvedTitle.length > 0 ? resolvedTitle : "Add title"}
+              </h3>
+            </div>
+          ) : null}
+
+          {showGridControls && onGridDimensionsChange ? (
+            <div className="absolute right-0 top-0 z-20 flex items-center gap-2 text-[11px] text-slate-700">
+              <span className="hidden text-[11px] font-medium text-slate-600 sm:inline">
+                Rows {previewRows} x Cols {previewCols}
               </span>
-            </button>
+              <button
+                ref={dimensionTriggerRef}
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => {
+                  setDimensionPreview({
+                    rows: safeRows,
+                    cols: safeCols,
+                  });
+                  setIsDimensionPickerOpen((current) => !current);
+                }}
+                aria-label="Change grid rows and columns"
+                title="Change grid rows and columns"
+                className="inline-flex h-7 items-center justify-center rounded-md border border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-800 hover:bg-slate-50"
+              >
+                <span className="tabular-nums">
+                  {safeRows} x {safeCols}
+                </span>
+              </button>
+              {isDimensionPickerOpen ? (
+                <div
+                  ref={dimensionPickerRef}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  className="absolute right-0 top-8 w-[170px] rounded-lg border border-slate-300 bg-white/95 p-2 shadow-lg backdrop-blur"
+                >
+                  <div className="mb-2 text-[11px] font-semibold text-slate-700">
+                    Drag to resize: {previewRows} x {previewCols}
+                  </div>
+                  <div
+                    className="grid gap-1"
+                    style={{
+                      gridTemplateColumns: `repeat(${safeMaxCols}, minmax(0, 1fr))`,
+                    }}
+                  >
+                    {Array.from({ length: safeMaxRows * safeMaxCols }).map(
+                      (_, index) => {
+                        const cellRow = Math.floor(index / safeMaxCols) + 1;
+                        const cellCol = (index % safeMaxCols) + 1;
+                        const isEnabled =
+                          cellRow >= safeMinRows && cellCol >= safeMinCols;
+                        const isSelectedArea =
+                          cellRow <= previewRows && cellCol <= previewCols;
+
+                        return (
+                          <button
+                            key={`grid-picker-${cellRow}-${cellCol}`}
+                            type="button"
+                            aria-label={`Select ${cellRow} rows and ${cellCol} columns`}
+                            disabled={!isEnabled}
+                            onPointerDown={(event) => {
+                              event.stopPropagation();
+                              if (!isEnabled) {
+                                return;
+                              }
+                              setIsDimensionDragSelecting(true);
+                              setDimensionPreview({
+                                rows: cellRow,
+                                cols: cellCol,
+                              });
+                            }}
+                            onPointerEnter={() => {
+                              if (!isDimensionDragSelecting || !isEnabled) {
+                                return;
+                              }
+                              setDimensionPreview({
+                                rows: cellRow,
+                                cols: cellCol,
+                              });
+                            }}
+                            onKeyDown={(event) => {
+                              if (!isEnabled) {
+                                return;
+                              }
+                              if (
+                                event.key === "Enter" ||
+                                event.key === " "
+                              ) {
+                                event.preventDefault();
+                                commitGridDimensions(cellRow, cellCol);
+                                setIsDimensionPickerOpen(false);
+                              }
+                            }}
+                            className={cn(
+                              "h-4 w-4 rounded-[3px] border transition-colors",
+                              isEnabled
+                                ? "border-slate-300"
+                                : "cursor-not-allowed border-slate-200 bg-slate-100 opacity-70",
+                              isEnabled && isSelectedArea
+                                ? "bg-sky-400/70"
+                                : "",
+                              isEnabled && !isSelectedArea
+                                ? "bg-slate-100 hover:bg-slate-200"
+                                : "",
+                            )}
+                          />
+                        );
+                      },
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
           ) : null}
         </div>
-
-        {showGridControls && onGridDimensionsChange ? (
-          <div className="flex items-center justify-end gap-2 text-[11px] text-slate-700">
-            <label className="inline-flex items-center gap-1">
-              <span>Rows</span>
-              <select
-                value={safeRows}
-                onPointerDown={(event) => event.stopPropagation()}
-                onChange={(event) => {
-                  const nextRows = Number(event.target.value);
-                  if (Number.isFinite(nextRows)) {
-                    onGridDimensionsChange(nextRows, safeCols);
-                  }
-                }}
-                className="rounded-md border border-slate-300 bg-white px-1.5 py-1 text-[11px] font-medium text-slate-800"
-              >
-                {rowOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="inline-flex items-center gap-1">
-              <span>Cols</span>
-              <select
-                value={safeCols}
-                onPointerDown={(event) => event.stopPropagation()}
-                onChange={(event) => {
-                  const nextCols = Number(event.target.value);
-                  if (Number.isFinite(nextCols)) {
-                    onGridDimensionsChange(safeRows, nextCols);
-                  }
-                }}
-                className="rounded-md border border-slate-300 bg-white px-1.5 py-1 text-[11px] font-medium text-slate-800"
-              >
-                {colOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        ) : null}
       </div>
 
       <div
@@ -380,8 +577,43 @@ export function GridContainer({
                 minHeight: minCellHeight,
               }}
             >
-              <div className="mb-2 grid gap-1.5">
-                <div className="relative flex min-h-6 items-center justify-center">
+              <div className="relative mb-2 min-h-12">
+                {showCellColorPickers ? (
+                  <div className="absolute right-0 top-0 grid grid-cols-5 gap-1 pl-2">
+                    {GRID_SWATCHES.map((swatch) => {
+                      const isSelected =
+                        resolvedColors[cellIndex]?.toLowerCase() ===
+                        swatch.toLowerCase();
+                      const isTransparent = swatch === "transparent";
+                      return (
+                        <button
+                          key={`${cellIndex}-${swatch}`}
+                          type="button"
+                          aria-label={`Set cell ${cellIndex + 1} color`}
+                          title={isTransparent ? "Transparent" : swatch}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={() => handleColorChange(cellIndex, swatch)}
+                          disabled={!onCellColorChange}
+                          className={cn(
+                            "h-4 w-4 rounded-full border",
+                            isSelected
+                              ? "border-slate-800 ring-1 ring-slate-500"
+                              : "border-slate-400",
+                            !onCellColorChange
+                              ? "cursor-not-allowed opacity-65"
+                              : "cursor-pointer",
+                          )}
+                          style={{
+                            background: isTransparent
+                              ? "repeating-conic-gradient(#94a3b8 0% 25%, #e2e8f0 0% 50%) 50% / 8px 8px"
+                              : swatch,
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                ) : null}
+                <div className="relative flex min-h-6 items-center justify-center pr-[108px]">
                   {isEditingSection && onSectionTitleChange ? (
                     <input
                       value={sectionTitleDrafts[cellIndex] ?? cellTitle}
@@ -408,65 +640,35 @@ export function GridContainer({
                         }
                       }}
                       autoFocus
-                      className="w-full rounded-md border border-slate-300 px-2 py-1 text-center text-sm font-semibold text-slate-900"
+                      className="w-full max-w-[280px] rounded-md border border-slate-300 px-2 py-1 text-center text-sm font-semibold text-slate-900"
                     />
                   ) : (
-                    <strong className="max-w-full truncate text-center text-sm font-semibold text-slate-800">
-                      {cellTitle}
-                    </strong>
-                  )}
-                  {onSectionTitleChange && !isEditingSection ? (
-                    <button
-                      type="button"
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={() => {
-                        setSectionTitleDrafts((current) => {
-                          const next = [...current];
-                          next[cellIndex] = cellTitle;
-                          return next;
-                        });
-                        setEditingSectionIndex(cellIndex);
-                      }}
-                      title="Rename section title"
-                      aria-label="Rename section title"
-                      className="absolute right-0 inline-flex h-5 w-5 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                    >
-                      <span aria-hidden="true">✎</span>
-                    </button>
-                  ) : null}
-                </div>
-
-                {showCellColorPickers ? (
-                  <div className="flex w-full flex-wrap items-center justify-center gap-1 px-1">
-                    {GRID_SWATCHES.map((swatch) => {
-                      const isSelected =
-                        resolvedColors[cellIndex]?.toLowerCase() ===
-                        swatch.toLowerCase();
-                      const isTransparent = swatch === "transparent";
-                      return (
+                    <div className="mx-auto flex min-h-6 w-fit max-w-full items-center justify-center gap-1.5">
+                      {onSectionTitleChange ? (
                         <button
-                          key={`${cellIndex}-${swatch}`}
                           type="button"
-                          aria-label={`Set cell ${cellIndex + 1} color`}
-                          title={isTransparent ? "Transparent" : swatch}
                           onPointerDown={(event) => event.stopPropagation()}
-                          onClick={() => handleColorChange(cellIndex, swatch)}
-                          className={cn(
-                            "h-4 w-4 shrink-0 rounded-full border",
-                            isSelected
-                              ? "border-slate-800 ring-1 ring-slate-500"
-                              : "border-slate-400",
-                          )}
-                          style={{
-                            background: isTransparent
-                              ? "repeating-conic-gradient(#94a3b8 0% 25%, #e2e8f0 0% 50%) 50% / 8px 8px"
-                              : swatch,
+                          onClick={() => {
+                            setSectionTitleDrafts((current) => {
+                              const next = [...current];
+                              next[cellIndex] = cellTitle;
+                              return next;
+                            });
+                            setEditingSectionIndex(cellIndex);
                           }}
-                        />
-                      );
-                    })}
-                  </div>
-                ) : null}
+                          title="Rename section title"
+                          aria-label="Rename section title"
+                          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                        >
+                          <PencilEditIcon />
+                        </button>
+                      ) : null}
+                      <strong className="max-w-[220px] truncate text-center text-sm font-semibold text-slate-800">
+                        {cellTitle}
+                      </strong>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {showSectionStickyNotes ? (

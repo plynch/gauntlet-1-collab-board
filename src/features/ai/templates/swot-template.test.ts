@@ -64,4 +64,35 @@ describe("buildSwotTemplatePlan", () => {
       expect(firstGridContainer.args.y).toBe(40);
     }
   });
+
+  it("sizes SWOT to fill most of the visible viewport when provided", () => {
+    const plan = buildSwotTemplatePlan({
+      templateId: SWOT_TEMPLATE_ID,
+      boardBounds: null,
+      viewportBounds: {
+        left: 120,
+        top: 80,
+        width: 1_200,
+        height: 700,
+      },
+      selectedObjectIds: [],
+      existingObjectCount: 0,
+    });
+
+    const firstGridContainer = plan.operations.find(
+      (operation) => operation.tool === "createGridContainer",
+    );
+
+    expect(firstGridContainer?.tool).toBe("createGridContainer");
+    if (firstGridContainer?.tool === "createGridContainer") {
+      expect(firstGridContainer.args.width).toBe(Math.round(1_200 * 0.9));
+      expect(firstGridContainer.args.height).toBe(Math.round(700 * 0.9));
+      expect(firstGridContainer.args.x).toBe(
+        Math.round(120 + (1_200 - firstGridContainer.args.width) / 2),
+      );
+      expect(firstGridContainer.args.y).toBe(
+        Math.round(80 + (700 - firstGridContainer.args.height) / 2),
+      );
+    }
+  });
 });

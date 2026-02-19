@@ -4839,6 +4839,15 @@ export default function RealtimeBoardCanvas({
       try {
         const idToken = idTokenRef.current ?? (await user.getIdToken());
         idTokenRef.current = idToken;
+        const stageElement = stageRef.current;
+        const viewportBounds = stageElement
+          ? {
+              left: -viewportRef.current.x / viewportRef.current.scale,
+              top: -viewportRef.current.y / viewportRef.current.scale,
+              width: stageElement.clientWidth / viewportRef.current.scale,
+              height: stageElement.clientHeight / viewportRef.current.scale,
+            }
+          : undefined;
 
         const response = await fetch("/api/ai/board-command", {
           method: "POST",
@@ -4851,6 +4860,7 @@ export default function RealtimeBoardCanvas({
             boardId,
             message: nextMessage,
             selectedObjectIds: Array.from(selectedObjectIdsRef.current),
+            viewportBounds,
           }),
         });
 
@@ -7071,7 +7081,7 @@ export default function RealtimeBoardCanvas({
                                 }
                               : undefined
                           }
-                          showCellColorPickers={isSingleSelected && canEdit}
+                          showCellColorPickers
                         />
                       ) : null}
                     </div>

@@ -17,12 +17,24 @@ describe("parseBoardCommandRequest", () => {
       boardId: " board-1 ",
       message: "  create a sticky note ",
       selectedObjectIds: ["a", " ", "b"],
+      viewportBounds: {
+        left: 10,
+        top: 20,
+        width: 1000,
+        height: 600,
+      },
     });
 
     expect(parsed).toEqual({
       boardId: "board-1",
       message: "create a sticky note",
       selectedObjectIds: ["a", "b"],
+      viewportBounds: {
+        left: 10,
+        top: 20,
+        width: 1000,
+        height: 600,
+      },
     });
   });
 
@@ -30,6 +42,18 @@ describe("parseBoardCommandRequest", () => {
     expect(parseBoardCommandRequest({})).toBeNull();
     expect(parseBoardCommandRequest({ boardId: "", message: "x" })).toBeNull();
     expect(parseBoardCommandRequest({ boardId: "x", message: "" })).toBeNull();
+    expect(
+      parseBoardCommandRequest({
+        boardId: "x",
+        message: "ok",
+        viewportBounds: {
+          left: 0,
+          top: 0,
+          width: 0,
+          height: 300,
+        },
+      }),
+    ).toBeNull();
     expect(
       parseBoardCommandRequest({
         boardId: "x",

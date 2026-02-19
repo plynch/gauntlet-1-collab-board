@@ -13,6 +13,53 @@ export const MCP_TEMPLATE_TIMEOUT_MS = 1_200;
 export type BoardCommandIntent = "swot-template" | "stub";
 
 /**
+ * Parses viewport bounds payload.
+ */
+function parseViewportBounds(input: unknown):
+  | {
+      left: number;
+      top: number;
+      width: number;
+      height: number;
+    }
+  | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+
+  const candidate = input as {
+    left?: unknown;
+    top?: unknown;
+    width?: unknown;
+    height?: unknown;
+  };
+
+  if (
+    typeof candidate.left !== "number" ||
+    !Number.isFinite(candidate.left) ||
+    typeof candidate.top !== "number" ||
+    !Number.isFinite(candidate.top) ||
+    typeof candidate.width !== "number" ||
+    !Number.isFinite(candidate.width) ||
+    typeof candidate.height !== "number" ||
+    !Number.isFinite(candidate.height)
+  ) {
+    return null;
+  }
+
+  if (candidate.width <= 0 || candidate.height <= 0) {
+    return null;
+  }
+
+  return {
+    left: candidate.left,
+    top: candidate.top,
+    width: candidate.width,
+    height: candidate.height,
+  };
+}
+
+/**
  * Parses board command request.
  */
 export function parseBoardCommandRequest(
@@ -26,6 +73,7 @@ export function parseBoardCommandRequest(
     boardId?: unknown;
     message?: unknown;
     selectedObjectIds?: unknown;
+    viewportBounds?: unknown;
   };
 
   if (
@@ -62,10 +110,27 @@ export function parseBoardCommandRequest(
     selectedObjectIds = normalized;
   }
 
+  let viewportBounds:
+    | {
+        left: number;
+        top: number;
+        width: number;
+        height: number;
+      }
+    | undefined;
+  if (candidate.viewportBounds !== undefined) {
+    const parsedViewportBounds = parseViewportBounds(candidate.viewportBounds);
+    if (!parsedViewportBounds) {
+      return null;
+    }
+    viewportBounds = parsedViewportBounds;
+  }
+
   return {
     boardId: candidate.boardId.trim(),
     message,
     selectedObjectIds,
+    viewportBounds,
   };
 }
 

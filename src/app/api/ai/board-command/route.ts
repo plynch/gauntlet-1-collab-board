@@ -580,6 +580,7 @@ export async function POST(request: NextRequest) {
         const templateInput = {
           templateId: SWOT_TEMPLATE_ID,
           boardBounds: toBoardBounds(boardObjects),
+          viewportBounds: parsedPayload.viewportBounds ?? null,
           selectedObjectIds: parsedPayload.selectedObjectIds ?? [],
           existingObjectCount: boardObjects.length,
         };

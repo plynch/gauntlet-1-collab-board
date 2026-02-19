@@ -13,6 +13,12 @@ export type BoardCommandRequest = {
   boardId: string;
   message: string;
   selectedObjectIds?: string[];
+  viewportBounds?: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  };
 };
 
 export type BoardObjectToolKind =
@@ -169,6 +175,12 @@ export type TemplateInstantiateInput = {
   boardBounds: BoardBounds | null;
   selectedObjectIds: string[];
   existingObjectCount: number;
+  viewportBounds?: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null;
 };
 
 export type TemplateInstantiateOutput = {

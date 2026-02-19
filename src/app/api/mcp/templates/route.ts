@@ -45,6 +45,14 @@ const templateInstantiateArgsSchema = z.object({
     })
     .nullable()
     .optional(),
+  viewportBounds: z
+    .object({
+      left: z.number(),
+      top: z.number(),
+      width: z.number().positive(),
+      height: z.number().positive(),
+    })
+    .optional(),
   selectedObjectIds: z.array(z.string()).optional(),
   existingObjectCount: z.number().int().min(0).optional(),
 });
@@ -89,12 +97,19 @@ function toTemplateInstantiateInput(args: {
     width: number;
     height: number;
   } | null;
+  viewportBounds?: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  };
   selectedObjectIds?: string[];
   existingObjectCount?: number;
 }): TemplateInstantiateInput {
   return {
     templateId: args.templateId,
     boardBounds: args.boardBounds ?? null,
+    viewportBounds: args.viewportBounds ?? null,
     selectedObjectIds: args.selectedObjectIds ?? [],
     existingObjectCount: args.existingObjectCount ?? 0,
   };
@@ -163,6 +178,14 @@ function createTemplateMcpServer(): McpServer {
             height: z.number(),
           })
           .nullable()
+          .optional(),
+        viewportBounds: z
+          .object({
+            left: z.number(),
+            top: z.number(),
+            width: z.number().positive(),
+            height: z.number().positive(),
+          })
           .optional(),
         selectedObjectIds: z.array(z.string()).optional(),
         existingObjectCount: z.number().int().min(0).optional(),

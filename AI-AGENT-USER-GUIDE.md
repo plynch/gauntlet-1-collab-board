@@ -150,6 +150,13 @@ Spans emitted:
 - `board.write.commit`
 - `ai.response.sent`
 
+Tool execution tracing is emitted via a LangChain callback bridge:
+
+- chain run maps to `tool.execute`
+- each tool call maps to `tool.execute.call`
+
+The assistant response bubble also shows `traceId` for each successful command so you can find the exact run in Langfuse quickly.
+
 Required env vars:
 
 - `LANGFUSE_PUBLIC_KEY`

@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
+import { CallbackManager } from "@langchain/core/callbacks/manager";
+import type { Serialized } from "@langchain/core/load/serializable";
 
 import {
   buildClearBoardAssistantMessage,
@@ -23,6 +25,7 @@ import {
   callCommandPlanTool,
   callTemplateInstantiateTool,
 } from "@/features/ai/mcp/template-mcp-client";
+import { LangChainLangfuseCallbackHandler } from "@/features/ai/observability/langchain-langfuse-handler";
 import { flushLangfuseClient } from "@/features/ai/observability/langfuse-client";
 import { createAiTraceRun } from "@/features/ai/observability/trace-run";
 import { planDeterministicCommand } from "@/features/ai/commands/deterministic-command-planner";
@@ -95,6 +98,22 @@ function createHttpError(
 }
 
 const DIRECT_DELETE_BATCH_CHUNK_SIZE = 400;
+const LANGCHAIN_TOOL_PLAN_SERIALIZED: Serialized = {
+  lc: 1,
+  type: "not_implemented",
+  id: ["collabboard", "ai", "tool-plan"],
+};
+
+/**
+ * Handles to serialized tool.
+ */
+function toSerializedTool(toolName: BoardToolCall["tool"]): Serialized {
+  return {
+    lc: 1,
+    type: "not_implemented",
+    id: ["collabboard", "ai", "tool", toolName],
+  };
+}
 
 /**
  * Returns whether tool call creates object is true.
@@ -123,18 +142,42 @@ async function executePlanWithTracing(options: {
   const results: Awaited<ReturnType<BoardToolExecutor["executeToolCall"]>>[] =
     [];
   const createdObjectIds: string[] = [];
-
-  const executeSpan = options.trace.startSpan("tool.execute", {
-    operationCount: options.operations.length,
-  });
+  const callbackManager = new CallbackManager();
+  callbackManager.addHandler(
+    new LangChainLangfuseCallbackHandler(options.trace),
+    true,
+  );
+  const chainRun = await callbackManager.handleChainStart(
+    LANGCHAIN_TOOL_PLAN_SERIALIZED,
+    {
+      operationCount: options.operations.length,
+    },
+    undefined,
+    "chain",
+    ["langchain", "tool-execution"],
+    {
+      traceId: options.trace.traceId,
+    },
+    "tool.execute",
+  );
 
   try {
+    const toolManager = chainRun.getChild("tool.execute.call");
+
     for (let index = 0; index < options.operations.length; index += 1) {
       const operation = options.operations[index];
-      const toolSpan = options.trace.startSpan("tool.execute.call", {
-        operationIndex: index,
-        tool: operation.tool,
-      });
+      const toolRun = await toolManager.handleToolStart(
+        toSerializedTool(operation.tool),
+        JSON.stringify(operation.args ?? {}),
+        undefined,
+        undefined,
+        ["board-tool-call"],
+        {
+          operationIndex: index,
+          tool: operation.tool,
+        },
+        operation.tool,
+      );
 
       try {
         const result = await options.executor.executeToolCall(operation);
@@ -144,21 +187,18 @@ async function executePlanWithTracing(options: {
           createdObjectIds.push(result.objectId);
         }
 
-        toolSpan.end({
+        await toolRun.handleToolEnd({
           objectId: result.objectId ?? null,
           deletedCount: result.deletedCount ?? 0,
+          tool: operation.tool,
         });
       } catch (error) {
-        toolSpan.fail("Tool call failed.", {
-          reason: getDebugMessage(error) ?? "Unknown error",
-          tool: operation.tool,
-          operationIndex: index,
-        });
+        await toolRun.handleToolError(error);
         throw error;
       }
     }
 
-    executeSpan.end({
+    await chainRun.handleChainEnd({
       toolCalls: results.length,
     });
 
@@ -167,9 +207,10 @@ async function executePlanWithTracing(options: {
       createdObjectIds,
     };
   } catch (error) {
-    executeSpan.fail("Tool execution failed.", {
-      reason: getDebugMessage(error) ?? "Unknown error",
-      completedToolCalls: results.length,
+    await chainRun.handleChainError(error, undefined, undefined, undefined, {
+      inputs: {
+        completedToolCalls: results.length,
+      },
     });
     throw error;
   }

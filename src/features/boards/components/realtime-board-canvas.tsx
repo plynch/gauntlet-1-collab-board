@@ -121,6 +121,7 @@ type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   text: string;
+  traceId?: string;
 };
 
 type AiFooterResizeState = {
@@ -4881,12 +4882,17 @@ export default function RealtimeBoardCanvas({
 
         const payload = (await response.json()) as {
           assistantMessage?: unknown;
+          traceId?: unknown;
         };
         const assistantMessage =
           typeof payload.assistantMessage === "string" &&
           payload.assistantMessage.trim()
             ? payload.assistantMessage
             : "AI agent coming soon!";
+        const traceId =
+          typeof payload.traceId === "string" && payload.traceId.trim().length > 0
+            ? payload.traceId
+            : undefined;
 
         setChatMessages((previous) => [
           ...previous,
@@ -4894,6 +4900,7 @@ export default function RealtimeBoardCanvas({
             id: createChatMessageId("a"),
             role: "assistant",
             text: assistantMessage,
+            ...(traceId ? { traceId } : {}),
           },
         ]);
       } catch (error) {
@@ -7579,7 +7586,21 @@ export default function RealtimeBoardCanvas({
                           lineHeight: 1.35,
                         }}
                       >
-                        {message.text}
+                        <div>{message.text}</div>
+                        {message.role === "assistant" && message.traceId ? (
+                          <div
+                            style={{
+                              marginTop: 6,
+                              fontFamily:
+                                "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace",
+                              fontSize: 11,
+                              color: "#334155",
+                              wordBreak: "break-all",
+                            }}
+                          >
+                            traceId: {message.traceId}
+                          </div>
+                        ) : null}
                       </div>
                     ))}
                     {isAiSubmitting ? (

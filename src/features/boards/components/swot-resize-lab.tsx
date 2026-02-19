@@ -107,7 +107,7 @@ function buildContainerObject(overrides?: Partial<BoardObject>): BoardObject {
     gridRows: GRID_ROWS,
     gridCols: GRID_COLS,
     gridGap: GRID_GAP,
-    gridCellColors: ["#d1fae5", "#a7f3d0", "#fee2e2", "#fecaca"],
+    gridCellColors: ["#a7f3d0", "#fecaca", "#a7f3d0", "#fecaca"],
     containerTitle: "SWOT Analysis",
     gridSectionTitles: [...SECTION_TITLES],
     gridSectionNotes: ["", "", "", ""],

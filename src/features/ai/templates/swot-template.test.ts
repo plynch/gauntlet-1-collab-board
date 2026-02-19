@@ -30,9 +30,9 @@ describe("buildSwotTemplatePlan", () => {
         "Threats",
       ]);
       expect(first.args.cellColors).toEqual([
-        "#d1fae5",
         "#a7f3d0",
-        "#fee2e2",
+        "#fecaca",
+        "#a7f3d0",
         "#fecaca",
       ]);
       expect(first.args.sectionNotes).toEqual(["", "", "", ""]);

@@ -279,6 +279,7 @@ const BOARD_COLOR_SWATCHES: ColorSwatch[] = [
   { name: "Gray", value: "#d1d5db" },
   { name: "Tan", value: "#d2b48c" },
 ];
+const SWOT_SECTION_COLORS = ["#a7f3d0", "#fecaca", "#a7f3d0", "#fecaca"];
 const DEFAULT_SWOT_SECTION_TITLES = [
   "Strengths",
   "Weaknesses",
@@ -786,6 +787,13 @@ function getObjectLabel(kind: BoardObjectKind): string {
   }
 
   return "Line";
+}
+
+/**
+ * Returns whether object supports selection hud color updates.
+ */
+function canUseSelectionHudColor(objectItem: BoardObject): boolean {
+  return objectItem.type !== "gridContainer";
 }
 
 /**
@@ -4635,7 +4643,10 @@ export default function RealtimeBoardCanvas({
       }
 
       const objectIdsToUpdate = Array.from(selectedObjectIdsRef.current).filter(
-        (objectId) => objectsByIdRef.current.has(objectId),
+        (objectId) => {
+          const objectItem = objectsByIdRef.current.get(objectId);
+          return objectItem ? canUseSelectionHudColor(objectItem) : false;
+        },
       );
       if (objectIdsToUpdate.length === 0) {
         return;
@@ -5735,20 +5746,27 @@ export default function RealtimeBoardCanvas({
 
     return routed.geometry.midPoint;
   }, [connectorRoutesById, selectedObjects]);
+  const selectedColorableObjects = useMemo(
+    () =>
+      selectedObjects.filter((selectedObject) =>
+        canUseSelectionHudColor(selectedObject.object),
+      ),
+    [selectedObjects],
+  );
   const selectedColor = useMemo(() => {
-    if (selectedObjects.length === 0) {
+    if (selectedColorableObjects.length === 0) {
       return null;
     }
 
-    const firstColor = selectedObjects[0].object.color.toLowerCase();
-    const hasMixedColors = selectedObjects.some(
+    const firstColor = selectedColorableObjects[0].object.color.toLowerCase();
+    const hasMixedColors = selectedColorableObjects.some(
       (selectedObject) =>
         selectedObject.object.color.toLowerCase() !== firstColor,
     );
 
-    return hasMixedColors ? null : selectedObjects[0].object.color;
-  }, [selectedObjects]);
-  const canColorSelection = canEdit && selectedObjects.length > 0;
+    return hasMixedColors ? null : selectedColorableObjects[0].object.color;
+  }, [selectedColorableObjects]);
+  const canColorSelection = canEdit && selectedColorableObjects.length > 0;
   const canResetSelectionRotation =
     canEdit &&
     selectedObjects.some((selectedObject) =>
@@ -6350,7 +6368,7 @@ export default function RealtimeBoardCanvas({
                   objectItem.gridCellColors &&
                   objectItem.gridCellColors.length > 0
                     ? objectItem.gridCellColors
-                    : ["#d1fae5", "#fee2e2", "#dbeafe", "#fef3c7"];
+                    : SWOT_SECTION_COLORS;
                 const gridFallbackTitles = isGridContainer
                   ? getDefaultSectionTitles(gridRows, gridCols)
                   : [];
@@ -6951,7 +6969,7 @@ export default function RealtimeBoardCanvas({
                           gap={gridGap}
                           minCellHeight={0}
                           className="h-full w-full rounded-[10px] border-2 border-slate-600/55 bg-transparent p-2 shadow-none"
-                          cellClassName="rounded-lg border border-slate-500/30 p-2"
+                          cellClassName="rounded-lg border-2 border-slate-700/65 p-2"
                           containerTitle={gridContainerTitle}
                           cellColors={Array.from(
                             { length: gridTotalCells },

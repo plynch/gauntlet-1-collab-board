@@ -129,6 +129,14 @@ type AiFooterResizeState = {
   initialHeight: number;
 };
 
+type StickyTextHoldDragState = {
+  objectId: string;
+  startClientX: number;
+  startClientY: number;
+  timerId: number | null;
+  started: boolean;
+};
+
 type BoardPoint = {
   x: number;
   y: number;
@@ -270,6 +278,7 @@ const AI_FOOTER_MIN_HEIGHT = 140;
 const AI_FOOTER_MAX_HEIGHT = 460;
 const AI_FOOTER_COLLAPSED_HEIGHT = 34;
 const AI_FOOTER_HEIGHT_STORAGE_KEY = "collabboard-ai-footer-height-v1";
+const STICKY_TEXT_HOLD_DRAG_DELAY_MS = 120;
 const BOARD_COLOR_SWATCHES: ColorSwatch[] = [
   { name: "Yellow", value: "#fde68a" },
   { name: "Orange", value: "#fdba74" },
@@ -2200,6 +2209,7 @@ export default function RealtimeBoardCanvas({
   const rotateStateRef = useRef<RotateState | null>(null);
   const marqueeSelectionStateRef = useRef<MarqueeSelectionState | null>(null);
   const aiFooterResizeStateRef = useRef<AiFooterResizeState | null>(null);
+  const stickyTextHoldDragRef = useRef<StickyTextHoldDragState | null>(null);
   const idTokenRef = useRef<string | null>(null);
   const objectsByIdRef = useRef<Map<string, BoardObject>>(new Map());
   const objectSpawnSequenceRef = useRef(0);
@@ -2245,6 +2255,7 @@ export default function RealtimeBoardCanvas({
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
   const [isAiFooterCollapsed, setIsAiFooterCollapsed] = useState(false);
   const [isAiFooterResizing, setIsAiFooterResizing] = useState(false);
+  const [isObjectDragging, setIsObjectDragging] = useState(false);
   const [aiFooterHeight, setAiFooterHeight] = useState(
     AI_FOOTER_DEFAULT_HEIGHT,
   );
@@ -2278,6 +2289,25 @@ export default function RealtimeBoardCanvas({
   useEffect(() => {
     canEditRef.current = canEdit;
   }, [canEdit]);
+
+  const clearStickyTextHoldDrag = useCallback(() => {
+    const holdState = stickyTextHoldDragRef.current;
+    if (!holdState) {
+      return;
+    }
+
+    if (holdState.timerId !== null) {
+      window.clearTimeout(holdState.timerId);
+    }
+
+    stickyTextHoldDragRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearStickyTextHoldDrag();
+    };
+  }, [clearStickyTextHoldDrag]);
 
   useEffect(() => {
     objectsByIdRef.current = new Map(objects.map((item) => [item.id, item]));
@@ -3723,6 +3753,8 @@ export default function RealtimeBoardCanvas({
      * Handles handle window pointer up.
      */
     const handleWindowPointerUp = (event: PointerEvent) => {
+      clearStickyTextHoldDrag();
+
       if (aiFooterResizeStateRef.current) {
         aiFooterResizeStateRef.current = null;
         setIsAiFooterResizing(false);
@@ -3881,6 +3913,7 @@ export default function RealtimeBoardCanvas({
       const deltaY = (event.clientY - dragState.startClientY) / scale;
 
       dragStateRef.current = null;
+      setIsObjectDragging(false);
 
       if (!dragState.hasMoved) {
         dragState.objectIds.forEach((objectId) => {
@@ -3986,6 +4019,7 @@ export default function RealtimeBoardCanvas({
       window.removeEventListener("pointerup", handleWindowPointerUp);
     };
   }, [
+    clearStickyTextHoldDrag,
     clearDraftConnector,
     clearDraftGeometry,
     getConnectableAnchorPoints,
@@ -5191,6 +5225,7 @@ export default function RealtimeBoardCanvas({
         return;
       }
 
+      setIsObjectDragging(true);
       dragStateRef.current = {
         objectIds: availableObjectIds,
         initialGeometries,
@@ -6764,7 +6799,11 @@ export default function RealtimeBoardCanvas({
                             gap: "0.35rem",
                             padding: "0 0.5rem",
                             background: "rgba(0,0,0,0.08)",
-                            cursor: canEdit ? "grab" : "default",
+                            cursor: canEdit
+                              ? isObjectDragging
+                                ? "grabbing"
+                                : "grab"
+                              : "default",
                           }}
                         />
 
@@ -6772,7 +6811,106 @@ export default function RealtimeBoardCanvas({
                           value={objectText}
                           onPointerDown={(event) => {
                             event.stopPropagation();
+                            if (event.shiftKey) {
+                              toggleObjectSelection(objectItem.id);
+                              clearStickyTextHoldDrag();
+                              return;
+                            }
+
                             selectSingleObject(objectItem.id);
+
+                            if (!canEdit || event.button !== 0) {
+                              clearStickyTextHoldDrag();
+                              return;
+                            }
+
+                            clearStickyTextHoldDrag();
+                            const timerId = window.setTimeout(() => {
+                              const holdState = stickyTextHoldDragRef.current;
+                              if (
+                                !holdState ||
+                                holdState.objectId !== objectItem.id ||
+                                holdState.started
+                              ) {
+                                return;
+                              }
+
+                              stickyTextHoldDragRef.current = {
+                                ...holdState,
+                                started: true,
+                                timerId: null,
+                              };
+                              startObjectDrag(
+                                objectItem.id,
+                                {
+                                  button: 0,
+                                  shiftKey: false,
+                                  clientX: holdState.startClientX,
+                                  clientY: holdState.startClientY,
+                                  preventDefault: () => {},
+                                  stopPropagation: () => {},
+                                } as unknown as ReactPointerEvent<HTMLElement>,
+                              );
+                            }, STICKY_TEXT_HOLD_DRAG_DELAY_MS);
+
+                            stickyTextHoldDragRef.current = {
+                              objectId: objectItem.id,
+                              startClientX: event.clientX,
+                              startClientY: event.clientY,
+                              timerId,
+                              started: false,
+                            };
+                          }}
+                          onPointerMove={(event) => {
+                            const holdState = stickyTextHoldDragRef.current;
+                            if (
+                              !holdState ||
+                              holdState.objectId !== objectItem.id ||
+                              holdState.started
+                            ) {
+                              return;
+                            }
+
+                            if (!canEdit) {
+                              clearStickyTextHoldDrag();
+                              return;
+                            }
+
+                            const distance = Math.hypot(
+                              event.clientX - holdState.startClientX,
+                              event.clientY - holdState.startClientY,
+                            );
+                            if (distance < DRAG_CLICK_SLOP_PX) {
+                              return;
+                            }
+
+                            if (holdState.timerId !== null) {
+                              window.clearTimeout(holdState.timerId);
+                            }
+
+                            stickyTextHoldDragRef.current = {
+                              ...holdState,
+                              started: true,
+                              timerId: null,
+                            };
+                            event.preventDefault();
+                            startObjectDrag(
+                              objectItem.id,
+                              {
+                                button: 0,
+                                shiftKey: false,
+                                clientX: event.clientX,
+                                clientY: event.clientY,
+                                preventDefault: () => {},
+                                stopPropagation: () => {},
+                              } as unknown as ReactPointerEvent<HTMLElement>,
+                            );
+                          }}
+                          onPointerUp={() => {
+                            clearStickyTextHoldDrag();
+                          }}
+                          onPointerCancel={() => {
+                            clearStickyTextHoldDrag();
                           }}
                           onFocus={() => selectSingleObject(objectItem.id)}
                           onChange={(event) => {
@@ -6784,6 +6922,7 @@ export default function RealtimeBoardCanvas({
                             queueStickyTextSync(objectItem.id, nextText);
                           }}
                           onBlur={(event) => {
+                            clearStickyTextHoldDrag();
                             const nextText = event.target.value;
                             setTextDrafts((previous) => {
                               const next = { ...previous };
@@ -6805,6 +6944,11 @@ export default function RealtimeBoardCanvas({
                             color: "#111827",
                             fontSize: 14,
                             outline: "none",
+                            cursor: canEdit
+                              ? isObjectDragging
+                                ? "grabbing"
+                                : "grab"
+                              : "default",
                           }}
                         />
                       </div>
@@ -6930,7 +7074,11 @@ export default function RealtimeBoardCanvas({
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        cursor: canEdit ? "grab" : "default",
+                        cursor: canEdit
+                          ? isObjectDragging
+                            ? "grabbing"
+                            : "grab"
+                          : "default",
                         border:
                           objectItem.type === "line" ||
                           isPolygonShape ||

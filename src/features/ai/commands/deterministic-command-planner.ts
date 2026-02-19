@@ -65,6 +65,8 @@ const DEFAULT_SIZES: Record<BoardObjectToolKind, Size> = {
 const GRID_DEFAULT_COLUMNS = 3;
 const STICKY_GRID_SPACING_X = 240;
 const STICKY_GRID_SPACING_Y = 190;
+const STICKY_BATCH_DEFAULT_COLUMNS = 5;
+const MAX_STICKY_BATCH_COUNT = 50;
 
 /**
  * Handles normalize message.
@@ -312,6 +314,34 @@ function parseStickyGridTextSeed(message: string): string | null {
 
   const value = suffixMatch[1].trim();
   return value.length > 0 ? value.slice(0, 960) : null;
+}
+
+/**
+ * Parses sticky batch count.
+ */
+function parseStickyBatchCount(message: string): number | null {
+  const lower = normalizeMessage(message);
+  if (
+    !/\b(add|create|make|generate)\b/.test(lower) ||
+    !/\bstick(?:y|ies)(?:\s+notes?)?\b/.test(lower) ||
+    /\bgrid\b/.test(lower)
+  ) {
+    return null;
+  }
+
+  const countMatch = message.match(
+    /\b(\d+)\s+(?:\w+\s+){0,2}stick(?:y|ies)(?:\s+notes?)?\b/i,
+  );
+  if (!countMatch) {
+    return null;
+  }
+
+  const count = toPositiveInteger(countMatch[1]);
+  if (count < 2) {
+    return null;
+  }
+
+  return count;
 }
 
 /**
@@ -620,6 +650,61 @@ function planCreateSticky(
           },
         },
       ],
+    }),
+  };
+}
+
+/**
+ * Handles plan create sticky batch.
+ */
+function planCreateStickyBatch(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
+  const count = parseStickyBatchCount(input.message);
+  if (!count) {
+    return null;
+  }
+
+  if (count > MAX_STICKY_BATCH_COUNT) {
+    return {
+      planned: false,
+      intent: "create-sticky-batch",
+      assistantMessage: `Create up to ${MAX_STICKY_BATCH_COUNT} sticky notes per command.`,
+    };
+  }
+
+  const point =
+    parseCoordinatePoint(input.message) ?? getAutoSpawnPoint(input.boardState);
+  const color = findColor(input.message) ?? COLOR_KEYWORDS.yellow;
+  const hasExplicitText = /\b(?:that says|saying|with text|text)\b/i.test(
+    input.message,
+  );
+  const textSeed = hasExplicitText ? parseStickyText(input.message) : "Sticky";
+  const columns = Math.min(STICKY_BATCH_DEFAULT_COLUMNS, count);
+
+  const operations: BoardToolCall[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const row = Math.floor(index / columns);
+    const column = index % columns;
+    operations.push({
+      tool: "createStickyNote",
+      args: {
+        text: `${textSeed} ${index + 1}`.slice(0, 1_000),
+        x: point.x + column * STICKY_GRID_SPACING_X,
+        y: point.y + row * STICKY_GRID_SPACING_Y,
+        color,
+      },
+    });
+  }
+
+  return {
+    planned: true,
+    intent: "create-sticky-batch",
+    assistantMessage: `Created ${count} sticky notes.`,
+    plan: toPlan({
+      id: "command.create-sticky-batch",
+      name: "Create Sticky Notes",
+      operations,
     }),
   };
 }
@@ -1066,6 +1151,7 @@ export function planDeterministicCommand(
     planDeleteSelected,
     planArrangeGrid,
     planCreateStickyGrid,
+    planCreateStickyBatch,
     planCreateSticky,
     planCreateFrame,
     planCreateShape,

@@ -41,6 +41,24 @@ describe("validateTemplatePlan", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("accepts creating 25 sticky notes in one command", () => {
+    const result = validateTemplatePlan({
+      templateId: SWOT_TEMPLATE_ID,
+      templateName: "Create 25 stickies",
+      operations: Array.from({ length: 25 }, (_, index) => ({
+        tool: "createStickyNote" as const,
+        args: {
+          text: `Sticky ${index + 1}`,
+          x: index * 10,
+          y: 0,
+          color: "#fde68a",
+        },
+      })),
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
   it("rejects oversized deleteObjects calls", () => {
     const result = validateTemplatePlan({
       templateId: SWOT_TEMPLATE_ID,

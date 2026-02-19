@@ -83,6 +83,27 @@ async function createBoardAndOpen(page: Page, boardTitle: string): Promise<void>
   await expect(page).toHaveURL(/\/boards\//);
 }
 
+test("AI command creates many colored stickies with trace id", async ({
+  page,
+}) => {
+  const boardTitle = `E2E AI Sticky Batch ${Date.now()}`;
+  await createBoardAndOpen(page, boardTitle);
+
+  const createBatchResult = await sendAiCommand(page, "Create 25 red stickies");
+  expect(createBatchResult.assistantMessage).toContain("Created 25 sticky notes");
+
+  const stickyNotes = page.locator("article[data-board-object='true'] textarea");
+  await expect(stickyNotes).toHaveCount(25);
+  await expect(
+    stickyNotes.filter({
+      hasText: /Sticky 25/i,
+    }),
+  ).toHaveCount(1);
+
+  // Trace id is printed to make Langfuse lookup easy after local runs.
+  console.log("Langfuse trace id (create sticky batch):", createBatchResult.traceId);
+});
+
 test("AI layout commands create sticky grids and arrange selected objects with trace ids", async ({
   page,
 }) => {

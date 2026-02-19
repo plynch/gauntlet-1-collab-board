@@ -3,8 +3,8 @@ import { createFirestoreGuardrailStore } from "@/features/ai/guardrail-store.fir
 import type { GuardrailStore } from "@/features/ai/guardrail-store";
 import { createMemoryGuardrailStore } from "@/features/ai/guardrail-store.memory";
 
-export const MAX_AI_OPERATIONS_PER_COMMAND = 20;
-export const MAX_AI_CREATED_OBJECTS_PER_COMMAND = 12;
+export const MAX_AI_OPERATIONS_PER_COMMAND = 50;
+export const MAX_AI_CREATED_OBJECTS_PER_COMMAND = 50;
 export const MAX_AI_DELETIONS_PER_TOOL_CALL = 2_000;
 export const MAX_AI_LAYOUT_OBJECTS_PER_TOOL_CALL = 50;
 export const MAX_AI_COMMANDS_PER_USER_PER_WINDOW = 20;

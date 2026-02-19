@@ -46,6 +46,7 @@ Demo narration tip:
   - `Create a SWOT analysis`
 - Deterministic object command routing:
   - create sticky notes, frames, and shapes
+  - create multiple stickies with count and color (for example `create 25 red stickies`)
   - create sticky-note grids from prompts like `create a 2x3 grid of sticky notes`
   - arrange selected objects into a grid (`arrange selected in a grid`, `arrange selected in 3 columns`)
   - move selected objects
@@ -100,6 +101,7 @@ Use these as copy/paste starting points.
 ### Creation commands
 
 - `Add a yellow sticky note that says User Research`
+- `Create 25 red stickies`
 - `Create a blue rectangle at position 100, 200`
 - `Add a frame called Sprint Planning`
 - `Create an undirected connector between object A and object B`

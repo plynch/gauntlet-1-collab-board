@@ -108,6 +108,40 @@ describe("planDeterministicCommand", () => {
     }
   });
 
+  it("plans create-sticky-batch for count and color prompts", () => {
+    const result = planDeterministicCommand({
+      message: "Create 25 red stickies",
+      boardState: BOARD_STATE,
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("create-sticky-batch");
+      expect(result.plan.operations).toHaveLength(25);
+      expect(result.plan.operations.every((op) => op.tool === "createStickyNote")).toBe(
+        true,
+      );
+      const first = result.plan.operations[0];
+      if (first?.tool === "createStickyNote") {
+        expect(first.args.color).toBe("#fca5a5");
+        expect(first.args.text).toBe("Sticky 1");
+      }
+    }
+  });
+
+  it("returns actionable message for oversized sticky batch commands", () => {
+    const result = planDeterministicCommand({
+      message: "Create 99 red stickies",
+      boardState: BOARD_STATE,
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(false);
+    expect(result.intent).toBe("create-sticky-batch");
+    expect(result.assistantMessage).toContain("up to 50");
+  });
+
   it("plans arrange-grid command when selected objects exist", () => {
     const result = planDeterministicCommand({
       message: "Arrange selected objects in a grid with 2 columns gap x 24 y 32",

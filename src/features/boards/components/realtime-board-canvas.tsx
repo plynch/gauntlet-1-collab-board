@@ -266,7 +266,7 @@ const COLLAPSED_PANEL_WIDTH = 48;
 const AI_FOOTER_DEFAULT_HEIGHT = 220;
 const AI_FOOTER_MIN_HEIGHT = 140;
 const AI_FOOTER_MAX_HEIGHT = 460;
-const AI_FOOTER_COLLAPSED_HEIGHT = 46;
+const AI_FOOTER_COLLAPSED_HEIGHT = 34;
 const AI_FOOTER_HEIGHT_STORAGE_KEY = "collabboard-ai-footer-height-v1";
 const BOARD_COLOR_SWATCHES: ColorSwatch[] = [
   { name: "Yellow", value: "#fde68a" },
@@ -2242,6 +2242,7 @@ export default function RealtimeBoardCanvas({
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
   const [isAiFooterCollapsed, setIsAiFooterCollapsed] = useState(false);
+  const [isAiFooterResizing, setIsAiFooterResizing] = useState(false);
   const [aiFooterHeight, setAiFooterHeight] = useState(
     AI_FOOTER_DEFAULT_HEIGHT,
   );
@@ -3722,6 +3723,7 @@ export default function RealtimeBoardCanvas({
     const handleWindowPointerUp = (event: PointerEvent) => {
       if (aiFooterResizeStateRef.current) {
         aiFooterResizeStateRef.current = null;
+        setIsAiFooterResizing(false);
         return;
       }
 
@@ -4802,6 +4804,7 @@ export default function RealtimeBoardCanvas({
         startClientY: event.clientY,
         initialHeight: aiFooterHeight,
       };
+      setIsAiFooterResizing(true);
     },
     [aiFooterHeight, isAiFooterCollapsed],
   );
@@ -7414,12 +7417,17 @@ export default function RealtimeBoardCanvas({
           flexDirection: "column",
           overflow: "hidden",
           flexShrink: 0,
-          position: "relative",
+          transition: isAiFooterResizing
+            ? "none"
+            : "height 220ms cubic-bezier(0.22, 1, 0.36, 1), min-height 220ms cubic-bezier(0.22, 1, 0.36, 1), max-height 220ms cubic-bezier(0.22, 1, 0.36, 1)",
         }}
       >
         <button
           type="button"
-          onClick={() => setIsAiFooterCollapsed((previous) => !previous)}
+          onClick={() => {
+            setIsAiFooterResizing(false);
+            setIsAiFooterCollapsed((previous) => !previous);
+          }}
           aria-label={
             isAiFooterCollapsed
               ? "Expand AI assistant drawer"
@@ -7431,32 +7439,48 @@ export default function RealtimeBoardCanvas({
               : "Collapse AI assistant drawer"
           }
           style={{
-            position: "absolute",
-            left: "50%",
-            transform: "translateX(-50%)",
-            top: 0,
-            height: 28,
-            minWidth: 72,
-            padding: "0 0.9rem",
-            border: "1px solid #64748b",
-            borderTop: "none",
-            borderRadius: "0 0 12px 12px",
-            background: "#dbe5f1",
+            width: "100%",
+            height: 30,
+            border: "none",
+            borderBottom: "1px solid #64748b",
+            borderRadius: 0,
+            background: isAiFooterCollapsed ? "#dbe5f1" : "#e5edf7",
             color: "#0f172a",
             fontWeight: 700,
-            fontSize: 15,
+            fontSize: 12,
             lineHeight: 1,
             cursor: "pointer",
-            zIndex: 8,
+            letterSpacing: 0.3,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "0.45rem",
+            flexShrink: 0,
+            transition:
+              "background-color 180ms ease, border-color 180ms ease, color 180ms ease",
           }}
         >
-          {isAiFooterCollapsed ? "↑" : "↓"}
+          <span
+            style={{
+              display: "inline-block",
+              fontSize: 16,
+              lineHeight: 1,
+              transform: isAiFooterCollapsed
+                ? "translateY(-1px) rotate(0deg)"
+                : "translateY(1px) rotate(180deg)",
+              transition: "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)",
+            }}
+          >
+            ^
+          </span>
+          <span>AI Assistant</span>
         </button>
 
         {isAiFooterCollapsed ? (
           <div
             style={{
-              height: "100%",
+              flex: 1,
+              minHeight: 0,
               display: "grid",
               alignItems: "stretch",
               padding: "0 clamp(0.8rem, 2vw, 1.5rem)",

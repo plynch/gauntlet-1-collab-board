@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildClearBoardAssistantMessage,
   buildDeterministicBoardCommandResponse,
   buildStubBoardCommandResponse,
   buildSwotAssistantMessage,
   detectBoardCommandIntent,
   getBoardCommandErrorMessage,
   MAX_BOARD_COMMAND_SELECTION_IDS,
-  parseBoardCommandRequest
+  parseBoardCommandRequest,
 } from "@/features/ai/board-command";
 
 describe("parseBoardCommandRequest", () => {
@@ -15,13 +16,13 @@ describe("parseBoardCommandRequest", () => {
     const parsed = parseBoardCommandRequest({
       boardId: " board-1 ",
       message: "  create a sticky note ",
-      selectedObjectIds: ["a", " ", "b"]
+      selectedObjectIds: ["a", " ", "b"],
     });
 
     expect(parsed).toEqual({
       boardId: "board-1",
       message: "create a sticky note",
-      selectedObjectIds: ["a", "b"]
+      selectedObjectIds: ["a", "b"],
     });
   });
 
@@ -35,9 +36,9 @@ describe("parseBoardCommandRequest", () => {
         message: "ok",
         selectedObjectIds: Array.from(
           { length: MAX_BOARD_COMMAND_SELECTION_IDS + 1 },
-          (_, index) => `id-${index}`
-        )
-      })
+          (_, index) => `id-${index}`,
+        ),
+      }),
     ).toBeNull();
   });
 });
@@ -46,7 +47,7 @@ describe("buildStubBoardCommandResponse", () => {
   it("returns deterministic stub format", () => {
     const response = buildStubBoardCommandResponse({
       message: "Arrange items in a grid",
-      canEdit: true
+      canEdit: true,
     });
 
     expect(response.ok).toBe(true);
@@ -61,7 +62,7 @@ describe("buildStubBoardCommandResponse", () => {
 describe("detectBoardCommandIntent", () => {
   it("maps SWOT requests to deterministic template intent", () => {
     expect(detectBoardCommandIntent("Create a SWOT analysis template")).toBe(
-      "swot-template"
+      "swot-template",
     );
     expect(detectBoardCommandIntent("build swot board")).toBe("swot-template");
     expect(detectBoardCommandIntent("hello there")).toBe("stub");
@@ -72,15 +73,35 @@ describe("buildSwotAssistantMessage", () => {
   it("returns explicit fallback status in assistant response text", () => {
     const direct = buildSwotAssistantMessage({
       fallbackUsed: false,
-      objectsCreated: 8
+      objectsCreated: 8,
     });
     const fallback = buildSwotAssistantMessage({
       fallbackUsed: true,
-      objectsCreated: 8
+      objectsCreated: 8,
     });
 
     expect(direct).toContain("8 objects");
     expect(fallback).toContain("fallback mode");
+  });
+});
+
+describe("buildClearBoardAssistantMessage", () => {
+  it("returns success text when all objects were deleted", () => {
+    expect(
+      buildClearBoardAssistantMessage({
+        deletedCount: 5,
+        remainingCount: 0,
+      }),
+    ).toContain("Cleared board and deleted 5 objects");
+  });
+
+  it("returns partial-clear text when objects remain", () => {
+    expect(
+      buildClearBoardAssistantMessage({
+        deletedCount: 3,
+        remainingCount: 2,
+      }),
+    ).toContain("but 2 objects still remain");
   });
 });
 
@@ -95,8 +116,8 @@ describe("buildDeterministicBoardCommandResponse", () => {
         mcpUsed: true,
         fallbackUsed: false,
         toolCalls: 8,
-        objectsCreated: 8
-      }
+        objectsCreated: 8,
+      },
     });
 
     expect(response.ok).toBe(true);
@@ -108,17 +129,23 @@ describe("buildDeterministicBoardCommandResponse", () => {
 
 describe("getBoardCommandErrorMessage", () => {
   it("maps timeout and HTTP status codes to user-facing fallback text", () => {
-    expect(getBoardCommandErrorMessage({ status: null, timedOut: true })).toContain(
-      "timed out"
+    expect(
+      getBoardCommandErrorMessage({ status: null, timedOut: true }),
+    ).toContain("timed out");
+    expect(getBoardCommandErrorMessage({ status: 401 })).toContain(
+      "session expired",
     );
-    expect(getBoardCommandErrorMessage({ status: 401 })).toContain("session expired");
-    expect(getBoardCommandErrorMessage({ status: 403 })).toContain("do not have access");
-    expect(getBoardCommandErrorMessage({ status: 404 })).toContain("could not be found");
+    expect(getBoardCommandErrorMessage({ status: 403 })).toContain(
+      "do not have access",
+    );
+    expect(getBoardCommandErrorMessage({ status: 404 })).toContain(
+      "could not be found",
+    );
     expect(getBoardCommandErrorMessage({ status: 500 })).toContain(
-      "temporarily unavailable"
+      "temporarily unavailable",
     );
     expect(getBoardCommandErrorMessage({ status: null })).toContain(
-      "temporarily unavailable"
+      "temporarily unavailable",
     );
   });
 });

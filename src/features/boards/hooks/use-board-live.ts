@@ -7,7 +7,7 @@ import type { BoardPermissions } from "@/features/boards/types";
 import {
   getBoardPermissions,
   toLiveBoardDetail,
-  type LiveBoardDetail
+  type LiveBoardDetail,
 } from "@/features/boards/lib/live-board-utils";
 import { getFirebaseClientDb } from "@/lib/firebase/client";
 
@@ -26,11 +26,15 @@ type LiveBoardState = {
   ready: boolean;
 };
 
+/**
+ * Handles to listener error message.
+ */
 function toListenerErrorMessage(error: unknown, fallback: string): string {
   if (typeof error === "object" && error !== null) {
     const candidate = error as { code?: unknown; message?: unknown };
     const code = typeof candidate.code === "string" ? candidate.code : null;
-    const message = typeof candidate.message === "string" ? candidate.message : null;
+    const message =
+      typeof candidate.message === "string" ? candidate.message : null;
 
     if (code && message) {
       return `${fallback} (${code}: ${message})`;
@@ -48,16 +52,19 @@ function toListenerErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+/**
+ * Handles use board live.
+ */
 export function useBoardLive(
   boardId: string,
-  userUid: string | null
+  userUid: string | null,
 ): UseBoardLiveResult {
   const [state, setState] = useState<LiveBoardState>({
     sourceKey: null,
     board: null,
     permissions: null,
     boardError: null,
-    ready: false
+    ready: false,
   });
 
   useEffect(() => {
@@ -76,14 +83,14 @@ export function useBoardLive(
             board: null,
             permissions: null,
             boardError: "Board not found.",
-            ready: true
+            ready: true,
           });
           return;
         }
 
         const parsedBoard = toLiveBoardDetail(
           snapshot.id,
-          snapshot.data() as Record<string, unknown>
+          snapshot.data() as Record<string, unknown>,
         );
         if (!parsedBoard) {
           setState({
@@ -91,7 +98,7 @@ export function useBoardLive(
             board: null,
             permissions: null,
             boardError: "Board data is invalid.",
-            ready: true
+            ready: true,
           });
           return;
         }
@@ -101,7 +108,7 @@ export function useBoardLive(
           board: parsedBoard,
           permissions: getBoardPermissions(parsedBoard, userUid),
           boardError: null,
-          ready: true
+          ready: true,
         });
       },
       (error) => {
@@ -110,9 +117,9 @@ export function useBoardLive(
           board: null,
           permissions: null,
           boardError: toListenerErrorMessage(error, "Failed to sync board."),
-          ready: true
+          ready: true,
         });
-      }
+      },
     );
 
     return unsubscribe;
@@ -123,7 +130,7 @@ export function useBoardLive(
       board: null,
       permissions: null,
       boardLoading: false,
-      boardError: null
+      boardError: null,
     };
   }
 
@@ -133,7 +140,7 @@ export function useBoardLive(
       board: null,
       permissions: null,
       boardLoading: true,
-      boardError: null
+      boardError: null,
     };
   }
 
@@ -141,6 +148,6 @@ export function useBoardLive(
     board: state.board,
     permissions: state.permissions,
     boardLoading: !state.ready,
-    boardError: state.boardError
+    boardError: state.boardError,
   };
 }

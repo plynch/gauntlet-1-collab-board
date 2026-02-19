@@ -10,11 +10,11 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
         text: { type: "string" },
         x: { type: "number" },
         y: { type: "number" },
-        color: { type: "string" }
+        color: { type: "string" },
       },
       required: ["text", "x", "y", "color"],
-      additionalProperties: false
-    }
+      additionalProperties: false,
+    },
   },
   {
     name: "createShape",
@@ -24,17 +24,17 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
       properties: {
         type: {
           type: "string",
-          enum: ["rect", "circle", "triangle", "star"]
+          enum: ["rect", "circle", "triangle", "star"],
         },
         x: { type: "number" },
         y: { type: "number" },
         width: { type: "number" },
         height: { type: "number" },
-        color: { type: "string" }
+        color: { type: "string" },
       },
       required: ["type", "x", "y", "width", "height", "color"],
-      additionalProperties: false
-    }
+      additionalProperties: false,
+    },
   },
   {
     name: "createGridContainer",
@@ -52,21 +52,21 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
         gap: { type: "number" },
         cellColors: {
           type: "array",
-          items: { type: "string" }
+          items: { type: "string" },
         },
         containerTitle: { type: "string" },
         sectionTitles: {
           type: "array",
-          items: { type: "string" }
+          items: { type: "string" },
         },
         sectionNotes: {
           type: "array",
-          items: { type: "string" }
-        }
+          items: { type: "string" },
+        },
       },
       required: ["x", "y", "width", "height", "rows", "cols", "gap"],
-      additionalProperties: false
-    }
+      additionalProperties: false,
+    },
   },
   {
     name: "createFrame",
@@ -78,11 +78,11 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
         x: { type: "number" },
         y: { type: "number" },
         width: { type: "number" },
-        height: { type: "number" }
+        height: { type: "number" },
       },
       required: ["title", "x", "y", "width", "height"],
-      additionalProperties: false
-    }
+      additionalProperties: false,
+    },
   },
   {
     name: "createConnector",
@@ -94,12 +94,12 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
         toId: { type: "string" },
         style: {
           type: "string",
-          enum: ["undirected", "one-way-arrow", "two-way-arrow"]
-        }
+          enum: ["undirected", "one-way-arrow", "two-way-arrow"],
+        },
       },
       required: ["fromId", "toId", "style"],
-      additionalProperties: false
-    }
+      additionalProperties: false,
+    },
   },
   {
     name: "moveObject",
@@ -109,11 +109,11 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
       properties: {
         objectId: { type: "string" },
         x: { type: "number" },
-        y: { type: "number" }
+        y: { type: "number" },
       },
       required: ["objectId", "x", "y"],
-      additionalProperties: false
-    }
+      additionalProperties: false,
+    },
   },
   {
     name: "resizeObject",
@@ -123,11 +123,11 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
       properties: {
         objectId: { type: "string" },
         width: { type: "number" },
-        height: { type: "number" }
+        height: { type: "number" },
       },
       required: ["objectId", "width", "height"],
-      additionalProperties: false
-    }
+      additionalProperties: false,
+    },
   },
   {
     name: "updateText",
@@ -136,11 +136,11 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
       type: "object",
       properties: {
         objectId: { type: "string" },
-        newText: { type: "string" }
+        newText: { type: "string" },
       },
       required: ["objectId", "newText"],
-      additionalProperties: false
-    }
+      additionalProperties: false,
+    },
   },
   {
     name: "changeColor",
@@ -149,11 +149,11 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
       type: "object",
       properties: {
         objectId: { type: "string" },
-        color: { type: "string" }
+        color: { type: "string" },
       },
       required: ["objectId", "color"],
-      additionalProperties: false
-    }
+      additionalProperties: false,
+    },
   },
   {
     name: "deleteObjects",
@@ -163,12 +163,12 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
       properties: {
         objectIds: {
           type: "array",
-          items: { type: "string" }
-        }
+          items: { type: "string" },
+        },
       },
       required: ["objectIds"],
-      additionalProperties: false
-    }
+      additionalProperties: false,
+    },
   },
   {
     name: "getBoardState",
@@ -176,7 +176,7 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
     parameters: {
       type: "object",
       properties: {},
-      additionalProperties: false
-    }
-  }
+      additionalProperties: false,
+    },
+  },
 ];

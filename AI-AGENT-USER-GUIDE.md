@@ -33,6 +33,7 @@ Use these commands in order during a live demo:
    - `Update selected sticky text to Top priority`
 
 Demo narration tip:
+
 - Mention that each command goes through `POST /api/ai/board-command` with guardrails, MCP planning/fallback, and trace spans.
 
 ## Current command support (today)
@@ -52,6 +53,7 @@ Demo narration tip:
   - update selected object text
 
 Result:
+
 - 4 colored rectangle quadrants
 - 4 label stickies:
   - Strengths
@@ -84,6 +86,7 @@ The backend tool schema includes:
 - `getBoardState()`
 
 Notes:
+
 - This satisfies the project’s minimum tool schema requirement.
 - Current chat routing executes a subset directly (SWOT flow uses `getBoardState`, `createShape`, `createStickyNote`).
 

@@ -18,6 +18,9 @@ type AppHeaderProps = {
   title?: string;
 };
 
+/**
+ * Handles header back link.
+ */
 export function HeaderBackLink({ href, label }: HeaderBackLinkProps) {
   return (
     <Link
@@ -31,15 +34,19 @@ export function HeaderBackLink({ href, label }: HeaderBackLinkProps) {
   );
 }
 
+/**
+ * Handles app header.
+ */
 export default function AppHeader({
   user,
   leftSlot,
   onSignOut = null,
   signOutDisabled = false,
   showAccountLink = true,
-  title = "CollabBoard"
+  title = "CollabBoard",
 }: AppHeaderProps) {
-  const profileLabel = user?.displayName?.trim() || user?.email?.trim() || user?.uid || "Account";
+  const profileLabel =
+    user?.displayName?.trim() || user?.email?.trim() || user?.uid || "Account";
   const avatarInitial = profileLabel[0]?.toUpperCase() ?? "A";
 
   return (
@@ -62,9 +69,15 @@ export default function AppHeader({
               >
                 {user.photoURL ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={user.photoURL} alt={profileLabel} className="h-full w-full object-cover" />
+                  <img
+                    src={user.photoURL}
+                    alt={profileLabel}
+                    className="h-full w-full object-cover"
+                  />
                 ) : (
-                  <span className="text-sm font-semibold uppercase">{avatarInitial}</span>
+                  <span className="text-sm font-semibold uppercase">
+                    {avatarInitial}
+                  </span>
                 )}
               </Link>
             ) : (
@@ -74,9 +87,15 @@ export default function AppHeader({
               >
                 {user.photoURL ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={user.photoURL} alt={profileLabel} className="h-full w-full object-cover" />
+                  <img
+                    src={user.photoURL}
+                    alt={profileLabel}
+                    className="h-full w-full object-cover"
+                  />
                 ) : (
-                  <span className="text-sm font-semibold uppercase">{avatarInitial}</span>
+                  <span className="text-sm font-semibold uppercase">
+                    {avatarInitial}
+                  </span>
                 )}
               </div>
             )}

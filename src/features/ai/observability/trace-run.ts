@@ -26,10 +26,16 @@ export type AiTraceRun = {
   finishError: (errorMessage: string, details?: JsonRecord) => void;
 };
 
+/**
+ * Handles now iso.
+ */
 function nowIso(): string {
   return new Date().toISOString();
 }
 
+/**
+ * Handles update span.
+ */
 function updateSpan(
   span: LangfuseSpanClient,
   payload: {
@@ -37,16 +43,19 @@ function updateSpan(
     metadata?: JsonRecord;
     statusMessage?: string;
     level?: "ERROR" | "WARNING" | "DEFAULT" | "DEBUG";
-  }
+  },
 ): void {
   span.update({
     ...(payload.output ? { output: payload.output } : {}),
     ...(payload.metadata ? { metadata: payload.metadata } : {}),
     ...(payload.statusMessage ? { statusMessage: payload.statusMessage } : {}),
-    ...(payload.level ? { level: payload.level } : {})
+    ...(payload.level ? { level: payload.level } : {}),
   });
 }
 
+/**
+ * Creates noop span handle.
+ */
 function createNoopSpanHandle(): SpanHandle {
   return {
     end: () => {
@@ -54,10 +63,13 @@ function createNoopSpanHandle(): SpanHandle {
     },
     fail: () => {
       // no-op
-    }
+    },
   };
 }
 
+/**
+ * Creates ai trace run.
+ */
 export function createAiTraceRun(options: CreateTraceRunOptions): AiTraceRun {
   const langfuse = getLangfuseClient();
   const trace: LangfuseTraceClient | null = langfuse
@@ -67,13 +79,13 @@ export function createAiTraceRun(options: CreateTraceRunOptions): AiTraceRun {
         userId: options.userId,
         sessionId: options.boardId,
         input: {
-          message: options.message
+          message: options.message,
         },
         metadata: {
           boardId: options.boardId,
           startedAt: nowIso(),
-          ...(options.metadata ?? {})
-        }
+          ...(options.metadata ?? {}),
+        },
       })
     : null;
 
@@ -88,8 +100,8 @@ export function createAiTraceRun(options: CreateTraceRunOptions): AiTraceRun {
         name,
         input: input ?? {},
         metadata: {
-          boardId: options.boardId
-        }
+          boardId: options.boardId,
+        },
       });
 
       return {
@@ -97,8 +109,8 @@ export function createAiTraceRun(options: CreateTraceRunOptions): AiTraceRun {
           updateSpan(span, {
             output: output ?? {},
             metadata: {
-              completedAt: nowIso()
-            }
+              completedAt: nowIso(),
+            },
           });
           span.end();
         },
@@ -108,11 +120,11 @@ export function createAiTraceRun(options: CreateTraceRunOptions): AiTraceRun {
             statusMessage: errorMessage,
             output: details ?? { error: errorMessage },
             metadata: {
-              failedAt: nowIso()
-            }
+              failedAt: nowIso(),
+            },
           });
           span.end();
-        }
+        },
       };
     },
     updateMetadata: (metadata) => {
@@ -121,7 +133,7 @@ export function createAiTraceRun(options: CreateTraceRunOptions): AiTraceRun {
       }
 
       trace.update({
-        metadata
+        metadata,
       });
     },
     finishSuccess: (output) => {
@@ -133,8 +145,8 @@ export function createAiTraceRun(options: CreateTraceRunOptions): AiTraceRun {
         output: output ?? {},
         metadata: {
           boardId: options.boardId,
-          completedAt: nowIso()
-        }
+          completedAt: nowIso(),
+        },
       });
     },
     finishError: (errorMessage, details) => {
@@ -147,9 +159,9 @@ export function createAiTraceRun(options: CreateTraceRunOptions): AiTraceRun {
         metadata: {
           boardId: options.boardId,
           failedAt: nowIso(),
-          errorMessage
-        }
+          errorMessage,
+        },
       });
-    }
+    },
   };
 }

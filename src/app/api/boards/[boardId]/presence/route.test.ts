@@ -15,6 +15,9 @@ vi.mock("@/server/auth/require-user", () => {
   class AuthError extends Error {
     readonly status: number;
 
+    /**
+     * Initializes this class instance.
+     */
     constructor(message: string, status = 401) {
       super(message);
       this.status = status;
@@ -23,77 +26,101 @@ vi.mock("@/server/auth/require-user", () => {
 
   return {
     AuthError,
-    requireUser: requireUserMock
+    requireUser: requireUserMock,
   };
 });
 
 vi.mock("@/lib/firebase/admin", () => ({
   getFirebaseAdminDb: getFirebaseAdminDbMock,
-  assertFirestoreWritesAllowedInDev: assertFirestoreWritesAllowedInDevMock
+  assertFirestoreWritesAllowedInDev: assertFirestoreWritesAllowedInDevMock,
 }));
 
 vi.mock("@/server/boards/board-access", () => ({
   canUserReadBoard: canUserReadBoardMock,
-  parseBoardDoc: parseBoardDocMock
+  parseBoardDoc: parseBoardDocMock,
 }));
 
+/**
+ * Creates fake db.
+ */
 function createFakeDb(boardData: Record<string, unknown> | null) {
   const presenceWrites: Array<Record<string, unknown>> = [];
 
   const boardDocRef = {
+    /**
+     * Handles get.
+     */
     async get() {
       return {
         exists: Boolean(boardData),
-        data: () => boardData
+        data: () => boardData,
       };
     },
+    /**
+     * Handles collection.
+     */
     collection(name: string) {
       if (name !== "presence") {
         throw new Error(`Unsupported subcollection: ${name}`);
       }
 
       return {
+        /**
+         * Handles doc.
+         */
         doc(id: string) {
           void id;
           return {
+            /**
+             * Handles set.
+             */
             async set(value: Record<string, unknown>) {
               presenceWrites.push(value);
-            }
+            },
           };
-        }
+        },
       };
-    }
+    },
   };
 
   return {
     presenceWrites,
+    /**
+     * Handles collection.
+     */
     collection(name: string) {
       if (name !== "boards") {
         throw new Error(`Unsupported collection: ${name}`);
       }
 
       return {
+        /**
+         * Handles doc.
+         */
         doc(id: string) {
           void id;
           return boardDocRef;
-        }
+        },
       };
-    }
+    },
   };
 }
 
+/**
+ * Creates request.
+ */
 function createRequest(body: unknown) {
   return new NextRequest("http://localhost:3000/api/boards/board-1/presence", {
     method: "PATCH",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
   });
 }
 
 const context = {
-  params: Promise.resolve({ boardId: "board-1" })
+  params: Promise.resolve({ boardId: "board-1" }),
 };
 
 describe("/api/boards/[boardId]/presence", () => {
@@ -108,16 +135,16 @@ describe("/api/boards/[boardId]/presence", () => {
     getFirebaseAdminDbMock.mockReturnValue(
       createFakeDb({
         ownerId: "owner-1",
-        title: "Board"
-      })
+        title: "Board",
+      }),
     );
 
     const { PATCH } = await import("./route");
     const response = await PATCH(
       createRequest({
-        active: "yes"
+        active: "yes",
       }),
-      context
+      context,
     );
 
     expect(response.status).toBe(400);
@@ -129,8 +156,8 @@ describe("/api/boards/[boardId]/presence", () => {
     getFirebaseAdminDbMock.mockReturnValue(
       createFakeDb({
         ownerId: "owner-1",
-        title: "Board"
-      })
+        title: "Board",
+      }),
     );
 
     const { PATCH } = await import("./route");
@@ -138,9 +165,9 @@ describe("/api/boards/[boardId]/presence", () => {
       createRequest({
         active: true,
         cursorX: 10,
-        cursorY: 20
+        cursorY: 20,
       }),
-      context
+      context,
     );
 
     expect(response.status).toBe(403);
@@ -150,11 +177,11 @@ describe("/api/boards/[boardId]/presence", () => {
     requireUserMock.mockResolvedValue({
       uid: "user-1",
       name: "User One",
-      email: "user@example.com"
+      email: "user@example.com",
     });
     const fakeDb = createFakeDb({
       ownerId: "owner-1",
-      title: "Board"
+      title: "Board",
     });
     getFirebaseAdminDbMock.mockReturnValue(fakeDb);
 
@@ -163,9 +190,9 @@ describe("/api/boards/[boardId]/presence", () => {
       createRequest({
         active: true,
         cursorX: 22,
-        cursorY: 48
+        cursorY: 48,
       }),
-      context
+      context,
     );
 
     expect(response.status).toBe(200);

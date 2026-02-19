@@ -5,11 +5,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   BoardDetail,
   BoardEditorProfile,
-  BoardPermissions
+  BoardPermissions,
 } from "@/features/boards/types";
 import { useAuthSession } from "@/features/auth/hooks/use-auth-session";
 import { useBoardLive } from "@/features/boards/hooks/use-board-live";
-import AppHeader, { HeaderBackLink } from "@/features/layout/components/app-header";
+import AppHeader, {
+  HeaderBackLink,
+} from "@/features/layout/components/app-header";
 
 type BoardDetailsResponse = {
   board: BoardDetail;
@@ -28,6 +30,9 @@ type BoardSettingsWorkspaceProps = {
   boardId: string;
 };
 
+/**
+ * Gets error message.
+ */
 function getErrorMessage(payload: unknown, fallback: string): string {
   if (typeof payload === "object" && payload !== null) {
     const candidate = payload as { error?: unknown; debug?: unknown };
@@ -44,19 +49,33 @@ function getErrorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
+/**
+ * Gets profile label.
+ */
 function getProfileLabel(profile: BoardEditorProfile): string {
   return profile.email ?? profile.displayName ?? profile.uid;
 }
 
-export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspaceProps) {
+/**
+ * Handles board settings workspace.
+ */
+export default function BoardSettingsWorkspace({
+  boardId,
+}: BoardSettingsWorkspaceProps) {
   const [savingAccess, setSavingAccess] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [newEditorEmail, setNewEditorEmail] = useState("");
   const [newReaderEmail, setNewReaderEmail] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [profileErrorMessage, setProfileErrorMessage] = useState<string | null>(null);
-  const [editorProfiles, setEditorProfiles] = useState<BoardEditorProfile[]>([]);
-  const [readerProfiles, setReaderProfiles] = useState<BoardEditorProfile[]>([]);
+  const [profileErrorMessage, setProfileErrorMessage] = useState<string | null>(
+    null,
+  );
+  const [editorProfiles, setEditorProfiles] = useState<BoardEditorProfile[]>(
+    [],
+  );
+  const [readerProfiles, setReaderProfiles] = useState<BoardEditorProfile[]>(
+    [],
+  );
   const [profilesLoading, setProfilesLoading] = useState(false);
 
   const {
@@ -65,20 +84,20 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
     idToken,
     authLoading,
     signInWithGoogle,
-    signOutCurrentUser
+    signOutCurrentUser,
   } = useAuthSession();
   const { board, permissions, boardLoading, boardError } = useBoardLive(
     boardId,
-    user?.uid ?? null
+    user?.uid ?? null,
   );
 
   const editorIdsKey = useMemo(
     () => (board ? [...board.editorIds].sort().join(",") : ""),
-    [board]
+    [board],
   );
   const readerIdsKey = useMemo(
     () => (board ? [...board.readerIds].sort().join(",") : ""),
-    [board]
+    [board],
   );
 
   useEffect(() => {
@@ -92,6 +111,9 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
 
     let isCancelled = false;
 
+    /**
+     * Handles load profiles.
+     */
     const loadProfiles = async () => {
       setProfilesLoading(true);
       setProfileErrorMessage(null);
@@ -100,14 +122,16 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
         const response = await fetch(`/api/boards/${boardId}`, {
           method: "GET",
           headers: {
-            Authorization: `Bearer ${idToken}`
+            Authorization: `Bearer ${idToken}`,
           },
-          cache: "no-store"
+          cache: "no-store",
         });
 
         const payload = (await response.json()) as BoardDetailsResponse;
         if (!response.ok) {
-          throw new Error(getErrorMessage(payload, "Failed to sync board profiles."));
+          throw new Error(
+            getErrorMessage(payload, "Failed to sync board profiles."),
+          );
         }
 
         if (isCancelled) {
@@ -122,7 +146,9 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
         }
 
         setProfileErrorMessage(
-          error instanceof Error ? error.message : "Failed to sync board profiles."
+          error instanceof Error
+            ? error.message
+            : "Failed to sync board profiles.",
         );
       } finally {
         if (!isCancelled) {
@@ -144,7 +170,9 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
     try {
       await signInWithGoogle();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Sign in failed.");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Sign in failed.",
+      );
     }
   }, [signInWithGoogle]);
 
@@ -155,7 +183,9 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
     try {
       await signOutCurrentUser();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Sign out failed.");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Sign out failed.",
+      );
     } finally {
       setSigningOut(false);
     }
@@ -175,14 +205,16 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
           method: "PATCH",
           headers: {
             Authorization: `Bearer ${idToken}`,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
         });
 
         const result = (await response.json()) as BoardAccessResponse;
         if (!response.ok) {
-          throw new Error(getErrorMessage(result, "Failed to update board access."));
+          throw new Error(
+            getErrorMessage(result, "Failed to update board access."),
+          );
         }
 
         setEditorProfiles(result.board.editors);
@@ -191,14 +223,16 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
         return result.board;
       } catch (error) {
         setErrorMessage(
-          error instanceof Error ? error.message : "Failed to update board access."
+          error instanceof Error
+            ? error.message
+            : "Failed to update board access.",
         );
         return null;
       } finally {
         setSavingAccess(false);
       }
     },
-    [boardId, idToken]
+    [boardId, idToken],
   );
 
   const combinedErrorMessage = useMemo(() => {
@@ -216,20 +250,20 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
     async (nextOpenEdit: boolean) => {
       await updateAccess({
         action: "set-open-edit",
-        openEdit: nextOpenEdit
+        openEdit: nextOpenEdit,
       });
     },
-    [updateAccess]
+    [updateAccess],
   );
 
   const handleToggleOpenRead = useCallback(
     async (nextOpenRead: boolean) => {
       await updateAccess({
         action: "set-open-read",
-        openRead: nextOpenRead
+        openRead: nextOpenRead,
       });
     },
-    [updateAccess]
+    [updateAccess],
   );
 
   const handleAddEditor = useCallback(async () => {
@@ -240,7 +274,7 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
 
     const updatedBoard = await updateAccess({
       action: "add-editor",
-      editorEmail: email
+      editorEmail: email,
     });
 
     if (updatedBoard) {
@@ -252,10 +286,10 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
     async (editorUid: string) => {
       await updateAccess({
         action: "remove-editor",
-        editorUid
+        editorUid,
       });
     },
-    [updateAccess]
+    [updateAccess],
   );
 
   const handleAddReader = useCallback(async () => {
@@ -266,7 +300,7 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
 
     const updatedBoard = await updateAccess({
       action: "add-reader",
-      readerEmail: email
+      readerEmail: email,
     });
 
     if (updatedBoard) {
@@ -278,10 +312,10 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
     async (readerUid: string) => {
       await updateAccess({
         action: "remove-reader",
-        readerUid
+        readerUid,
       });
     },
-    [updateAccess]
+    [updateAccess],
   );
 
   if (!firebaseIsConfigured) {
@@ -289,8 +323,8 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
       <main style={{ padding: "2rem", maxWidth: 980, margin: "0 auto" }}>
         <h1>Board Settings</h1>
         <p>
-          Firebase is not configured yet. Add your values to <code>.env.local</code> using{" "}
-          <code>.env.example</code>.
+          Firebase is not configured yet. Add your values to{" "}
+          <code>.env.local</code> using <code>.env.example</code>.
         </p>
       </main>
     );
@@ -307,12 +341,14 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
-        background: "#ffffff"
+        background: "#ffffff",
       }}
     >
       <AppHeader
         user={user}
-        leftSlot={<HeaderBackLink href={`/boards/${boardId}`} label="Back to board" />}
+        leftSlot={
+          <HeaderBackLink href={`/boards/${boardId}`} label="Back to board" />
+        }
         onSignOut={user ? handleSignOut : null}
         signOutDisabled={signingOut}
       />
@@ -324,7 +360,7 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
           overflowY: "auto",
           width: "min(100%, 980px)",
           margin: "0 auto",
-          padding: "1.25rem"
+          padding: "1.25rem",
         }}
       >
         <h2 style={{ margin: 0, fontSize: "1.2rem" }}>
@@ -337,220 +373,253 @@ export default function BoardSettingsWorkspace({ boardId }: BoardSettingsWorkspa
           <Link href={`/boards/${boardId}`}>Back to board</Link>
         </p>
 
-      {authLoading ? <p>Checking authentication...</p> : null}
+        {authLoading ? <p>Checking authentication...</p> : null}
 
-      {!authLoading && !user ? (
-        <section>
-          <p>Sign in to manage board access.</p>
-          <button type="button" onClick={() => void handleSignIn()}>
-            Sign in with Google
-          </button>
-        </section>
-      ) : null}
+        {!authLoading && !user ? (
+          <section>
+            <p>Sign in to manage board access.</p>
+            <button type="button" onClick={() => void handleSignIn()}>
+              Sign in with Google
+            </button>
+          </section>
+        ) : null}
 
-      {combinedErrorMessage ? <p style={{ color: "#b91c1c" }}>{combinedErrorMessage}</p> : null}
+        {combinedErrorMessage ? (
+          <p style={{ color: "#b91c1c" }}>{combinedErrorMessage}</p>
+        ) : null}
 
-      {!authLoading && user ? (
-        <>
-          {boardLoading ? <p>Loading board settings...</p> : null}
+        {!authLoading && user ? (
+          <>
+            {boardLoading ? <p>Loading board settings...</p> : null}
 
-          {!boardLoading && board && permissions && !permissions.isOwner ? (
-            <section
-              style={{
-                border: "1px solid #e5e7eb",
-                borderRadius: 10,
-                padding: "1rem"
-              }}
-            >
-              <h2 style={{ marginTop: 0 }}>Owner-only settings</h2>
-              <p style={{ marginTop: 0, color: "#4b5563" }}>
-                Only the board owner can manage access for this board.
-              </p>
-              <p style={{ marginBottom: 0 }}>
-                <Link href={`/boards/${boardId}`}>Return to board</Link>
-              </p>
-            </section>
-          ) : null}
-
-          {!boardLoading && board && permissions && permissions.isOwner ? (
-            <section style={{ display: "grid", gap: "1rem" }}>
+            {!boardLoading && board && permissions && !permissions.isOwner ? (
               <section
                 style={{
-                  border: "1px solid #d1d5db",
+                  border: "1px solid #e5e7eb",
                   borderRadius: 10,
-                  padding: "1rem"
+                  padding: "1rem",
                 }}
               >
-                <h2 style={{ marginTop: 0 }}>Edit Access</h2>
-                <label
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "0.5rem"
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={board.openEdit}
-                    onChange={(event) => void handleToggleOpenEdit(event.target.checked)}
-                    disabled={savingAccess}
-                  />
-                  Open edit mode (any signed-in user can edit)
-                </label>
-
-                <p style={{ color: "#6b7280" }}>
-                  {board.openEdit
-                    ? "Open edit is on. Editor allowlist still persists if you later turn it off."
-                    : "Open edit is off. Only you and users in editor allowlist can edit."}
+                <h2 style={{ marginTop: 0 }}>Owner-only settings</h2>
+                <p style={{ marginTop: 0, color: "#4b5563" }}>
+                  Only the board owner can manage access for this board.
                 </p>
-
-                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                  <input
-                    placeholder="Editor email"
-                    value={newEditorEmail}
-                    onChange={(event) => setNewEditorEmail(event.target.value)}
-                    style={{ minWidth: 260, flex: "1 1 260px", padding: "0.5rem" }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void handleAddEditor()}
-                    disabled={savingAccess || newEditorEmail.trim().length === 0}
-                  >
-                    Add editor
-                  </button>
-                </div>
-
-                <ul
-                  style={{
-                    listStyle: "none",
-                    margin: "0.75rem 0 0",
-                    padding: 0,
-                    display: "grid",
-                    gap: "0.5rem"
-                  }}
-                >
-                  {editorProfiles.map((editor) => (
-                    <li
-                      key={editor.uid}
-                      style={{
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 8,
-                        padding: "0.5rem",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: "0.75rem",
-                        flexWrap: "wrap"
-                      }}
-                    >
-                      <span>{getProfileLabel(editor)}</span>
-                      <button
-                        type="button"
-                        onClick={() => void handleRemoveEditor(editor.uid)}
-                        disabled={savingAccess}
-                      >
-                        Remove
-                      </button>
-                    </li>
-                  ))}
-                  {editorProfiles.length === 0 ? (
-                    <li style={{ color: "#6b7280" }}>No editors in allowlist.</li>
-                  ) : null}
-                </ul>
-              </section>
-
-              <section
-                style={{
-                  border: "1px solid #d1d5db",
-                  borderRadius: 10,
-                  padding: "1rem"
-                }}
-              >
-                <h2 style={{ marginTop: 0 }}>Read Access</h2>
-                <label
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "0.5rem"
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={board.openRead}
-                    onChange={(event) => void handleToggleOpenRead(event.target.checked)}
-                    disabled={savingAccess}
-                  />
-                  Open read mode (any signed-in user can view)
-                </label>
-
-                <p style={{ color: "#6b7280" }}>
-                  {board.openRead
-                    ? "Open read is on. Reader allowlist still persists if you later turn it off."
-                    : "Open read is off. Only you, editors, and reader allowlist users can view."}
+                <p style={{ marginBottom: 0 }}>
+                  <Link href={`/boards/${boardId}`}>Return to board</Link>
                 </p>
+              </section>
+            ) : null}
 
-                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                  <input
-                    placeholder="Reader email"
-                    value={newReaderEmail}
-                    onChange={(event) => setNewReaderEmail(event.target.value)}
-                    style={{ minWidth: 260, flex: "1 1 260px", padding: "0.5rem" }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void handleAddReader()}
-                    disabled={savingAccess || newReaderEmail.trim().length === 0}
-                  >
-                    Add reader
-                  </button>
-                </div>
-
-                <ul
+            {!boardLoading && board && permissions && permissions.isOwner ? (
+              <section style={{ display: "grid", gap: "1rem" }}>
+                <section
                   style={{
-                    listStyle: "none",
-                    margin: "0.75rem 0 0",
-                    padding: 0,
-                    display: "grid",
-                    gap: "0.5rem"
+                    border: "1px solid #d1d5db",
+                    borderRadius: 10,
+                    padding: "1rem",
                   }}
                 >
-                  {readerProfiles.map((reader) => (
-                    <li
-                      key={reader.uid}
-                      style={{
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 8,
-                        padding: "0.5rem",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: "0.75rem",
-                        flexWrap: "wrap"
-                      }}
-                    >
-                      <span>{getProfileLabel(reader)}</span>
-                      <button
-                        type="button"
-                        onClick={() => void handleRemoveReader(reader.uid)}
-                        disabled={savingAccess}
-                      >
-                        Remove
-                      </button>
-                    </li>
-                  ))}
-                  {readerProfiles.length === 0 ? (
-                    <li style={{ color: "#6b7280" }}>No readers in allowlist.</li>
-                  ) : null}
-                </ul>
-              </section>
-            </section>
-          ) : null}
+                  <h2 style={{ marginTop: 0 }}>Edit Access</h2>
+                  <label
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={board.openEdit}
+                      onChange={(event) =>
+                        void handleToggleOpenEdit(event.target.checked)
+                      }
+                      disabled={savingAccess}
+                    />
+                    Open edit mode (any signed-in user can edit)
+                  </label>
 
-          {!boardLoading && board && permissions?.isOwner && profilesLoading ? (
-            <p style={{ color: "#6b7280" }}>Refreshing access profiles...</p>
-          ) : null}
-        </>
-      ) : null}
+                  <p style={{ color: "#6b7280" }}>
+                    {board.openEdit
+                      ? "Open edit is on. Editor allowlist still persists if you later turn it off."
+                      : "Open edit is off. Only you and users in editor allowlist can edit."}
+                  </p>
+
+                  <div
+                    style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}
+                  >
+                    <input
+                      placeholder="Editor email"
+                      value={newEditorEmail}
+                      onChange={(event) =>
+                        setNewEditorEmail(event.target.value)
+                      }
+                      style={{
+                        minWidth: 260,
+                        flex: "1 1 260px",
+                        padding: "0.5rem",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleAddEditor()}
+                      disabled={
+                        savingAccess || newEditorEmail.trim().length === 0
+                      }
+                    >
+                      Add editor
+                    </button>
+                  </div>
+
+                  <ul
+                    style={{
+                      listStyle: "none",
+                      margin: "0.75rem 0 0",
+                      padding: 0,
+                      display: "grid",
+                      gap: "0.5rem",
+                    }}
+                  >
+                    {editorProfiles.map((editor) => (
+                      <li
+                        key={editor.uid}
+                        style={{
+                          border: "1px solid #e5e7eb",
+                          borderRadius: 8,
+                          padding: "0.5rem",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: "0.75rem",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <span>{getProfileLabel(editor)}</span>
+                        <button
+                          type="button"
+                          onClick={() => void handleRemoveEditor(editor.uid)}
+                          disabled={savingAccess}
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                    {editorProfiles.length === 0 ? (
+                      <li style={{ color: "#6b7280" }}>
+                        No editors in allowlist.
+                      </li>
+                    ) : null}
+                  </ul>
+                </section>
+
+                <section
+                  style={{
+                    border: "1px solid #d1d5db",
+                    borderRadius: 10,
+                    padding: "1rem",
+                  }}
+                >
+                  <h2 style={{ marginTop: 0 }}>Read Access</h2>
+                  <label
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={board.openRead}
+                      onChange={(event) =>
+                        void handleToggleOpenRead(event.target.checked)
+                      }
+                      disabled={savingAccess}
+                    />
+                    Open read mode (any signed-in user can view)
+                  </label>
+
+                  <p style={{ color: "#6b7280" }}>
+                    {board.openRead
+                      ? "Open read is on. Reader allowlist still persists if you later turn it off."
+                      : "Open read is off. Only you, editors, and reader allowlist users can view."}
+                  </p>
+
+                  <div
+                    style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}
+                  >
+                    <input
+                      placeholder="Reader email"
+                      value={newReaderEmail}
+                      onChange={(event) =>
+                        setNewReaderEmail(event.target.value)
+                      }
+                      style={{
+                        minWidth: 260,
+                        flex: "1 1 260px",
+                        padding: "0.5rem",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleAddReader()}
+                      disabled={
+                        savingAccess || newReaderEmail.trim().length === 0
+                      }
+                    >
+                      Add reader
+                    </button>
+                  </div>
+
+                  <ul
+                    style={{
+                      listStyle: "none",
+                      margin: "0.75rem 0 0",
+                      padding: 0,
+                      display: "grid",
+                      gap: "0.5rem",
+                    }}
+                  >
+                    {readerProfiles.map((reader) => (
+                      <li
+                        key={reader.uid}
+                        style={{
+                          border: "1px solid #e5e7eb",
+                          borderRadius: 8,
+                          padding: "0.5rem",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: "0.75rem",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <span>{getProfileLabel(reader)}</span>
+                        <button
+                          type="button"
+                          onClick={() => void handleRemoveReader(reader.uid)}
+                          disabled={savingAccess}
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                    {readerProfiles.length === 0 ? (
+                      <li style={{ color: "#6b7280" }}>
+                        No readers in allowlist.
+                      </li>
+                    ) : null}
+                  </ul>
+                </section>
+              </section>
+            ) : null}
+
+            {!boardLoading &&
+            board &&
+            permissions?.isOwner &&
+            profilesLoading ? (
+              <p style={{ color: "#6b7280" }}>Refreshing access profiles...</p>
+            ) : null}
+          </>
+        ) : null}
       </div>
     </main>
   );

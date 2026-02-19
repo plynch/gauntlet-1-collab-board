@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState, type CSSProperties, type FormEvent } from "react";
+import {
+  useCallback,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+} from "react";
 
 import { MAX_OWNED_BOARDS, type BoardSummary } from "@/features/boards/types";
 import { useAuthSession } from "@/features/auth/hooks/use-auth-session";
@@ -16,6 +22,9 @@ type UpdateBoardResponse = {
   board: BoardSummary;
 };
 
+/**
+ * Gets error message.
+ */
 function getErrorMessage(payload: unknown, fallback: string): string {
   if (typeof payload === "object" && payload !== null && "error" in payload) {
     const message = (payload as { error?: unknown }).error;
@@ -39,9 +48,12 @@ const boardActionButtonStyle: CSSProperties = {
   justifyContent: "center",
   textDecoration: "none",
   lineHeight: 0,
-  cursor: "pointer"
+  cursor: "pointer",
 };
 
+/**
+ * Handles open board icon.
+ */
 function OpenBoardIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -65,6 +77,9 @@ function OpenBoardIcon() {
   );
 }
 
+/**
+ * Handles access icon.
+ */
 function AccessIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -80,6 +95,9 @@ function AccessIcon() {
   );
 }
 
+/**
+ * Handles edit icon.
+ */
 function EditIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -102,6 +120,9 @@ function EditIcon() {
   );
 }
 
+/**
+ * Handles delete icon.
+ */
 function DeleteIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -117,6 +138,9 @@ function DeleteIcon() {
   );
 }
 
+/**
+ * Handles google brand icon.
+ */
 function GoogleBrandIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
@@ -140,6 +164,9 @@ function GoogleBrandIcon() {
   );
 }
 
+/**
+ * Handles boards page.
+ */
 export default function BoardsPage() {
   const [showCreateBoardForm, setShowCreateBoardForm] = useState(false);
   const [newBoardTitle, setNewBoardTitle] = useState("");
@@ -156,9 +183,11 @@ export default function BoardsPage() {
     idToken,
     authLoading,
     signInWithGoogle,
-    signOutCurrentUser
+    signOutCurrentUser,
   } = useAuthSession();
-  const { boards, boardsLoading, boardsError } = useOwnedBoardsLive(user?.uid ?? null);
+  const { boards, boardsLoading, boardsError } = useOwnedBoardsLive(
+    user?.uid ?? null,
+  );
 
   const handleSignIn = useCallback(async () => {
     setErrorMessage(null);
@@ -166,7 +195,9 @@ export default function BoardsPage() {
     try {
       await signInWithGoogle();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Sign in failed.");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Sign in failed.",
+      );
     }
   }, [signInWithGoogle]);
 
@@ -177,7 +208,9 @@ export default function BoardsPage() {
     try {
       await signOutCurrentUser();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Sign out failed.");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Sign out failed.",
+      );
     } finally {
       setSigningOut(false);
     }
@@ -202,14 +235,16 @@ export default function BoardsPage() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${idToken}`,
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          title
-        })
+          title,
+        }),
       });
 
-      const payload = (await response.json()) as CreateBoardResponse | { error?: string };
+      const payload = (await response.json()) as
+        | CreateBoardResponse
+        | { error?: string };
       if (!response.ok) {
         throw new Error(getErrorMessage(payload, "Failed to create board."));
       }
@@ -221,7 +256,9 @@ export default function BoardsPage() {
       setNewBoardTitle("");
       setShowCreateBoardForm(false);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to create board.");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Failed to create board.",
+      );
     } finally {
       setCreatingBoard(false);
     }
@@ -244,21 +281,26 @@ export default function BoardsPage() {
         const response = await fetch(`/api/boards/${boardId}`, {
           method: "DELETE",
           headers: {
-            Authorization: `Bearer ${idToken}`
-          }
+            Authorization: `Bearer ${idToken}`,
+          },
         });
 
-        const payload = (await response.json()) as { error?: string; ok?: boolean };
+        const payload = (await response.json()) as {
+          error?: string;
+          ok?: boolean;
+        };
         if (!response.ok) {
           throw new Error(getErrorMessage(payload, "Failed to delete board."));
         }
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : "Failed to delete board.");
+        setErrorMessage(
+          error instanceof Error ? error.message : "Failed to delete board.",
+        );
       } finally {
         setDeletingBoardId(null);
       }
     },
-    [idToken]
+    [idToken],
   );
 
   const handleStartRenameBoard = useCallback((board: BoardSummary) => {
@@ -296,14 +338,16 @@ export default function BoardsPage() {
           method: "PATCH",
           headers: {
             Authorization: `Bearer ${idToken}`,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            title: nextTitle
-          })
+            title: nextTitle,
+          }),
         });
 
-        const payload = (await response.json()) as UpdateBoardResponse | { error?: string };
+        const payload = (await response.json()) as
+          | UpdateBoardResponse
+          | { error?: string };
         if (!response.ok) {
           throw new Error(getErrorMessage(payload, "Failed to rename board."));
         }
@@ -315,12 +359,14 @@ export default function BoardsPage() {
         setEditingBoardId(null);
         setRenameBoardTitle("");
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : "Failed to rename board.");
+        setErrorMessage(
+          error instanceof Error ? error.message : "Failed to rename board.",
+        );
       } finally {
         setRenamingBoardId(null);
       }
     },
-    [idToken, renameBoardTitle]
+    [idToken, renameBoardTitle],
   );
 
   const handleCreateBoardSubmit = useCallback(
@@ -328,7 +374,7 @@ export default function BoardsPage() {
       event.preventDefault();
       void handleCreateBoard();
     },
-    [handleCreateBoard]
+    [handleCreateBoard],
   );
 
   const handleOpenCreateBoardForm = useCallback(() => {
@@ -358,8 +404,8 @@ export default function BoardsPage() {
       <main style={{ padding: "2rem", maxWidth: 860, margin: "0 auto" }}>
         <h1>Boards</h1>
         <p>
-          Firebase is not configured yet. Add your values to <code>.env.local</code>{" "}
-          using <code>.env.example</code>.
+          Firebase is not configured yet. Add your values to{" "}
+          <code>.env.local</code> using <code>.env.example</code>.
         </p>
       </main>
     );
@@ -376,10 +422,14 @@ export default function BoardsPage() {
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
-        background: "#ffffff"
+        background: "#ffffff",
       }}
     >
-      <AppHeader user={user} onSignOut={user ? handleSignOut : null} signOutDisabled={signingOut} />
+      <AppHeader
+        user={user}
+        onSignOut={user ? handleSignOut : null}
+        signOutDisabled={signingOut}
+      />
 
       <div
         style={{
@@ -388,7 +438,7 @@ export default function BoardsPage() {
           overflowY: "auto",
           width: "min(100%, 940px)",
           margin: "0 auto",
-          padding: "1.25rem"
+          padding: "1.25rem",
         }}
       >
         {authLoading ? <p>Checking authentication...</p> : null}
@@ -401,10 +451,12 @@ export default function BoardsPage() {
               display: "grid",
               justifyItems: "center",
               textAlign: "center",
-              gap: "0.8rem"
+              gap: "0.8rem",
             }}
           >
-            <p style={{ margin: 0 }}>Sign in to create and manage your boards.</p>
+            <p style={{ margin: 0 }}>
+              Sign in to create and manage your boards.
+            </p>
             <button
               type="button"
               onClick={() => void handleSignIn()}
@@ -422,13 +474,15 @@ export default function BoardsPage() {
                 fontWeight: 500,
                 fontSize: 14,
                 cursor: "pointer",
-                boxShadow: "0 1px 2px rgba(60,64,67,0.2)"
+                boxShadow: "0 1px 2px rgba(60,64,67,0.2)",
               }}
             >
               <GoogleBrandIcon />
               <span>Sign in with Google</span>
             </button>
-            {errorMessage ? <p style={{ color: "#b91c1c" }}>{errorMessage}</p> : null}
+            {errorMessage ? (
+              <p style={{ color: "#b91c1c" }}>{errorMessage}</p>
+            ) : null}
           </section>
         ) : null}
 
@@ -437,7 +491,7 @@ export default function BoardsPage() {
             <h2
               style={{
                 margin: "0 0 0.8rem",
-                fontSize: "1.2rem"
+                fontSize: "1.2rem",
               }}
             >
               My Boards ({boards.length} out of {MAX_OWNED_BOARDS})
@@ -451,7 +505,9 @@ export default function BoardsPage() {
             {!boardsLoading && boards.length === 0 ? (
               <p>
                 No boards yet.
-                {boards.length < MAX_OWNED_BOARDS ? " Create your first one." : ""}
+                {boards.length < MAX_OWNED_BOARDS
+                  ? " Create your first one."
+                  : ""}
               </p>
             ) : null}
 
@@ -461,7 +517,7 @@ export default function BoardsPage() {
                 margin: 0,
                 padding: 0,
                 display: "grid",
-                gap: "0.75rem"
+                gap: "0.75rem",
               }}
             >
               {boards.map((board) => (
@@ -470,109 +526,130 @@ export default function BoardsPage() {
                   style={{
                     border: "1px solid #e5e7eb",
                     borderRadius: 10,
-                    padding: "0.9rem"
+                    padding: "0.9rem",
                   }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "flex-start",
+                      gap: "0.75rem",
+                      flexWrap: "wrap",
+                    }}
                   >
                     <div
                       style={{
+                        minWidth: 0,
+                        flex: "1 1 240px",
                         display: "flex",
-                        justifyContent: "space-between",
                         alignItems: "flex-start",
-                        gap: "0.75rem",
-                        flexWrap: "wrap"
+                        gap: "0.55rem",
                       }}
                     >
-                      <div
-                        style={{
-                          minWidth: 0,
-                          flex: "1 1 240px",
-                          display: "flex",
-                          alignItems: "flex-start",
-                          gap: "0.55rem"
-                        }}
-                      >
-                        {editingBoardId === board.id ? (
-                          <form
-                            onSubmit={(event) => {
-                              event.preventDefault();
-                              void handleRenameBoardSubmit(board.id);
+                      {editingBoardId === board.id ? (
+                        <form
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            void handleRenameBoardSubmit(board.id);
+                          }}
+                          style={{ display: "grid", gap: "0.5rem" }}
+                        >
+                          <input
+                            value={renameBoardTitle}
+                            onChange={(event) =>
+                              setRenameBoardTitle(event.target.value)
+                            }
+                            placeholder="Board title"
+                            maxLength={80}
+                            disabled={renamingBoardId === board.id}
+                            style={{
+                              height: 34,
+                              minWidth: 220,
+                              maxWidth: 460,
+                              padding: "0 0.6rem",
                             }}
-                            style={{ display: "grid", gap: "0.5rem" }}
+                          />
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: "0.45rem",
+                              flexWrap: "wrap",
+                            }}
                           >
-                            <input
-                              value={renameBoardTitle}
-                              onChange={(event) => setRenameBoardTitle(event.target.value)}
-                              placeholder="Board title"
-                              maxLength={80}
+                            <button
+                              type="submit"
                               disabled={renamingBoardId === board.id}
-                              style={{
-                                height: 34,
-                                minWidth: 220,
-                                maxWidth: 460,
-                                padding: "0 0.6rem"
-                              }}
-                            />
-                            <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap" }}>
-                              <button type="submit" disabled={renamingBoardId === board.id}>
-                                {renamingBoardId === board.id ? "Saving..." : "Save"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={handleCancelRenameBoard}
-                                disabled={renamingBoardId === board.id}
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </form>
-                        ) : (
-                          <>
+                            >
+                              {renamingBoardId === board.id
+                                ? "Saving..."
+                                : "Save"}
+                            </button>
                             <button
                               type="button"
-                              onClick={() => handleStartRenameBoard(board)}
+                              onClick={handleCancelRenameBoard}
                               disabled={renamingBoardId === board.id}
-                              className="icon-tooltip-trigger"
-                              data-tooltip={
-                                renamingBoardId === board.id ? "Saving..." : "Rename board"
-                              }
-                              title={renamingBoardId === board.id ? "Saving..." : "Rename board"}
-                              aria-label={`Rename board ${board.title}`}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleStartRenameBoard(board)}
+                            disabled={renamingBoardId === board.id}
+                            className="icon-tooltip-trigger"
+                            data-tooltip={
+                              renamingBoardId === board.id
+                                ? "Saving..."
+                                : "Rename board"
+                            }
+                            title={
+                              renamingBoardId === board.id
+                                ? "Saving..."
+                                : "Rename board"
+                            }
+                            aria-label={`Rename board ${board.title}`}
+                            style={{
+                              ...boardActionButtonStyle,
+                              width: 34,
+                              height: 34,
+                              borderRadius: 9,
+                              opacity: renamingBoardId === board.id ? 0.75 : 1,
+                              flexShrink: 0,
+                            }}
+                          >
+                            <EditIcon />
+                          </button>
+                          <div style={{ minWidth: 0 }}>
+                            <p
                               style={{
-                                ...boardActionButtonStyle,
-                                width: 34,
-                                height: 34,
-                                borderRadius: 9,
-                                opacity: renamingBoardId === board.id ? 0.75 : 1,
-                                flexShrink: 0
+                                margin: 0,
+                                fontWeight: 700,
+                                fontSize: "1.45rem",
+                                lineHeight: 1.1,
                               }}
                             >
-                              <EditIcon />
-                            </button>
-                            <div style={{ minWidth: 0 }}>
-                              <p
-                                style={{
-                                  margin: 0,
-                                  fontWeight: 700,
-                                  fontSize: "1.45rem",
-                                  lineHeight: 1.1
-                                }}
-                              >
-                                {board.title}
-                              </p>
-                              <p
-                                style={{
-                                  margin: "0.28rem 0 0",
-                                  color: "#6b7280",
-                                  fontSize: "1.05rem",
-                                  lineHeight: 1.2
-                                }}
-                              >
-                                {board.openEdit ? "Open edit enabled" : "Restricted edit mode"}
-                              </p>
-                            </div>
-                          </>
-                        )}
-                      </div>
+                              {board.title}
+                            </p>
+                            <p
+                              style={{
+                                margin: "0.28rem 0 0",
+                                color: "#6b7280",
+                                fontSize: "1.05rem",
+                                lineHeight: 1.2,
+                              }}
+                            >
+                              {board.openEdit
+                                ? "Open edit enabled"
+                                : "Restricted edit mode"}
+                            </p>
+                          </div>
+                        </>
+                      )}
+                    </div>
 
                     <div style={{ display: "flex", gap: "0.4rem" }}>
                       <Link
@@ -601,17 +678,24 @@ export default function BoardsPage() {
                         disabled={deletingBoardId === board.id}
                         className="icon-tooltip-trigger"
                         data-tooltip={
-                          deletingBoardId === board.id ? "Deleting board..." : "Delete board"
+                          deletingBoardId === board.id
+                            ? "Deleting board..."
+                            : "Delete board"
                         }
                         title={
-                          deletingBoardId === board.id ? "Deleting board..." : "Delete board"
+                          deletingBoardId === board.id
+                            ? "Deleting board..."
+                            : "Delete board"
                         }
                         aria-label={`Delete board ${board.title}`}
                         style={{
                           ...boardActionButtonStyle,
                           borderColor: "#fecaca",
-                          background: deletingBoardId === board.id ? "#fee2e2" : "#fef2f2",
-                          opacity: deletingBoardId === board.id ? 0.75 : 1
+                          background:
+                            deletingBoardId === board.id
+                              ? "#fee2e2"
+                              : "#fef2f2",
+                          opacity: deletingBoardId === board.id ? 0.75 : 1,
                         }}
                       >
                         <DeleteIcon />
@@ -628,7 +712,7 @@ export default function BoardsPage() {
                   marginTop: "1rem",
                   display: "grid",
                   justifyItems: "center",
-                  gap: "0.55rem"
+                  gap: "0.55rem",
                 }}
               >
                 {showCreateBoardForm ? (
@@ -638,7 +722,7 @@ export default function BoardsPage() {
                       display: "grid",
                       justifyItems: "center",
                       gap: "0.5rem",
-                      width: "min(100%, 420px)"
+                      width: "min(100%, 420px)",
                     }}
                   >
                     <input
@@ -650,10 +734,16 @@ export default function BoardsPage() {
                       style={{
                         width: "100%",
                         height: 40,
-                        padding: "0 0.7rem"
+                        padding: "0 0.7rem",
                       }}
                     />
-                    <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "0.5rem",
+                        flexWrap: "wrap",
+                      }}
+                    >
                       <button type="submit" disabled={creatingBoard}>
                         {creatingBoard ? "Creating..." : "Create board"}
                       </button>
@@ -681,7 +771,7 @@ export default function BoardsPage() {
                       fontSize: 15,
                       fontWeight: 700,
                       cursor: "pointer",
-                      boxShadow: "0 6px 16px rgba(22, 163, 74, 0.22)"
+                      boxShadow: "0 6px 16px rgba(22, 163, 74, 0.22)",
                     }}
                   >
                     Create New Board

@@ -1,15 +1,18 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 
-import { assertFirestoreWritesAllowedInDev, getFirebaseAdminDb } from "@/lib/firebase/admin";
+import {
+  assertFirestoreWritesAllowedInDev,
+  getFirebaseAdminDb,
+} from "@/lib/firebase/admin";
 import {
   boardPresenceBodySchema,
-  type BoardPresenceBody
+  type BoardPresenceBody,
 } from "@/server/api/board-route-schemas";
 import {
   handleRouteError,
   readJsonBody,
-  trimParam
+  trimParam,
 } from "@/server/api/route-helpers";
 import { requireUser } from "@/server/auth/require-user";
 import { canUserReadBoard, parseBoardDoc } from "@/server/boards/board-access";
@@ -23,7 +26,13 @@ type BoardPresenceRouteContext = {
   }>;
 };
 
-export async function PATCH(request: NextRequest, context: BoardPresenceRouteContext) {
+/**
+ * Handles patch.
+ */
+export async function PATCH(
+  request: NextRequest,
+  context: BoardPresenceRouteContext,
+) {
   try {
     assertFirestoreWritesAllowedInDev();
 
@@ -42,7 +51,10 @@ export async function PATCH(request: NextRequest, context: BoardPresenceRouteCon
 
     const parsedPayload = boardPresenceBodySchema.safeParse(bodyResult.value);
     if (!parsedPayload.success) {
-      return NextResponse.json({ error: "Invalid presence payload." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid presence payload." },
+        { status: 400 },
+      );
     }
     const payload: BoardPresenceBody = parsedPayload.data;
 
@@ -56,7 +68,10 @@ export async function PATCH(request: NextRequest, context: BoardPresenceRouteCon
 
     const board = parseBoardDoc(boardSnapshot.data());
     if (!board) {
-      return NextResponse.json({ error: "Invalid board data." }, { status: 500 });
+      return NextResponse.json(
+        { error: "Invalid board data." },
+        { status: 500 },
+      );
     }
 
     if (!canUserReadBoard(board, user.uid)) {
@@ -77,9 +92,9 @@ export async function PATCH(request: NextRequest, context: BoardPresenceRouteCon
           cursorX: payload.cursorX,
           cursorY: payload.cursorY,
           lastSeenAtMs: Date.now(),
-          lastSeenAt: FieldValue.serverTimestamp()
+          lastSeenAt: FieldValue.serverTimestamp(),
         },
-        { merge: true }
+        { merge: true },
       );
 
     return NextResponse.json({ ok: true });

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   canUserEditBoard,
   canUserReadBoard,
-  parseBoardDoc
+  parseBoardDoc,
 } from "@/server/boards/board-access";
 
 describe("parseBoardDoc", () => {
@@ -18,7 +18,7 @@ describe("parseBoardDoc", () => {
       openEdit: 1,
       openRead: 0,
       editorIds: ["editor-1", "", 10],
-      readerIds: ["reader-1", null]
+      readerIds: ["reader-1", null],
     });
 
     expect(parsed).toEqual({
@@ -29,7 +29,7 @@ describe("parseBoardDoc", () => {
       editorIds: ["editor-1"],
       readerIds: ["reader-1"],
       createdAt: undefined,
-      updatedAt: undefined
+      updatedAt: undefined,
     });
   });
 });
@@ -43,7 +43,7 @@ describe("board access helpers", () => {
     editorIds: ["editor"],
     readerIds: ["reader"],
     createdAt: null,
-    updatedAt: null
+    updatedAt: null,
   };
 
   it("grants read access to owner, reader, and editor", () => {
@@ -58,4 +58,3 @@ describe("board access helpers", () => {
     expect(canUserEditBoard(board, "reader")).toBe(false);
   });
 });
-

@@ -5,7 +5,7 @@ import {
   boardSortValue,
   getBoardPermissions,
   toBoardSummary,
-  toLiveBoardDetail
+  toLiveBoardDetail,
 } from "@/features/boards/lib/live-board-utils";
 
 describe("toBoardSummary", () => {
@@ -17,7 +17,7 @@ describe("toBoardSummary", () => {
       openEdit: true,
       openRead: false,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
     });
 
     expect(summary.id).toBe("board-1");
@@ -40,7 +40,7 @@ describe("toLiveBoardDetail", () => {
       openEdit: false,
       openRead: false,
       editorIds: ["editor-1", "", 1],
-      readerIds: ["reader-1", null]
+      readerIds: ["reader-1", null],
     });
 
     expect(detail).toEqual({
@@ -52,7 +52,7 @@ describe("toLiveBoardDetail", () => {
       editorIds: ["editor-1"],
       readerIds: ["reader-1"],
       createdAt: null,
-      updatedAt: null
+      updatedAt: null,
     });
   });
 });
@@ -68,13 +68,13 @@ describe("board permissions and sorting", () => {
       editorIds: ["editor"],
       readerIds: ["reader"],
       createdAt: null,
-      updatedAt: null
+      updatedAt: null,
     };
 
     expect(getBoardPermissions(detail, "owner")).toEqual({
       isOwner: true,
       canRead: true,
-      canEdit: true
+      canEdit: true,
     });
     expect(getBoardPermissions(detail, "editor").canEdit).toBe(true);
     expect(getBoardPermissions(detail, "reader").canRead).toBe(true);
@@ -90,9 +90,8 @@ describe("board permissions and sorting", () => {
         openEdit: false,
         openRead: true,
         createdAt: "2026-02-10T00:00:00.000Z",
-        updatedAt: "2026-02-12T00:00:00.000Z"
-      })
+        updatedAt: "2026-02-12T00:00:00.000Z",
+      }),
     ).toBe(Date.parse("2026-02-12T00:00:00.000Z"));
   });
 });
-

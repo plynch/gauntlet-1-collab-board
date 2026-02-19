@@ -10,17 +10,26 @@ export type RoutingBounds = {
   bottom: number;
 };
 
+/**
+ * Handles format path number.
+ */
 function formatPathNumber(value: number): string {
   return Number(value.toFixed(2)).toString();
 }
 
+/**
+ * Gets distance.
+ */
 function getDistance(left: RoutingPoint, right: RoutingPoint): number {
   return Math.hypot(left.x - right.x, left.y - right.y);
 }
 
+/**
+ * Gets segment direction.
+ */
 export function getSegmentDirection(
   fromPoint: RoutingPoint,
-  toPoint: RoutingPoint
+  toPoint: RoutingPoint,
 ): RoutingPoint {
   const dx = toPoint.x - fromPoint.x;
   const dy = toPoint.y - fromPoint.y;
@@ -31,13 +40,16 @@ export function getSegmentDirection(
 
   return {
     x: dx / magnitude,
-    y: dy / magnitude
+    y: dy / magnitude,
   };
 }
 
+/**
+ * Gets point sequence bounds.
+ */
 export function getPointSequenceBounds(
   points: RoutingPoint[],
-  padding = 0
+  padding = 0,
 ): RoutingBounds {
   const xValues = points.map((point) => point.x);
   const yValues = points.map((point) => point.y);
@@ -45,10 +57,13 @@ export function getPointSequenceBounds(
     left: Math.min(...xValues) - padding,
     right: Math.max(...xValues) + padding,
     top: Math.min(...yValues) - padding,
-    bottom: Math.max(...yValues) + padding
+    bottom: Math.max(...yValues) + padding,
   };
 }
 
+/**
+ * Gets path length.
+ */
 export function getPathLength(points: RoutingPoint[]): number {
   if (points.length < 2) {
     return 0;
@@ -61,6 +76,9 @@ export function getPathLength(points: RoutingPoint[]): number {
   return length;
 }
 
+/**
+ * Gets path mid point.
+ */
 export function getPathMidPoint(points: RoutingPoint[]): RoutingPoint {
   if (points.length === 0) {
     return { x: 0, y: 0 };
@@ -87,7 +105,7 @@ export function getPathMidPoint(points: RoutingPoint[]): RoutingPoint {
       const ratio = segmentLength <= 0.0001 ? 0 : remaining / segmentLength;
       return {
         x: start.x + (end.x - start.x) * ratio,
-        y: start.y + (end.y - start.y) * ratio
+        y: start.y + (end.y - start.y) * ratio,
       };
     }
     traversed += segmentLength;
@@ -96,6 +114,9 @@ export function getPathMidPoint(points: RoutingPoint[]): RoutingPoint {
   return points[points.length - 1];
 }
 
+/**
+ * Gets route end directions.
+ */
 export function getRouteEndDirections(points: RoutingPoint[]): {
   startDirection: RoutingPoint;
   endDirection: RoutingPoint;
@@ -103,7 +124,7 @@ export function getRouteEndDirections(points: RoutingPoint[]): {
   if (points.length < 2) {
     return {
       startDirection: { x: 1, y: 0 },
-      endDirection: { x: 1, y: 0 }
+      endDirection: { x: 1, y: 0 },
     };
   }
 
@@ -127,13 +148,16 @@ export function getRouteEndDirections(points: RoutingPoint[]): {
 
   return {
     startDirection,
-    endDirection
+    endDirection,
   };
 }
 
+/**
+ * Handles to rounded connector path.
+ */
 export function toRoundedConnectorPath(
   points: RoutingPoint[],
-  cornerRadius = 14
+  cornerRadius = 14,
 ): string {
   if (points.length === 0) {
     return "";
@@ -163,14 +187,17 @@ export function toRoundedConnectorPath(
       continue;
     }
 
-    const radius = Math.max(0, Math.min(cornerRadius, inLength / 2, outLength / 2));
+    const radius = Math.max(
+      0,
+      Math.min(cornerRadius, inLength / 2, outLength / 2),
+    );
     const cornerStart = {
       x: current.x - inDirection.x * radius,
-      y: current.y - inDirection.y * radius
+      y: current.y - inDirection.y * radius,
     };
     const cornerEnd = {
       x: current.x + outDirection.x * radius,
-      y: current.y + outDirection.y * radius
+      y: current.y + outDirection.y * radius,
     };
 
     pathData += ` L ${formatPathNumber(cornerStart.x)} ${formatPathNumber(cornerStart.y)}`;

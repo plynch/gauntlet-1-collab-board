@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createRealtimeWriteMetrics,
-  isWriteMetricsDebugEnabled
+  isWriteMetricsDebugEnabled,
 } from "@/features/boards/lib/realtime-write-metrics";
 
 describe("realtime write metrics collector", () => {
@@ -17,22 +17,24 @@ describe("realtime write metrics collector", () => {
 
     const snapshot = metrics.snapshot();
 
-    expect(new Date(snapshot.capturedAt).toISOString()).toBe(snapshot.capturedAt);
+    expect(new Date(snapshot.capturedAt).toISOString()).toBe(
+      snapshot.capturedAt,
+    );
     expect(snapshot.channels.cursor).toEqual({
       attempted: 1,
       skipped: 0,
-      committed: 0
+      committed: 0,
     });
     expect(snapshot.channels["object-position"]).toEqual({
       attempted: 3,
       skipped: 2,
-      committed: 1
+      committed: 1,
     });
     expect(snapshot.channels["sticky-text"].committed).toBe(2);
     expect(snapshot.totals).toEqual({
       attempted: 4,
       skipped: 2,
-      committed: 3
+      committed: 3,
     });
   });
 
@@ -48,7 +50,7 @@ describe("realtime write metrics collector", () => {
     expect(snapshot.totals).toEqual({
       attempted: 0,
       skipped: 0,
-      committed: 0
+      committed: 0,
     });
   });
 });
@@ -60,4 +62,3 @@ describe("isWriteMetricsDebugEnabled", () => {
     expect(isWriteMetricsDebugEnabled(undefined)).toBe(false);
   });
 });
-

@@ -1,10 +1,14 @@
-import { FieldValue, Timestamp, type Firestore } from "firebase-admin/firestore";
+import {
+  FieldValue,
+  Timestamp,
+  type Firestore,
+} from "firebase-admin/firestore";
 
 import type {
   BoardObjectSnapshot,
   BoardObjectToolKind,
   BoardToolCall,
-  TemplatePlan
+  TemplatePlan,
 } from "@/features/ai/types";
 import { getFirebaseAdminDb } from "@/lib/firebase/admin";
 
@@ -49,37 +53,57 @@ type BoardObjectDoc = {
   updatedAt: string | null;
 };
 
+/**
+ * Handles to number.
+ */
 function toNumber(value: unknown, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+/**
+ * Handles to string value.
+ */
 function toStringValue(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
 
+/**
+ * Handles to nullable finite number.
+ */
 function toNullableFiniteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/**
+ * Handles to grid dimension.
+ */
 function toGridDimension(
   value: unknown,
   fallback: number,
   minimum: number,
-  maximum: number
+  maximum: number,
 ): number {
   const parsed = Math.floor(toNumber(value, fallback));
   return Math.max(minimum, Math.min(maximum, parsed));
 }
 
+/**
+ * Handles to grid cell colors.
+ */
 function toGridCellColors(value: unknown): string[] | null {
   if (!Array.isArray(value)) {
     return null;
   }
 
-  const colors = value.filter((item): item is string => typeof item === "string");
+  const colors = value.filter(
+    (item): item is string => typeof item === "string",
+  );
   return colors.length > 0 ? colors : null;
 }
 
+/**
+ * Handles to string array.
+ */
 function toStringArray(value: unknown): string[] | null {
   if (!Array.isArray(value)) {
     return null;
@@ -92,6 +116,9 @@ function toStringArray(value: unknown): string[] | null {
   return values.length > 0 ? values : null;
 }
 
+/**
+ * Handles to optional string.
+ */
 function toOptionalString(value: unknown, maxLength: number): string | null {
   if (typeof value !== "string") {
     return null;
@@ -105,11 +132,14 @@ function toOptionalString(value: unknown, maxLength: number): string | null {
   return trimmed.slice(0, maxLength);
 }
 
+/**
+ * Handles normalize section values.
+ */
 function normalizeSectionValues(
   values: string[] | null,
   expectedCount: number,
   fallback: (index: number) => string,
-  maxLength: number
+  maxLength: number,
 ): string[] {
   return Array.from({ length: expectedCount }, (_, index) => {
     const candidate = values?.[index]?.trim() ?? "";
@@ -121,6 +151,9 @@ function normalizeSectionValues(
   });
 }
 
+/**
+ * Returns whether object kind is true.
+ */
 function isObjectKind(value: unknown): value is BoardObjectToolKind {
   return (
     value === "sticky" ||
@@ -136,6 +169,9 @@ function isObjectKind(value: unknown): value is BoardObjectToolKind {
   );
 }
 
+/**
+ * Returns whether connector type is true.
+ */
 function isConnectorType(value: BoardObjectToolKind): boolean {
   return (
     value === "connectorUndirected" ||
@@ -144,40 +180,46 @@ function isConnectorType(value: BoardObjectToolKind): boolean {
   );
 }
 
+/**
+ * Handles to anchor point.
+ */
 function toAnchorPoint(
   objectItem: BoardObjectSnapshot,
-  anchor: "top" | "right" | "bottom" | "left"
+  anchor: "top" | "right" | "bottom" | "left",
 ): { x: number; y: number } {
   if (anchor === "top") {
     return {
       x: objectItem.x + objectItem.width / 2,
-      y: objectItem.y
+      y: objectItem.y,
     };
   }
 
   if (anchor === "right") {
     return {
       x: objectItem.x + objectItem.width,
-      y: objectItem.y + objectItem.height / 2
+      y: objectItem.y + objectItem.height / 2,
     };
   }
 
   if (anchor === "bottom") {
     return {
       x: objectItem.x + objectItem.width / 2,
-      y: objectItem.y + objectItem.height
+      y: objectItem.y + objectItem.height,
     };
   }
 
   return {
     x: objectItem.x,
-    y: objectItem.y + objectItem.height / 2
+    y: objectItem.y + objectItem.height / 2,
   };
 }
 
+/**
+ * Handles pick anchors by direction.
+ */
 function pickAnchorsByDirection(
   fromObject: BoardObjectSnapshot,
-  toObject: BoardObjectSnapshot
+  toObject: BoardObjectSnapshot,
 ): {
   fromAnchor: "top" | "right" | "bottom" | "left";
   toAnchor: "top" | "right" | "bottom" | "left";
@@ -198,6 +240,9 @@ function pickAnchorsByDirection(
     : { fromAnchor: "top", toAnchor: "bottom" };
 }
 
+/**
+ * Handles timestamp to iso.
+ */
 function timestampToIso(value: unknown): string | null {
   if (value instanceof Timestamp) {
     return value.toDate().toISOString();
@@ -206,7 +251,13 @@ function timestampToIso(value: unknown): string | null {
   return null;
 }
 
-function toBoardObjectDoc(id: string, raw: Record<string, unknown>): BoardObjectSnapshot | null {
+/**
+ * Handles to board object doc.
+ */
+function toBoardObjectDoc(
+  id: string,
+  raw: Record<string, unknown>,
+): BoardObjectSnapshot | null {
   const type = raw.type;
   if (!isObjectKind(type)) {
     return null;
@@ -230,14 +281,20 @@ function toBoardObjectDoc(id: string, raw: Record<string, unknown>): BoardObject
     containerTitle: toOptionalString(raw.containerTitle, 120),
     gridSectionTitles: toStringArray(raw.gridSectionTitles),
     gridSectionNotes: toStringArray(raw.gridSectionNotes),
-    updatedAt: timestampToIso(raw.updatedAt)
+    updatedAt: timestampToIso(raw.updatedAt),
   };
 }
 
-function toObjectCenter(objectItem: BoardObjectSnapshot): { x: number; y: number } {
+/**
+ * Handles to object center.
+ */
+function toObjectCenter(objectItem: BoardObjectSnapshot): {
+  x: number;
+  y: number;
+} {
   return {
     x: objectItem.x + objectItem.width / 2,
-    y: objectItem.y + objectItem.height / 2
+    y: objectItem.y + objectItem.height / 2,
   };
 }
 
@@ -249,6 +306,9 @@ export class BoardToolExecutor {
   private hasLoadedObjects = false;
   private nextZIndex = 1;
 
+  /**
+   * Initializes this class instance.
+   */
   constructor(options: BoardToolExecutorOptions) {
     this.boardId = options.boardId;
     this.userId = options.userId;
@@ -259,6 +319,9 @@ export class BoardToolExecutor {
     return this.db.collection("boards").doc(this.boardId).collection("objects");
   }
 
+  /**
+   * Handles ensure loaded objects.
+   */
   private async ensureLoadedObjects(): Promise<void> {
     if (this.hasLoadedObjects) {
       return;
@@ -268,7 +331,10 @@ export class BoardToolExecutor {
     this.objectsById.clear();
 
     snapshot.docs.forEach((doc) => {
-      const parsed = toBoardObjectDoc(doc.id, doc.data() as Record<string, unknown>);
+      const parsed = toBoardObjectDoc(
+        doc.id,
+        doc.data() as Record<string, unknown>,
+      );
       if (parsed) {
         this.objectsById.set(parsed.id, parsed);
       }
@@ -276,16 +342,26 @@ export class BoardToolExecutor {
 
     this.nextZIndex =
       this.objectsById.size > 0
-        ? Math.max(...Array.from(this.objectsById.values()).map((item) => item.zIndex)) + 1
+        ? Math.max(
+            ...Array.from(this.objectsById.values()).map((item) => item.zIndex),
+          ) + 1
         : 1;
     this.hasLoadedObjects = true;
   }
 
+  /**
+   * Gets board state.
+   */
   async getBoardState(): Promise<BoardObjectSnapshot[]> {
     await this.ensureLoadedObjects();
-    return Array.from(this.objectsById.values()).sort((left, right) => left.zIndex - right.zIndex);
+    return Array.from(this.objectsById.values()).sort(
+      (left, right) => left.zIndex - right.zIndex,
+    );
   }
 
+  /**
+   * Creates object.
+   */
   private async createObject(options: {
     type: BoardObjectToolKind;
     x: number;
@@ -317,7 +393,7 @@ export class BoardToolExecutor {
       text: options.text ?? "",
       createdBy: this.userId,
       createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp(),
     };
     if (
       typeof options.gridRows === "number" &&
@@ -331,14 +407,21 @@ export class BoardToolExecutor {
         payload.gridCellColors = options.gridCellColors;
       }
     }
-    if (typeof options.containerTitle === "string" && options.containerTitle.trim().length > 0) {
+    if (
+      typeof options.containerTitle === "string" &&
+      options.containerTitle.trim().length > 0
+    ) {
       payload.containerTitle = options.containerTitle.trim().slice(0, 120);
     }
     if (options.gridSectionTitles && options.gridSectionTitles.length > 0) {
-      payload.gridSectionTitles = options.gridSectionTitles.map((title) => title.slice(0, 80));
+      payload.gridSectionTitles = options.gridSectionTitles.map((title) =>
+        title.slice(0, 80),
+      );
     }
     if (options.gridSectionNotes && options.gridSectionNotes.length > 0) {
-      payload.gridSectionNotes = options.gridSectionNotes.map((note) => note.slice(0, 600));
+      payload.gridSectionNotes = options.gridSectionNotes.map((note) =>
+        note.slice(0, 600),
+      );
     }
 
     const created = await this.objectsCollection.add(payload);
@@ -360,16 +443,21 @@ export class BoardToolExecutor {
       containerTitle: toOptionalString(payload.containerTitle, 120),
       gridSectionTitles: toStringArray(payload.gridSectionTitles),
       gridSectionNotes: toStringArray(payload.gridSectionNotes),
-      updatedAt: null
+      updatedAt: null,
     };
 
     this.objectsById.set(snapshot.id, snapshot);
     return snapshot;
   }
 
+  /**
+   * Handles update object.
+   */
   private async updateObject(
     objectId: string,
-    payload: Partial<Pick<BoardObjectDoc, "x" | "y" | "width" | "height" | "color" | "text">>
+    payload: Partial<
+      Pick<BoardObjectDoc, "x" | "y" | "width" | "height" | "color" | "text">
+    >,
   ): Promise<void> {
     await this.ensureLoadedObjects();
     const existing = this.objectsById.get(objectId);
@@ -379,15 +467,18 @@ export class BoardToolExecutor {
 
     await this.objectsCollection.doc(objectId).update({
       ...payload,
-      updatedAt: FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp(),
     });
 
     this.objectsById.set(objectId, {
       ...existing,
-      ...payload
+      ...payload,
     });
   }
 
+  /**
+   * Creates sticky note.
+   */
   async createStickyNote(args: {
     text: string;
     x: number;
@@ -401,12 +492,15 @@ export class BoardToolExecutor {
       y: args.y,
       width: 180,
       height: 140,
-      color: args.color
+      color: args.color,
     });
 
     return { tool: "createStickyNote", objectId: created.id };
   }
 
+  /**
+   * Creates shape.
+   */
   async createShape(args: {
     type: BoardObjectToolKind;
     x: number;
@@ -415,7 +509,11 @@ export class BoardToolExecutor {
     height: number;
     color: string;
   }): Promise<ExecuteToolResult> {
-    if (args.type === "line" || args.type === "gridContainer" || isConnectorType(args.type)) {
+    if (
+      args.type === "line" ||
+      args.type === "gridContainer" ||
+      isConnectorType(args.type)
+    ) {
       throw new Error("createShape only supports non-connector board shapes.");
     }
 
@@ -425,12 +523,15 @@ export class BoardToolExecutor {
       y: args.y,
       width: Math.max(20, args.width),
       height: Math.max(20, args.height),
-      color: args.color
+      color: args.color,
     });
 
     return { tool: "createShape", objectId: created.id };
   }
 
+  /**
+   * Creates grid container.
+   */
   async createGridContainer(args: {
     x: number;
     y: number;
@@ -451,15 +552,16 @@ export class BoardToolExecutor {
       toStringArray(args.sectionTitles),
       sectionCount,
       (index) => `Section ${index + 1}`,
-      80
+      80,
     );
     const sectionNotes = normalizeSectionValues(
       toStringArray(args.sectionNotes),
       sectionCount,
       () => "",
-      600
+      600,
     );
-    const containerTitle = toOptionalString(args.containerTitle, 120) ?? "Grid container";
+    const containerTitle =
+      toOptionalString(args.containerTitle, 120) ?? "Grid container";
 
     const created = await this.createObject({
       type: "gridContainer",
@@ -470,16 +572,24 @@ export class BoardToolExecutor {
       color: "#e2e8f0",
       gridRows: rows,
       gridCols: cols,
-      gridGap: toGridDimension(args.gap, GRID_DEFAULT_GAP, GRID_MIN_GAP, GRID_MAX_GAP),
+      gridGap: toGridDimension(
+        args.gap,
+        GRID_DEFAULT_GAP,
+        GRID_MIN_GAP,
+        GRID_MAX_GAP,
+      ),
       gridCellColors: toGridCellColors(args.cellColors) ?? undefined,
       containerTitle,
       gridSectionTitles: sectionTitles,
-      gridSectionNotes: sectionNotes
+      gridSectionNotes: sectionNotes,
     });
 
     return { tool: "createGridContainer", objectId: created.id };
   }
 
+  /**
+   * Creates frame.
+   */
   async createFrame(args: {
     title: string;
     x: number;
@@ -494,12 +604,15 @@ export class BoardToolExecutor {
       y: args.y,
       width: Math.max(180, args.width),
       height: Math.max(120, args.height),
-      color: "#e2e8f0"
+      color: "#e2e8f0",
     });
 
     return { tool: "createFrame", objectId: created.id };
   }
 
+  /**
+   * Creates connector.
+   */
   async createConnector(args: {
     fromId: string;
     toId: string;
@@ -522,7 +635,10 @@ export class BoardToolExecutor {
       throw new Error("Connectors must link two non-connector shapes.");
     }
 
-    const { fromAnchor, toAnchor } = pickAnchorsByDirection(fromObject, toObject);
+    const { fromAnchor, toAnchor } = pickAnchorsByDirection(
+      fromObject,
+      toObject,
+    );
     const fromPoint = toAnchorPoint(fromObject, fromAnchor);
     const toPoint = toAnchorPoint(toObject, toAnchor);
     const x = Math.min(fromPoint.x, toPoint.x);
@@ -563,7 +679,7 @@ export class BoardToolExecutor {
       toY: toPoint.y,
       createdBy: this.userId,
       createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp(),
     };
 
     const createdRef = await this.objectsCollection.add(payload);
@@ -578,22 +694,32 @@ export class BoardToolExecutor {
       rotationDeg: payload.rotationDeg,
       color: payload.color,
       text: payload.text,
-      updatedAt: null
+      updatedAt: null,
     };
     this.objectsById.set(created.id, created);
 
     return { tool: "createConnector", objectId: created.id };
   }
 
-  async moveObject(args: { objectId: string; x: number; y: number }): Promise<ExecuteToolResult> {
+  /**
+   * Handles move object.
+   */
+  async moveObject(args: {
+    objectId: string;
+    x: number;
+    y: number;
+  }): Promise<ExecuteToolResult> {
     await this.updateObject(args.objectId, {
       x: args.x,
-      y: args.y
+      y: args.y,
     });
 
     return { tool: "moveObject", objectId: args.objectId };
   }
 
+  /**
+   * Handles resize object.
+   */
   async resizeObject(args: {
     objectId: string;
     width: number;
@@ -601,42 +727,68 @@ export class BoardToolExecutor {
   }): Promise<ExecuteToolResult> {
     await this.updateObject(args.objectId, {
       width: Math.max(1, args.width),
-      height: Math.max(1, args.height)
+      height: Math.max(1, args.height),
     });
 
     return { tool: "resizeObject", objectId: args.objectId };
   }
 
-  async updateText(args: { objectId: string; newText: string }): Promise<ExecuteToolResult> {
+  /**
+   * Handles update text.
+   */
+  async updateText(args: {
+    objectId: string;
+    newText: string;
+  }): Promise<ExecuteToolResult> {
     await this.updateObject(args.objectId, {
-      text: args.newText.slice(0, 1_000)
+      text: args.newText.slice(0, 1_000),
     });
 
     return { tool: "updateText", objectId: args.objectId };
   }
 
-  async changeColor(args: { objectId: string; color: string }): Promise<ExecuteToolResult> {
+  /**
+   * Handles change color.
+   */
+  async changeColor(args: {
+    objectId: string;
+    color: string;
+  }): Promise<ExecuteToolResult> {
     await this.updateObject(args.objectId, {
-      color: args.color
+      color: args.color,
     });
 
     return { tool: "changeColor", objectId: args.objectId };
   }
 
-  async deleteObjects(args: { objectIds: string[] }): Promise<ExecuteToolResult> {
+  /**
+   * Handles delete objects.
+   */
+  async deleteObjects(args: {
+    objectIds: string[];
+  }): Promise<ExecuteToolResult> {
     await this.ensureLoadedObjects();
 
-    const uniqueObjectIds = Array.from(new Set(args.objectIds.map((value) => value.trim()))).filter(
-      (value) => value.length > 0
+    const uniqueObjectIds = Array.from(
+      new Set(args.objectIds.map((value) => value.trim())),
+    ).filter((value) => value.length > 0);
+    const existingObjectIds = uniqueObjectIds.filter((objectId) =>
+      this.objectsById.has(objectId),
     );
-    const existingObjectIds = uniqueObjectIds.filter((objectId) => this.objectsById.has(objectId));
 
     if (existingObjectIds.length === 0) {
       return { tool: "deleteObjects", deletedCount: 0 };
     }
 
-    for (let index = 0; index < existingObjectIds.length; index += DELETE_BATCH_CHUNK_SIZE) {
-      const chunk = existingObjectIds.slice(index, index + DELETE_BATCH_CHUNK_SIZE);
+    for (
+      let index = 0;
+      index < existingObjectIds.length;
+      index += DELETE_BATCH_CHUNK_SIZE
+    ) {
+      const chunk = existingObjectIds.slice(
+        index,
+        index + DELETE_BATCH_CHUNK_SIZE,
+      );
       const batch = this.db.batch();
       chunk.forEach((objectId) => {
         batch.delete(this.objectsCollection.doc(objectId));
@@ -651,6 +803,9 @@ export class BoardToolExecutor {
     return { tool: "deleteObjects", deletedCount: existingObjectIds.length };
   }
 
+  /**
+   * Handles execute tool call.
+   */
   async executeToolCall(toolCall: BoardToolCall): Promise<ExecuteToolResult> {
     switch (toolCall.tool) {
       case "getBoardState":
@@ -678,11 +833,16 @@ export class BoardToolExecutor {
         return this.deleteObjects(toolCall.args);
       default: {
         const exhaustiveCheck: never = toolCall;
-        throw new Error(`Unsupported tool call: ${JSON.stringify(exhaustiveCheck)}`);
+        throw new Error(
+          `Unsupported tool call: ${JSON.stringify(exhaustiveCheck)}`,
+        );
       }
     }
   }
 
+  /**
+   * Handles execute template plan.
+   */
   async executeTemplatePlan(plan: TemplatePlan): Promise<{
     results: ExecuteToolResult[];
     createdObjectIds: string[];
@@ -707,7 +867,7 @@ export class BoardToolExecutor {
 
     return {
       results,
-      createdObjectIds
+      createdObjectIds,
     };
   }
 }

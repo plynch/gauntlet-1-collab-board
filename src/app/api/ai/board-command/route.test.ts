@@ -7,28 +7,34 @@ import { describe, expect, it } from "vitest";
 
 import {
   MAX_BOARD_COMMAND_CHARS,
-  MAX_BOARD_COMMAND_SELECTION_IDS
+  MAX_BOARD_COMMAND_SELECTION_IDS,
 } from "@/features/ai/board-command";
 
 import { POST } from "./route";
 
+/**
+ * Creates post request.
+ */
 function createPostRequest(body: unknown): NextRequest {
   return new NextRequest("http://localhost:3000/api/ai/board-command", {
     method: "POST",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
   });
 }
 
+/**
+ * Creates raw post request.
+ */
 function createRawPostRequest(body: string): NextRequest {
   return new NextRequest("http://localhost:3000/api/ai/board-command", {
     method: "POST",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
     },
-    body
+    body,
   });
 }
 
@@ -45,8 +51,8 @@ describe("POST /api/ai/board-command", () => {
     const response = await POST(
       createPostRequest({
         boardId: "board-1",
-        message: "a".repeat(MAX_BOARD_COMMAND_CHARS + 1)
-      })
+        message: "a".repeat(MAX_BOARD_COMMAND_CHARS + 1),
+      }),
     );
     const payload = (await response.json()) as { error?: string };
 
@@ -69,9 +75,9 @@ describe("POST /api/ai/board-command", () => {
         message: "do something",
         selectedObjectIds: Array.from(
           { length: MAX_BOARD_COMMAND_SELECTION_IDS + 1 },
-          (_, index) => `object-${index}`
-        )
-      })
+          (_, index) => `object-${index}`,
+        ),
+      }),
     );
     const payload = (await response.json()) as { error?: string };
 

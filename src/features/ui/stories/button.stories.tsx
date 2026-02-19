@@ -6,8 +6,8 @@ const meta = {
   title: "UI/Button",
   component: Button,
   args: {
-    children: "Create board"
-  }
+    children: "Create board",
+  },
 } satisfies Meta<typeof Button>;
 
 export default meta;
@@ -16,18 +16,18 @@ type Story = StoryObj<typeof meta>;
 
 export const Primary: Story = {
   args: {
-    variant: "primary"
-  }
+    variant: "primary",
+  },
 };
 
 export const Success: Story = {
   args: {
-    variant: "success"
-  }
+    variant: "success",
+  },
 };
 
 export const Outline: Story = {
   args: {
-    variant: "outline"
-  }
+    variant: "outline",
+  },
 };

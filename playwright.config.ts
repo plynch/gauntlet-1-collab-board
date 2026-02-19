@@ -9,24 +9,24 @@ export default defineConfig({
   fullyParallel: true,
   timeout: 30_000,
   expect: {
-    timeout: 5_000
+    timeout: 5_000,
   },
   use: {
     baseURL,
-    trace: "on-first-retry"
+    trace: "on-first-retry",
   },
   webServer: shouldUseManagedWebServer
     ? {
         command: `npm run build && ENABLE_E2E_LAB=1 npm run start -- --port ${port} --hostname 127.0.0.1`,
         url: baseURL,
         reuseExistingServer: true,
-        timeout: 120_000
+        timeout: 120_000,
       }
     : undefined,
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] }
-    }
-  ]
+      use: { ...devices["Desktop Chrome"] },
+    },
+  ],
 });

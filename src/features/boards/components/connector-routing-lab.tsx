@@ -1,6 +1,11 @@
 "use client";
 
-import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 
 type Anchor = "top" | "right" | "bottom" | "left";
 
@@ -29,9 +34,12 @@ const RECT_SHAPE: Shape = {
   x: 280,
   y: 140,
   width: 180,
-  height: 100
+  height: 100,
 };
 
+/**
+ * Gets anchor point.
+ */
 function getAnchorPoint(shape: Shape, anchor: Anchor): Point {
   const centerX = shape.x + shape.width / 2;
   const centerY = shape.y + shape.height / 2;
@@ -48,16 +56,26 @@ function getAnchorPoint(shape: Shape, anchor: Anchor): Point {
   return { x: shape.x, y: centerY };
 }
 
+/**
+ * Handles to bounds.
+ */
 function toBounds(shape: Shape, padding = 0): Bounds {
   return {
     left: shape.x - padding,
     right: shape.x + shape.width + padding,
     top: shape.y - padding,
-    bottom: shape.y + shape.height + padding
+    bottom: shape.y + shape.height + padding,
   };
 }
 
-function segmentIntersectsBounds(start: Point, end: Point, bounds: Bounds): boolean {
+/**
+ * Handles segment intersects bounds.
+ */
+function segmentIntersectsBounds(
+  start: Point,
+  end: Point,
+  bounds: Bounds,
+): boolean {
   const isHorizontal = Math.abs(start.y - end.y) <= 0.001;
   const isVertical = Math.abs(start.x - end.x) <= 0.001;
   const epsilon = 1;
@@ -87,6 +105,9 @@ function segmentIntersectsBounds(start: Point, end: Point, bounds: Bounds): bool
   return false;
 }
 
+/**
+ * Handles path intersections.
+ */
 function pathIntersections(points: Point[], bounds: Bounds): number {
   let count = 0;
   for (let index = 0; index < points.length - 1; index += 1) {
@@ -97,14 +118,23 @@ function pathIntersections(points: Point[], bounds: Bounds): number {
   return count;
 }
 
+/**
+ * Handles path length.
+ */
 function pathLength(points: Point[]): number {
   let total = 0;
   for (let index = 0; index < points.length - 1; index += 1) {
-    total += Math.hypot(points[index + 1].x - points[index].x, points[index + 1].y - points[index].y);
+    total += Math.hypot(
+      points[index + 1].x - points[index].x,
+      points[index + 1].y - points[index].y,
+    );
   }
   return total;
 }
 
+/**
+ * Handles simplify.
+ */
 function simplify(points: Point[]): Point[] {
   if (points.length <= 2) {
     return points;
@@ -113,7 +143,10 @@ function simplify(points: Point[]): Point[] {
   const deduped: Point[] = [];
   points.forEach((point) => {
     const previous = deduped[deduped.length - 1];
-    if (!previous || Math.hypot(previous.x - point.x, previous.y - point.y) > 0.1) {
+    if (
+      !previous ||
+      Math.hypot(previous.x - point.x, previous.y - point.y) > 0.1
+    ) {
       deduped.push(point);
     }
   });
@@ -127,9 +160,12 @@ function simplify(points: Point[]): Point[] {
     const previous = result[result.length - 1];
     const current = deduped[index];
     const next = deduped[index + 1];
-    const sameVertical = Math.abs(previous.x - current.x) <= 0.001 && Math.abs(current.x - next.x) <= 0.001;
+    const sameVertical =
+      Math.abs(previous.x - current.x) <= 0.001 &&
+      Math.abs(current.x - next.x) <= 0.001;
     const sameHorizontal =
-      Math.abs(previous.y - current.y) <= 0.001 && Math.abs(current.y - next.y) <= 0.001;
+      Math.abs(previous.y - current.y) <= 0.001 &&
+      Math.abs(current.y - next.y) <= 0.001;
     if (!sameVertical && !sameHorizontal) {
       result.push(current);
     }
@@ -138,6 +174,9 @@ function simplify(points: Point[]): Point[] {
   return result;
 }
 
+/**
+ * Handles rounded path.
+ */
 function roundedPath(points: Point[]): string {
   if (points.length === 0) {
     return "";
@@ -166,7 +205,8 @@ function roundedPath(points: Point[]): string {
     const inDir = { x: inVector.x / inLength, y: inVector.y / inLength };
     const outDir = { x: outVector.x / outLength, y: outVector.y / outLength };
     const isTurn =
-      Math.abs(inDir.x - outDir.x) > 0.001 || Math.abs(inDir.y - outDir.y) > 0.001;
+      Math.abs(inDir.x - outDir.x) > 0.001 ||
+      Math.abs(inDir.y - outDir.y) > 0.001;
     if (!isTurn) {
       d += ` L ${current.x} ${current.y}`;
       continue;
@@ -175,11 +215,11 @@ function roundedPath(points: Point[]): string {
     const cornerRadius = Math.min(radius, inLength / 2, outLength / 2);
     const cornerStart = {
       x: current.x - inDir.x * cornerRadius,
-      y: current.y - inDir.y * cornerRadius
+      y: current.y - inDir.y * cornerRadius,
     };
     const cornerEnd = {
       x: current.x + outDir.x * cornerRadius,
-      y: current.y + outDir.y * cornerRadius
+      y: current.y + outDir.y * cornerRadius,
     };
     d += ` L ${cornerStart.x} ${cornerStart.y}`;
     d += ` Q ${current.x} ${current.y} ${cornerEnd.x} ${cornerEnd.y}`;
@@ -190,6 +230,9 @@ function roundedPath(points: Point[]): string {
   return d;
 }
 
+/**
+ * Handles choose route.
+ */
 function chooseRoute(from: Point, to: Point, obstacles: Bounds[]): Point[] {
   const detour = 80;
   const midX = (from.x + to.x) / 2;
@@ -199,16 +242,30 @@ function chooseRoute(from: Point, to: Point, obstacles: Bounds[]): Point[] {
     [from, { x: from.x, y: to.y }, to],
     [from, { x: midX, y: from.y }, { x: midX, y: to.y }, to],
     [from, { x: from.x, y: midY }, { x: to.x, y: midY }, to],
-    [from, { x: from.x, y: Math.min(from.y, to.y) - detour }, { x: to.x, y: Math.min(from.y, to.y) - detour }, to],
-    [from, { x: from.x, y: Math.max(from.y, to.y) + detour }, { x: to.x, y: Math.max(from.y, to.y) + detour }, to]
+    [
+      from,
+      { x: from.x, y: Math.min(from.y, to.y) - detour },
+      { x: to.x, y: Math.min(from.y, to.y) - detour },
+      to,
+    ],
+    [
+      from,
+      { x: from.x, y: Math.max(from.y, to.y) + detour },
+      { x: to.x, y: Math.max(from.y, to.y) + detour },
+      to,
+    ],
   ].map((points) => simplify(points));
 
   let best = candidates[0];
   let bestScore = Number.POSITIVE_INFINITY;
   candidates.forEach((candidate) => {
-    const intersections = obstacles.reduce((sum, obstacle) => sum + pathIntersections(candidate, obstacle), 0);
+    const intersections = obstacles.reduce(
+      (sum, obstacle) => sum + pathIntersections(candidate, obstacle),
+      0,
+    );
     const bends = Math.max(0, candidate.length - 2);
-    const score = intersections * 1_000_000 + bends * 150 + pathLength(candidate);
+    const score =
+      intersections * 1_000_000 + bends * 150 + pathLength(candidate);
     if (score < bestScore) {
       bestScore = score;
       best = candidate;
@@ -226,12 +283,15 @@ type DragState = {
   originY: number;
 };
 
+/**
+ * Handles connector routing lab.
+ */
 export default function ConnectorRoutingLab() {
   const [circle, setCircle] = useState<Shape>({
     x: 560,
     y: 380,
     width: 120,
-    height: 120
+    height: 120,
   });
   const dragRef = useRef<DragState | null>(null);
 
@@ -249,9 +309,15 @@ export default function ConnectorRoutingLab() {
 
     circleAnchors.forEach((anchor) => {
       const toPoint = getAnchorPoint(circle, anchor);
-      const route = chooseRoute(fromPoint, toPoint, [rectObstacle, circleObstacle]);
+      const route = chooseRoute(fromPoint, toPoint, [
+        rectObstacle,
+        circleObstacle,
+      ]);
       const overlapCount = pathIntersections(route, circleTrueBounds);
-      const score = overlapCount * 1_000_000 + pathLength(route) + Math.max(0, route.length - 2) * 120;
+      const score =
+        overlapCount * 1_000_000 +
+        pathLength(route) +
+        Math.max(0, route.length - 2) * 120;
       if (score < bestScore) {
         bestScore = score;
         bestAnchor = anchor;
@@ -263,13 +329,18 @@ export default function ConnectorRoutingLab() {
       fromPoint,
       toAnchor: bestAnchor,
       route: bestRoute,
-      overlapsCircle: pathIntersections(bestRoute, circleTrueBounds) > 0
+      overlapsCircle: pathIntersections(bestRoute, circleTrueBounds) > 0,
     };
   }, [circle]);
 
   const routePath = roundedPath(routeState.route);
 
-  const handleCirclePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+  /**
+   * Handles handle circle pointer down.
+   */
+  const handleCirclePointerDown = (
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => {
     if (event.button !== 0) {
       return;
     }
@@ -279,12 +350,17 @@ export default function ConnectorRoutingLab() {
       startX: event.clientX,
       startY: event.clientY,
       originX: circle.x,
-      originY: circle.y
+      originY: circle.y,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
-  const handleCirclePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+  /**
+   * Handles handle circle pointer move.
+   */
+  const handleCirclePointerMove = (
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => {
     const dragState = dragRef.current;
     if (!dragState || dragState.pointerId !== event.pointerId) {
       return;
@@ -294,11 +370,20 @@ export default function ConnectorRoutingLab() {
     const dy = event.clientY - dragState.startY;
     setCircle((previous) => ({
       ...previous,
-      x: Math.max(20, Math.min(STAGE_WIDTH - previous.width - 20, dragState.originX + dx)),
-      y: Math.max(20, Math.min(STAGE_HEIGHT - previous.height - 20, dragState.originY + dy))
+      x: Math.max(
+        20,
+        Math.min(STAGE_WIDTH - previous.width - 20, dragState.originX + dx),
+      ),
+      y: Math.max(
+        20,
+        Math.min(STAGE_HEIGHT - previous.height - 20, dragState.originY + dy),
+      ),
     }));
   };
 
+  /**
+   * Handles handle circle pointer up.
+   */
   const handleCirclePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
     const dragState = dragRef.current;
     if (!dragState || dragState.pointerId !== event.pointerId) {
@@ -315,7 +400,7 @@ export default function ConnectorRoutingLab() {
         display: "grid",
         placeItems: "center",
         background: "#e5e7eb",
-        padding: 24
+        padding: 24,
       }}
     >
       <section
@@ -327,7 +412,7 @@ export default function ConnectorRoutingLab() {
           backgroundColor: "#f8fafc",
           backgroundImage:
             "linear-gradient(#e5e7eb 1px, transparent 1px), linear-gradient(90deg, #e5e7eb 1px, transparent 1px)",
-          backgroundSize: "32px 32px"
+          backgroundSize: "32px 32px",
         }}
       >
         <svg
@@ -335,7 +420,7 @@ export default function ConnectorRoutingLab() {
           style={{
             position: "absolute",
             inset: 0,
-            overflow: "visible"
+            overflow: "visible",
           }}
           viewBox={`0 0 ${STAGE_WIDTH} ${STAGE_HEIGHT}`}
         >
@@ -359,7 +444,7 @@ export default function ConnectorRoutingLab() {
             height: RECT_SHAPE.height,
             background: "#93c5fd",
             border: "2px solid #3b82f6",
-            borderRadius: 4
+            borderRadius: 4,
           }}
         />
 
@@ -378,17 +463,28 @@ export default function ConnectorRoutingLab() {
             background: "#fca5a5",
             border: "2px solid #ef4444",
             cursor: "grab",
-            touchAction: "none"
+            touchAction: "none",
           }}
         />
 
-        <div style={{ position: "absolute", left: 12, top: 12, fontSize: 13, color: "#0f172a" }}>
+        <div
+          style={{
+            position: "absolute",
+            left: 12,
+            top: 12,
+            fontSize: 13,
+            color: "#0f172a",
+          }}
+        >
           <div>
-            to-anchor: <strong data-testid="to-anchor">{routeState.toAnchor}</strong>
+            to-anchor:{" "}
+            <strong data-testid="to-anchor">{routeState.toAnchor}</strong>
           </div>
           <div>
             overlaps-target:{" "}
-            <strong data-testid="overlap-target">{routeState.overlapsCircle ? "true" : "false"}</strong>
+            <strong data-testid="overlap-target">
+              {routeState.overlapsCircle ? "true" : "false"}
+            </strong>
           </div>
         </div>
       </section>

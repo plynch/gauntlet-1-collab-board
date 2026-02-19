@@ -5,12 +5,17 @@ import { useCallback, useMemo, useState } from "react";
 import { useAuthSession } from "@/features/auth/hooks/use-auth-session";
 import { useBoardLive } from "@/features/boards/hooks/use-board-live";
 import RealtimeBoardCanvas from "@/features/boards/components/realtime-board-canvas";
-import AppHeader, { HeaderBackLink } from "@/features/layout/components/app-header";
+import AppHeader, {
+  HeaderBackLink,
+} from "@/features/layout/components/app-header";
 
 type BoardWorkspaceProps = {
   boardId: string;
 };
 
+/**
+ * Handles google brand icon.
+ */
 function GoogleBrandIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
@@ -34,6 +39,9 @@ function GoogleBrandIcon() {
   );
 }
 
+/**
+ * Handles board workspace.
+ */
 export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
@@ -42,11 +50,11 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
     user,
     authLoading,
     signInWithGoogle,
-    signOutCurrentUser
+    signOutCurrentUser,
   } = useAuthSession();
   const { board, permissions, boardLoading, boardError } = useBoardLive(
     boardId,
-    user?.uid ?? null
+    user?.uid ?? null,
   );
 
   const handleSignIn = useCallback(async () => {
@@ -55,7 +63,9 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
     try {
       await signInWithGoogle();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Sign in failed.");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Sign in failed.",
+      );
     }
   }, [signInWithGoogle]);
 
@@ -66,7 +76,9 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
     try {
       await signOutCurrentUser();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Sign out failed.");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Sign out failed.",
+      );
     } finally {
       setSigningOut(false);
     }
@@ -89,13 +101,13 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
           padding: "1.25rem",
           height: "100dvh",
           overflow: "hidden",
-          boxSizing: "border-box"
+          boxSizing: "border-box",
         }}
       >
         <h1>Board</h1>
         <p>
-          Firebase is not configured yet. Add your values to <code>.env.local</code>{" "}
-          using <code>.env.example</code>.
+          Firebase is not configured yet. Add your values to{" "}
+          <code>.env.local</code> using <code>.env.example</code>.
         </p>
       </main>
     );
@@ -112,12 +124,16 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
-        background: "#ffffff"
+        background: "#ffffff",
       }}
     >
       <AppHeader
         user={user}
-        leftSlot={user ? <HeaderBackLink href="/" label="Back to My Boards" /> : undefined}
+        leftSlot={
+          user ? (
+            <HeaderBackLink href="/" label="Back to My Boards" />
+          ) : undefined
+        }
         onSignOut={user ? handleSignOut : null}
         signOutDisabled={signingOut}
       />
@@ -128,11 +144,13 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
           minHeight: 0,
           overflow: "hidden",
           display: "flex",
-          position: "relative"
+          position: "relative",
         }}
       >
         {authLoading ? (
-          <div style={{ margin: "auto", color: "#475569" }}>Checking authentication...</div>
+          <div style={{ margin: "auto", color: "#475569" }}>
+            Checking authentication...
+          </div>
         ) : null}
 
         {!authLoading && !user ? (
@@ -143,7 +161,7 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
               display: "grid",
               justifyItems: "center",
               textAlign: "center",
-              gap: "0.8rem"
+              gap: "0.8rem",
             }}
           >
             <p style={{ margin: 0 }}>Sign in to access this board.</p>
@@ -164,7 +182,7 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
                 fontWeight: 500,
                 fontSize: 14,
                 cursor: "pointer",
-                boxShadow: "0 1px 2px rgba(60,64,67,0.2)"
+                boxShadow: "0 1px 2px rgba(60,64,67,0.2)",
               }}
             >
               <GoogleBrandIcon />
@@ -181,7 +199,7 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
               position: "absolute",
               left: 12,
               top: 68,
-              zIndex: 10
+              zIndex: 10,
             }}
           >
             {combinedErrorMessage}
@@ -191,7 +209,9 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
         {!authLoading && user ? (
           <>
             {boardLoading ? (
-              <div style={{ margin: "auto", color: "#475569" }}>Loading board...</div>
+              <div style={{ margin: "auto", color: "#475569" }}>
+                Loading board...
+              </div>
             ) : null}
 
             {!boardLoading && board && permissions?.canRead ? (
@@ -205,7 +225,9 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
             ) : null}
 
             {!boardLoading && board && permissions && !permissions.canRead ? (
-              <p style={{ margin: "auto" }}>You do not have access to this board.</p>
+              <p style={{ margin: "auto" }}>
+                You do not have access to this board.
+              </p>
             ) : null}
           </>
         ) : null}

@@ -2,7 +2,7 @@ import type {
   BoardObjectSnapshot,
   BoardObjectToolKind,
   BoardToolCall,
-  TemplatePlan
+  TemplatePlan,
 } from "@/features/ai/types";
 
 type PlannerInput = {
@@ -46,7 +46,7 @@ const COLOR_KEYWORDS: Record<string, string> = {
   gray: "#d1d5db",
   grey: "#d1d5db",
   tan: "#d2b48c",
-  black: "#1f2937"
+  black: "#1f2937",
 };
 
 const DEFAULT_SIZES: Record<BoardObjectToolKind, Size> = {
@@ -59,34 +59,50 @@ const DEFAULT_SIZES: Record<BoardObjectToolKind, Size> = {
   connectorArrow: { width: 220, height: 120 },
   connectorBidirectional: { width: 220, height: 120 },
   triangle: { width: 180, height: 170 },
-  star: { width: 180, height: 180 }
+  star: { width: 180, height: 180 },
 };
 
+/**
+ * Handles normalize message.
+ */
 function normalizeMessage(message: string): string {
   return message.trim().toLowerCase();
 }
 
+/**
+ * Gets selected objects.
+ */
 function getSelectedObjects(
   boardState: BoardObjectSnapshot[],
-  selectedIds: string[]
+  selectedIds: string[],
 ): BoardObjectSnapshot[] {
-  const byId = new Map(boardState.map((objectItem) => [objectItem.id, objectItem]));
+  const byId = new Map(
+    boardState.map((objectItem) => [objectItem.id, objectItem]),
+  );
   return selectedIds
     .map((objectId) => byId.get(objectId))
-    .filter((objectItem): objectItem is BoardObjectSnapshot => Boolean(objectItem));
+    .filter((objectItem): objectItem is BoardObjectSnapshot =>
+      Boolean(objectItem),
+    );
 }
 
+/**
+ * Handles find color.
+ */
 function findColor(message: string): string | null {
   const lower = normalizeMessage(message);
   const key = Object.keys(COLOR_KEYWORDS).find((colorName) =>
-    new RegExp(`\\b${colorName}\\b`, "i").test(lower)
+    new RegExp(`\\b${colorName}\\b`, "i").test(lower),
   );
   return key ? COLOR_KEYWORDS[key] : null;
 }
 
+/**
+ * Parses coordinate point.
+ */
 function parseCoordinatePoint(message: string): Point | null {
   const atMatch = message.match(
-    /\b(?:at|to)\s*(?:position\s*)?(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/i
+    /\b(?:at|to)\s*(?:position\s*)?(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/i,
   );
   if (!atMatch) {
     return null;
@@ -94,13 +110,16 @@ function parseCoordinatePoint(message: string): Point | null {
 
   return {
     x: Number(atMatch[1]),
-    y: Number(atMatch[2])
+    y: Number(atMatch[2]),
   };
 }
 
+/**
+ * Parses size.
+ */
 function parseSize(message: string): Size | null {
   const sizeMatch = message.match(
-    /\b(?:size|to)\s*(\d+(?:\.\d+)?)\s*(?:x|by)\s*(\d+(?:\.\d+)?)/i
+    /\b(?:size|to)\s*(\d+(?:\.\d+)?)\s*(?:x|by)\s*(\d+(?:\.\d+)?)/i,
   );
   if (!sizeMatch) {
     return null;
@@ -108,10 +127,13 @@ function parseSize(message: string): Size | null {
 
   return {
     width: Math.max(1, Number(sizeMatch[1])),
-    height: Math.max(1, Number(sizeMatch[2]))
+    height: Math.max(1, Number(sizeMatch[2])),
   };
 }
 
+/**
+ * Gets board bounds.
+ */
 function getBoardBounds(boardState: BoardObjectSnapshot[]): {
   left: number;
   right: number;
@@ -124,12 +146,19 @@ function getBoardBounds(boardState: BoardObjectSnapshot[]): {
 
   return {
     left: Math.min(...boardState.map((objectItem) => objectItem.x)),
-    right: Math.max(...boardState.map((objectItem) => objectItem.x + objectItem.width)),
+    right: Math.max(
+      ...boardState.map((objectItem) => objectItem.x + objectItem.width),
+    ),
     top: Math.min(...boardState.map((objectItem) => objectItem.y)),
-    bottom: Math.max(...boardState.map((objectItem) => objectItem.y + objectItem.height))
+    bottom: Math.max(
+      ...boardState.map((objectItem) => objectItem.y + objectItem.height),
+    ),
   };
 }
 
+/**
+ * Gets auto spawn point.
+ */
 function getAutoSpawnPoint(boardState: BoardObjectSnapshot[]): Point {
   const bounds = getBoardBounds(boardState);
   if (!bounds) {
@@ -138,13 +167,16 @@ function getAutoSpawnPoint(boardState: BoardObjectSnapshot[]): Point {
 
   return {
     x: bounds.right + 100,
-    y: bounds.top
+    y: bounds.top,
   };
 }
 
+/**
+ * Parses direction delta.
+ */
 function parseDirectionDelta(message: string): Point | null {
   const match = message.match(
-    /\b(right|left|up|down)\b(?:\s+by\s+(-?\d+(?:\.\d+)?))?/i
+    /\b(right|left|up|down)\b(?:\s+by\s+(-?\d+(?:\.\d+)?))?/i,
   );
   if (!match) {
     return null;
@@ -168,9 +200,12 @@ function parseDirectionDelta(message: string): Point | null {
   return { x: 0, y: amount };
 }
 
+/**
+ * Parses sticky text.
+ */
 function parseStickyText(message: string): string {
   const textMatch = message.match(
-    /\b(?:that says|saying|with text|text)\b\s+["“']?(.+?)["”']?$/i
+    /\b(?:that says|saying|with text|text)\b\s+["“']?(.+?)["”']?$/i,
   );
   if (!textMatch) {
     return "New sticky note";
@@ -180,6 +215,9 @@ function parseStickyText(message: string): string {
   return value.length > 0 ? value.slice(0, 1_000) : "New sticky note";
 }
 
+/**
+ * Parses shape type.
+ */
 function parseShapeType(message: string): BoardObjectToolKind | null {
   const lower = normalizeMessage(message);
   if (/\bsticky(?:\s+note)?s?\b/.test(lower)) {
@@ -201,6 +239,9 @@ function parseShapeType(message: string): BoardObjectToolKind | null {
   return null;
 }
 
+/**
+ * Handles to plan.
+ */
 function toPlan(options: {
   id: string;
   name: string;
@@ -209,10 +250,13 @@ function toPlan(options: {
   return {
     templateId: options.id,
     templateName: options.name,
-    operations: options.operations
+    operations: options.operations,
   };
 }
 
+/**
+ * Returns whether clear board command is true.
+ */
 function isClearBoardCommand(message: string): boolean {
   const lower = normalizeMessage(message);
   return (
@@ -222,7 +266,12 @@ function isClearBoardCommand(message: string): boolean {
   );
 }
 
-function planClearBoard(input: PlannerInput): DeterministicCommandPlanResult | null {
+/**
+ * Handles plan clear board.
+ */
+function planClearBoard(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
   if (!isClearBoardCommand(input.message)) {
     return null;
   }
@@ -231,7 +280,7 @@ function planClearBoard(input: PlannerInput): DeterministicCommandPlanResult | n
     return {
       planned: false,
       intent: "clear-board-empty",
-      assistantMessage: "Board is already empty."
+      assistantMessage: "Board is already empty.",
     };
   }
 
@@ -246,14 +295,17 @@ function planClearBoard(input: PlannerInput): DeterministicCommandPlanResult | n
         {
           tool: "deleteObjects",
           args: {
-            objectIds: input.boardState.map((objectItem) => objectItem.id)
-          }
-        }
-      ]
-    })
+            objectIds: input.boardState.map((objectItem) => objectItem.id),
+          },
+        },
+      ],
+    }),
   };
 }
 
+/**
+ * Returns whether delete selected command is true.
+ */
 function isDeleteSelectedCommand(message: string): boolean {
   const lower = normalizeMessage(message);
   return (
@@ -263,17 +315,26 @@ function isDeleteSelectedCommand(message: string): boolean {
   );
 }
 
-function planDeleteSelected(input: PlannerInput): DeterministicCommandPlanResult | null {
+/**
+ * Handles plan delete selected.
+ */
+function planDeleteSelected(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
   if (!isDeleteSelectedCommand(input.message)) {
     return null;
   }
 
-  const selectedObjects = getSelectedObjects(input.boardState, input.selectedObjectIds);
+  const selectedObjects = getSelectedObjects(
+    input.boardState,
+    input.selectedObjectIds,
+  );
   if (selectedObjects.length === 0) {
     return {
       planned: false,
       intent: "delete-selected",
-      assistantMessage: "Select one or more objects first, then run delete selected."
+      assistantMessage:
+        "Select one or more objects first, then run delete selected.",
     };
   }
 
@@ -288,21 +349,30 @@ function planDeleteSelected(input: PlannerInput): DeterministicCommandPlanResult
         {
           tool: "deleteObjects",
           args: {
-            objectIds: selectedObjects.map((objectItem) => objectItem.id)
-          }
-        }
-      ]
-    })
+            objectIds: selectedObjects.map((objectItem) => objectItem.id),
+          },
+        },
+      ],
+    }),
   };
 }
 
-function planCreateSticky(input: PlannerInput): DeterministicCommandPlanResult | null {
+/**
+ * Handles plan create sticky.
+ */
+function planCreateSticky(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
   const lower = normalizeMessage(input.message);
-  if (!/\b(add|create)\b/.test(lower) || !/\bsticky(?:\s+note)?s?\b/.test(lower)) {
+  if (
+    !/\b(add|create)\b/.test(lower) ||
+    !/\bsticky(?:\s+note)?s?\b/.test(lower)
+  ) {
     return null;
   }
 
-  const point = parseCoordinatePoint(input.message) ?? getAutoSpawnPoint(input.boardState);
+  const point =
+    parseCoordinatePoint(input.message) ?? getAutoSpawnPoint(input.boardState);
   const color = findColor(input.message) ?? COLOR_KEYWORDS.yellow;
   const text = parseStickyText(input.message);
 
@@ -320,23 +390,31 @@ function planCreateSticky(input: PlannerInput): DeterministicCommandPlanResult |
             text,
             x: point.x,
             y: point.y,
-            color
-          }
-        }
-      ]
-    })
+            color,
+          },
+        },
+      ],
+    }),
   };
 }
 
-function planCreateFrame(input: PlannerInput): DeterministicCommandPlanResult | null {
+/**
+ * Handles plan create frame.
+ */
+function planCreateFrame(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
   const lower = normalizeMessage(input.message);
   if (!/\b(add|create)\b/.test(lower) || !/\bframe\b/.test(lower)) {
     return null;
   }
 
-  const point = parseCoordinatePoint(input.message) ?? getAutoSpawnPoint(input.boardState);
+  const point =
+    parseCoordinatePoint(input.message) ?? getAutoSpawnPoint(input.boardState);
   const size = parseSize(input.message) ?? { width: 520, height: 340 };
-  const titleMatch = input.message.match(/\b(?:called|named|title)\b\s+["“']?(.+?)["”']?$/i);
+  const titleMatch = input.message.match(
+    /\b(?:called|named|title)\b\s+["“']?(.+?)["”']?$/i,
+  );
   const title = titleMatch?.[1]?.trim() || "New frame";
 
   return {
@@ -354,15 +432,20 @@ function planCreateFrame(input: PlannerInput): DeterministicCommandPlanResult | 
             x: point.x,
             y: point.y,
             width: size.width,
-            height: size.height
-          }
-        }
-      ]
-    })
+            height: size.height,
+          },
+        },
+      ],
+    }),
   };
 }
 
-function planCreateShape(input: PlannerInput): DeterministicCommandPlanResult | null {
+/**
+ * Handles plan create shape.
+ */
+function planCreateShape(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
   const lower = normalizeMessage(input.message);
   if (!/\b(add|create)\b/.test(lower)) {
     return null;
@@ -373,7 +456,8 @@ function planCreateShape(input: PlannerInput): DeterministicCommandPlanResult | 
     return null;
   }
 
-  const point = parseCoordinatePoint(input.message) ?? getAutoSpawnPoint(input.boardState);
+  const point =
+    parseCoordinatePoint(input.message) ?? getAutoSpawnPoint(input.boardState);
   const size = parseSize(input.message) ?? DEFAULT_SIZES[shapeType];
   const color = findColor(input.message) ?? COLOR_KEYWORDS.blue;
 
@@ -393,26 +477,35 @@ function planCreateShape(input: PlannerInput): DeterministicCommandPlanResult | 
             y: point.y,
             width: size.width,
             height: size.height,
-            color
-          }
-        }
-      ]
-    })
+            color,
+          },
+        },
+      ],
+    }),
   };
 }
 
-function planMoveSelected(input: PlannerInput): DeterministicCommandPlanResult | null {
+/**
+ * Handles plan move selected.
+ */
+function planMoveSelected(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
   const lower = normalizeMessage(input.message);
   if (!/\bmove\b/.test(lower) || !/\bselected\b/.test(lower)) {
     return null;
   }
 
-  const selectedObjects = getSelectedObjects(input.boardState, input.selectedObjectIds);
+  const selectedObjects = getSelectedObjects(
+    input.boardState,
+    input.selectedObjectIds,
+  );
   if (selectedObjects.length === 0) {
     return {
       planned: false,
       intent: "move-selected",
-      assistantMessage: "Select one or more objects first, then run the move command again."
+      assistantMessage:
+        "Select one or more objects first, then run the move command again.",
     };
   }
 
@@ -430,8 +523,8 @@ function planMoveSelected(input: PlannerInput): DeterministicCommandPlanResult |
         args: {
           objectId: objectItem.id,
           x: objectItem.x + dx,
-          y: objectItem.y + dy
-        }
+          y: objectItem.y + dy,
+        },
       });
     });
   } else {
@@ -441,7 +534,7 @@ function planMoveSelected(input: PlannerInput): DeterministicCommandPlanResult |
         planned: false,
         intent: "move-selected",
         assistantMessage:
-          "Specify where to move selected objects, for example: right by 120, or to 400, 300."
+          "Specify where to move selected objects, for example: right by 120, or to 400, 300.",
       };
     }
 
@@ -451,8 +544,8 @@ function planMoveSelected(input: PlannerInput): DeterministicCommandPlanResult |
         args: {
           objectId: objectItem.id,
           x: objectItem.x + delta.x,
-          y: objectItem.y + delta.y
-        }
+          y: objectItem.y + delta.y,
+        },
       });
     });
   }
@@ -464,14 +557,17 @@ function planMoveSelected(input: PlannerInput): DeterministicCommandPlanResult |
     plan: toPlan({
       id: "command.move-selected",
       name: "Move Selected Objects",
-      operations
-    })
+      operations,
+    }),
   };
 }
 
+/**
+ * Parses move all type.
+ */
 function parseMoveAllType(message: string): BoardObjectToolKind | null {
   const match = message.match(
-    /\ball\b(?:\s+\w+)?\s+(sticky(?:\s+notes?)?|rectangles?|circles?|lines?|triangles?|stars?|connectors?)\b/i
+    /\ball\b(?:\s+\w+)?\s+(sticky(?:\s+notes?)?|rectangles?|circles?|lines?|triangles?|stars?|connectors?)\b/i,
   );
   if (!match) {
     return null;
@@ -484,7 +580,12 @@ function parseMoveAllType(message: string): BoardObjectToolKind | null {
   return parseShapeType(match[1]);
 }
 
-function planMoveAll(input: PlannerInput): DeterministicCommandPlanResult | null {
+/**
+ * Handles plan move all.
+ */
+function planMoveAll(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
   const lower = normalizeMessage(input.message);
   if (!/\bmove\b/.test(lower) || !/\ball\b/.test(lower)) {
     return null;
@@ -512,7 +613,7 @@ function planMoveAll(input: PlannerInput): DeterministicCommandPlanResult | null
     return {
       planned: false,
       intent: "move-all",
-      assistantMessage: "No matching objects found to move."
+      assistantMessage: "No matching objects found to move.",
     };
   }
 
@@ -530,8 +631,8 @@ function planMoveAll(input: PlannerInput): DeterministicCommandPlanResult | null
         args: {
           objectId: objectItem.id,
           x: objectItem.x + dx,
-          y: objectItem.y + dy
-        }
+          y: objectItem.y + dy,
+        },
       });
     });
   } else {
@@ -540,7 +641,8 @@ function planMoveAll(input: PlannerInput): DeterministicCommandPlanResult | null
       return {
         planned: false,
         intent: "move-all",
-        assistantMessage: "Specify a move direction or target position for matching objects."
+        assistantMessage:
+          "Specify a move direction or target position for matching objects.",
       };
     }
 
@@ -550,8 +652,8 @@ function planMoveAll(input: PlannerInput): DeterministicCommandPlanResult | null
         args: {
           objectId: objectItem.id,
           x: objectItem.x + delta.x,
-          y: objectItem.y + delta.y
-        }
+          y: objectItem.y + delta.y,
+        },
       });
     });
   }
@@ -563,23 +665,31 @@ function planMoveAll(input: PlannerInput): DeterministicCommandPlanResult | null
     plan: toPlan({
       id: "command.move-all",
       name: "Move Matching Objects",
-      operations
-    })
+      operations,
+    }),
   };
 }
 
-function planResizeSelected(input: PlannerInput): DeterministicCommandPlanResult | null {
+/**
+ * Handles plan resize selected.
+ */
+function planResizeSelected(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
   const lower = normalizeMessage(input.message);
   if (!/\bresize\b/.test(lower)) {
     return null;
   }
 
-  const selectedObjects = getSelectedObjects(input.boardState, input.selectedObjectIds);
+  const selectedObjects = getSelectedObjects(
+    input.boardState,
+    input.selectedObjectIds,
+  );
   if (selectedObjects.length === 0) {
     return {
       planned: false,
       intent: "resize-selected",
-      assistantMessage: "Select one or more objects first, then run resize."
+      assistantMessage: "Select one or more objects first, then run resize.",
     };
   }
 
@@ -588,7 +698,8 @@ function planResizeSelected(input: PlannerInput): DeterministicCommandPlanResult
     return {
       planned: false,
       intent: "resize-selected",
-      assistantMessage: "Specify dimensions, for example: resize selected to 220 by 140."
+      assistantMessage:
+        "Specify dimensions, for example: resize selected to 220 by 140.",
     };
   }
 
@@ -604,14 +715,19 @@ function planResizeSelected(input: PlannerInput): DeterministicCommandPlanResult
         args: {
           objectId: objectItem.id,
           width: size.width,
-          height: size.height
-        }
-      }))
-    })
+          height: size.height,
+        },
+      })),
+    }),
   };
 }
 
-function planChangeColorSelected(input: PlannerInput): DeterministicCommandPlanResult | null {
+/**
+ * Handles plan change color selected.
+ */
+function planChangeColorSelected(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
   const lower = normalizeMessage(input.message);
   if (!/\b(change|set|make)\b/.test(lower) || !/\bcolor\b/.test(lower)) {
     return null;
@@ -622,16 +738,21 @@ function planChangeColorSelected(input: PlannerInput): DeterministicCommandPlanR
     return {
       planned: false,
       intent: "change-color",
-      assistantMessage: "I could not detect a supported color name in your command."
+      assistantMessage:
+        "I could not detect a supported color name in your command.",
     };
   }
 
-  const selectedObjects = getSelectedObjects(input.boardState, input.selectedObjectIds);
+  const selectedObjects = getSelectedObjects(
+    input.boardState,
+    input.selectedObjectIds,
+  );
   if (selectedObjects.length === 0) {
     return {
       planned: false,
       intent: "change-color",
-      assistantMessage: "Select one or more objects first, then run color change."
+      assistantMessage:
+        "Select one or more objects first, then run color change.",
     };
   }
 
@@ -646,25 +767,33 @@ function planChangeColorSelected(input: PlannerInput): DeterministicCommandPlanR
         tool: "changeColor",
         args: {
           objectId: objectItem.id,
-          color
-        }
-      }))
-    })
+          color,
+        },
+      })),
+    }),
   };
 }
 
-function planUpdateSelectedText(input: PlannerInput): DeterministicCommandPlanResult | null {
+/**
+ * Handles plan update selected text.
+ */
+function planUpdateSelectedText(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
   const lower = normalizeMessage(input.message);
   if (!/\b(update|set|change)\b/.test(lower) || !/\btext\b/.test(lower)) {
     return null;
   }
 
-  const selectedObjects = getSelectedObjects(input.boardState, input.selectedObjectIds);
+  const selectedObjects = getSelectedObjects(
+    input.boardState,
+    input.selectedObjectIds,
+  );
   if (selectedObjects.length === 0) {
     return {
       planned: false,
       intent: "update-text",
-      assistantMessage: "Select one object first, then run text update."
+      assistantMessage: "Select one object first, then run text update.",
     };
   }
 
@@ -674,7 +803,8 @@ function planUpdateSelectedText(input: PlannerInput): DeterministicCommandPlanRe
     return {
       planned: false,
       intent: "update-text",
-      assistantMessage: "Specify the new text, for example: update text to Q2 priorities."
+      assistantMessage:
+        "Specify the new text, for example: update text to Q2 priorities.",
     };
   }
 
@@ -691,16 +821,19 @@ function planUpdateSelectedText(input: PlannerInput): DeterministicCommandPlanRe
           tool: "updateText",
           args: {
             objectId: target.id,
-            newText: nextText.slice(0, 1_000)
-          }
-        }
-      ]
-    })
+            newText: nextText.slice(0, 1_000),
+          },
+        },
+      ],
+    }),
   };
 }
 
+/**
+ * Handles plan deterministic command.
+ */
 export function planDeterministicCommand(
-  input: PlannerInput
+  input: PlannerInput,
 ): DeterministicCommandPlanResult {
   const planners = [
     planClearBoard,
@@ -712,7 +845,7 @@ export function planDeterministicCommand(
     planMoveAll,
     planResizeSelected,
     planChangeColorSelected,
-    planUpdateSelectedText
+    planUpdateSelectedText,
   ];
 
   for (const planner of planners) {
@@ -726,6 +859,6 @@ export function planDeterministicCommand(
     planned: false,
     intent: "unsupported-command",
     assistantMessage:
-      "I could not map that command yet. Try creating shapes/stickies, move/resize selected objects, delete selected, clear the board, change selected color, or create a SWOT template."
+      "I could not map that command yet. Try creating shapes/stickies, move/resize selected objects, delete selected, clear the board, change selected color, or create a SWOT template.",
   };
 }

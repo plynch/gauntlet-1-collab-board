@@ -20,8 +20,8 @@ vi.mock("next/link", () => ({
       "a",
       {
         href: typeof href === "string" ? href : (href.pathname ?? "#"),
-        ...props
+        ...props,
       },
-      children
-    )
+      children,
+    ),
 }));

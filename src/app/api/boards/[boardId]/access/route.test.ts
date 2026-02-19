@@ -16,6 +16,9 @@ vi.mock("@/server/auth/require-user", () => {
   class AuthError extends Error {
     readonly status: number;
 
+    /**
+     * Initializes this class instance.
+     */
     constructor(message: string, status = 401) {
       super(message);
       this.status = status;
@@ -24,68 +27,86 @@ vi.mock("@/server/auth/require-user", () => {
 
   return {
     AuthError,
-    requireUser: requireUserMock
+    requireUser: requireUserMock,
   };
 });
 
 vi.mock("@/lib/firebase/admin", () => ({
   getFirebaseAdminDb: getFirebaseAdminDbMock,
   getFirebaseAdminAuth: getFirebaseAdminAuthMock,
-  assertFirestoreWritesAllowedInDev: assertFirestoreWritesAllowedInDevMock
+  assertFirestoreWritesAllowedInDev: assertFirestoreWritesAllowedInDevMock,
 }));
 
 vi.mock("@/server/boards/board-access", () => ({
   parseBoardDoc: parseBoardDocMock,
   resolveUserProfiles: resolveUserProfilesMock,
-  toIsoDate: () => null
+  toIsoDate: () => null,
 }));
 
 type BoardDoc = Record<string, unknown>;
 
+/**
+ * Creates fake db.
+ */
 function createFakeDb(initialBoard?: BoardDoc) {
   const board = initialBoard ? { ...initialBoard } : null;
 
   const boardRef = {
+    /**
+     * Handles get.
+     */
     async get() {
       return {
         exists: Boolean(board),
-        data: () => board
+        data: () => board,
       };
     },
+    /**
+     * Handles update.
+     */
     async update(value: Record<string, unknown>) {
       void value;
       // no-op in test double
-    }
+    },
   };
 
   return {
+    /**
+     * Handles collection.
+     */
     collection(name: string) {
       if (name !== "boards") {
         throw new Error(`Unsupported collection: ${name}`);
       }
 
       return {
+        /**
+         * Handles doc.
+         */
         doc(id: string) {
           void id;
           return boardRef;
-        }
+        },
       };
-    }
+    },
   };
 }
 
+/**
+ * Creates request.
+ */
 function createRequest(body: unknown) {
   return new NextRequest("http://localhost:3000/api/boards/board-1/access", {
     method: "PATCH",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
   });
 }
 
 const context = {
-  params: Promise.resolve({ boardId: "board-1" })
+  params: Promise.resolve({ boardId: "board-1" }),
 };
 
 describe("/api/boards/[boardId]/access", () => {
@@ -94,7 +115,7 @@ describe("/api/boards/[boardId]/access", () => {
     parseBoardDocMock.mockImplementation((value: unknown) => value);
     resolveUserProfilesMock.mockResolvedValue([]);
     getFirebaseAdminAuthMock.mockReturnValue({
-      getUserByEmail: vi.fn().mockResolvedValue(null)
+      getUserByEmail: vi.fn().mockResolvedValue(null),
     });
   });
 
@@ -107,16 +128,16 @@ describe("/api/boards/[boardId]/access", () => {
         editorIds: [],
         readerIds: [],
         openEdit: true,
-        openRead: true
-      })
+        openRead: true,
+      }),
     );
 
     const { PATCH } = await import("./route");
     const response = await PATCH(
       createRequest({
-        action: "unknown"
+        action: "unknown",
       }),
-      context
+      context,
     );
 
     expect(response.status).toBe(400);
@@ -131,17 +152,17 @@ describe("/api/boards/[boardId]/access", () => {
         editorIds: [],
         readerIds: [],
         openEdit: true,
-        openRead: true
-      })
+        openRead: true,
+      }),
     );
 
     const { PATCH } = await import("./route");
     const response = await PATCH(
       createRequest({
         action: "set-open-read",
-        openRead: true
+        openRead: true,
       }),
-      context
+      context,
     );
 
     expect(response.status).toBe(403);
@@ -156,17 +177,17 @@ describe("/api/boards/[boardId]/access", () => {
         editorIds: [],
         readerIds: [],
         openEdit: true,
-        openRead: true
-      })
+        openRead: true,
+      }),
     );
 
     const { PATCH } = await import("./route");
     const response = await PATCH(
       createRequest({
         action: "set-open-read",
-        openRead: false
+        openRead: false,
       }),
-      context
+      context,
     );
 
     expect(response.status).toBe(200);

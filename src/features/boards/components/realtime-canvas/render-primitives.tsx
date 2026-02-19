@@ -13,9 +13,12 @@ type RemoteCursorLayerProps = {
   viewport: Viewport;
 };
 
+/**
+ * Handles remote cursor layer.
+ */
 export function RemoteCursorLayer({
   remoteCursors,
-  viewport
+  viewport,
 }: RemoteCursorLayerProps) {
   return (
     <>
@@ -27,7 +30,7 @@ export function RemoteCursorLayer({
             left: viewport.x + (presenceUser.cursorX ?? 0) * viewport.scale,
             top: viewport.y + (presenceUser.cursorY ?? 0) * viewport.scale,
             pointerEvents: "none",
-            transform: "translate(-2px, -2px)"
+            transform: "translate(-2px, -2px)",
           }}
         >
           <svg
@@ -36,7 +39,7 @@ export function RemoteCursorLayer({
             viewBox="0 0 18 24"
             style={{
               display: "block",
-              filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.35))"
+              filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.35))",
             }}
             aria-hidden="true"
           >
@@ -57,7 +60,7 @@ export function RemoteCursorLayer({
               background: presenceUser.color,
               color: "white",
               fontSize: 11,
-              whiteSpace: "nowrap"
+              whiteSpace: "nowrap",
             }}
           >
             {getPresenceLabel(presenceUser)}
@@ -72,6 +75,9 @@ type OnlineUsersListProps = {
   onlineUsers: PresenceUser[];
 };
 
+/**
+ * Handles online users list.
+ */
 export function OnlineUsersList({ onlineUsers }: OnlineUsersListProps) {
   if (onlineUsers.length === 0) {
     return <span style={{ color: "#6b7280" }}>No active users yet.</span>;
@@ -88,7 +94,7 @@ export function OnlineUsersList({ onlineUsers }: OnlineUsersListProps) {
             gap: "0.4rem",
             whiteSpace: "nowrap",
             overflow: "hidden",
-            textOverflow: "ellipsis"
+            textOverflow: "ellipsis",
           }}
           title={getPresenceLabel(presenceUser)}
         >
@@ -96,7 +102,7 @@ export function OnlineUsersList({ onlineUsers }: OnlineUsersListProps) {
           <span
             style={{
               overflow: "hidden",
-              textOverflow: "ellipsis"
+              textOverflow: "ellipsis",
             }}
           >
             {getPresenceLabel(presenceUser)}

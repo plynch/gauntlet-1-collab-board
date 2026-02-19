@@ -8,24 +8,30 @@ const mockUseAuthSession = vi.fn();
 const mockUseOwnedBoardsLive = vi.fn();
 
 vi.mock("@/features/auth/hooks/use-auth-session", () => ({
-  useAuthSession: () => mockUseAuthSession()
+  useAuthSession: () => mockUseAuthSession(),
 }));
 
 vi.mock("@/features/boards/hooks/use-owned-boards-live", () => ({
-  useOwnedBoardsLive: (...args: unknown[]) => mockUseOwnedBoardsLive(...args)
+  useOwnedBoardsLive: (...args: unknown[]) => mockUseOwnedBoardsLive(...args),
 }));
 
 import BoardsPage from "./page";
 
+/**
+ * Creates user.
+ */
 function createUser(email: string): User {
   return {
     uid: "user-1",
     email,
     displayName: "Patrick",
-    photoURL: null
+    photoURL: null,
   } as User;
 }
 
+/**
+ * Creates board.
+ */
 function createBoard(id: string, title: string): BoardSummary {
   return {
     id,
@@ -34,7 +40,7 @@ function createBoard(id: string, title: string): BoardSummary {
     openEdit: true,
     openRead: true,
     createdAt: null,
-    updatedAt: null
+    updatedAt: null,
   };
 }
 
@@ -47,13 +53,13 @@ beforeEach(() => {
     idToken: null,
     authLoading: false,
     signInWithGoogle: vi.fn(),
-    signOutCurrentUser: vi.fn()
+    signOutCurrentUser: vi.fn(),
   });
 
   mockUseOwnedBoardsLive.mockReturnValue({
     boards: [],
     boardsLoading: false,
-    boardsError: null
+    boardsError: null,
   });
 });
 
@@ -65,7 +71,7 @@ describe("BoardsPage", () => {
       idToken: null,
       authLoading: false,
       signInWithGoogle: vi.fn(),
-      signOutCurrentUser: vi.fn()
+      signOutCurrentUser: vi.fn(),
     });
 
     render(<BoardsPage />);
@@ -77,8 +83,12 @@ describe("BoardsPage", () => {
   it("shows google sign-in prompt when signed out", () => {
     render(<BoardsPage />);
 
-    expect(screen.getByText("Sign in to create and manage your boards.")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Sign in with Google" })).toBeTruthy();
+    expect(
+      screen.getByText("Sign in to create and manage your boards."),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Sign in with Google" }),
+    ).toBeTruthy();
   });
 
   it("shows board list and create CTA when signed in", () => {
@@ -88,20 +98,22 @@ describe("BoardsPage", () => {
       idToken: "id-token",
       authLoading: false,
       signInWithGoogle: vi.fn(),
-      signOutCurrentUser: vi.fn()
+      signOutCurrentUser: vi.fn(),
     });
 
     mockUseOwnedBoardsLive.mockReturnValue({
       boards: [createBoard("board-1", "Demo Board")],
       boardsLoading: false,
-      boardsError: null
+      boardsError: null,
     });
 
     render(<BoardsPage />);
 
     expect(screen.getByText("My Boards (1 out of 3)")).toBeTruthy();
     expect(screen.getByText("Demo Board")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Create New Board" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Create New Board" }),
+    ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
   });
 });

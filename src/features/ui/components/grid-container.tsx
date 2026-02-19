@@ -14,7 +14,7 @@ export const GRID_SWATCHES = [
   "#bfdbfe",
   "#a7f3d0",
   "#d1fae5",
-  "#e2e8f0"
+  "#e2e8f0",
 ] as const;
 
 type GridContainerProps = {
@@ -45,6 +45,9 @@ type GridContainerProps = {
   renderCellContent?: (cellIndex: number) => ReactNode;
 };
 
+/**
+ * Handles clamp dimension.
+ */
 function clampDimension(value: number): number {
   if (!Number.isFinite(value)) {
     return 1;
@@ -53,18 +56,30 @@ function clampDimension(value: number): number {
   return Math.min(12, Math.max(1, Math.floor(value)));
 }
 
+/**
+ * Handles default section title.
+ */
 function defaultSectionTitle(index: number): string {
   return `Section ${index + 1}`;
 }
 
+/**
+ * Handles resolve values.
+ */
 function resolveValues(
   preferred: string[] | undefined,
   fallback: string[],
-  cellCount: number
+  cellCount: number,
 ): string[] {
-  return Array.from({ length: cellCount }, (_, index) => preferred?.[index] ?? fallback[index] ?? "");
+  return Array.from(
+    { length: cellCount },
+    (_, index) => preferred?.[index] ?? fallback[index] ?? "",
+  );
 }
 
+/**
+ * Handles grid container.
+ */
 export function GridContainer({
   rows,
   cols,
@@ -90,63 +105,78 @@ export function GridContainer({
   maxRows = 6,
   minCols = 1,
   maxCols = 6,
-  renderCellContent
+  renderCellContent,
 }: GridContainerProps) {
   const safeRows = clampDimension(rows);
   const safeCols = clampDimension(cols);
   const cellCount = safeRows * safeCols;
   const fallbackTitles = useMemo(
-    () => Array.from({ length: cellCount }, (_, index) => defaultSectionTitle(index)),
-    [cellCount]
+    () =>
+      Array.from({ length: cellCount }, (_, index) =>
+        defaultSectionTitle(index),
+      ),
+    [cellCount],
   );
-  const fallbackNotes = useMemo(() => Array.from({ length: cellCount }, () => ""), [cellCount]);
+  const fallbackNotes = useMemo(
+    () => Array.from({ length: cellCount }, () => ""),
+    [cellCount],
+  );
 
   const [internalColors, setInternalColors] = useState<string[]>(() =>
-    Array.from({ length: cellCount }, (_, index) => cellColors?.[index] ?? defaultColor)
+    Array.from(
+      { length: cellCount },
+      (_, index) => cellColors?.[index] ?? defaultColor,
+    ),
   );
   const [internalContainerTitle, setInternalContainerTitle] = useState(
-    containerTitle ?? "Grid Container"
+    containerTitle ?? "Grid Container",
   );
-  const [internalSectionTitles, setInternalSectionTitles] = useState<string[]>(() =>
-    resolveValues(sectionTitles, fallbackTitles, cellCount)
+  const [internalSectionTitles, setInternalSectionTitles] = useState<string[]>(
+    () => resolveValues(sectionTitles, fallbackTitles, cellCount),
   );
-  const [internalSectionNotes, setInternalSectionNotes] = useState<string[]>(() =>
-    resolveValues(sectionNotes, fallbackNotes, cellCount)
+  const [internalSectionNotes, setInternalSectionNotes] = useState<string[]>(
+    () => resolveValues(sectionNotes, fallbackNotes, cellCount),
   );
 
   const [isEditingContainerTitle, setIsEditingContainerTitle] = useState(false);
   const [containerTitleDraft, setContainerTitleDraft] = useState(
-    containerTitle ?? internalContainerTitle
+    containerTitle ?? internalContainerTitle,
   );
-  const [editingSectionIndex, setEditingSectionIndex] = useState<number | null>(null);
+  const [editingSectionIndex, setEditingSectionIndex] = useState<number | null>(
+    null,
+  );
   const [sectionTitleDrafts, setSectionTitleDrafts] = useState<string[]>(() =>
-    resolveValues(sectionTitles, fallbackTitles, cellCount)
+    resolveValues(sectionTitles, fallbackTitles, cellCount),
   );
 
-  const resolvedTitle = (containerTitle ?? internalContainerTitle).trim() || "Grid Container";
+  const resolvedTitle =
+    (containerTitle ?? internalContainerTitle).trim() || "Grid Container";
   const resolvedColors = Array.from(
     { length: cellCount },
-    (_, index) => cellColors?.[index] ?? internalColors[index] ?? defaultColor
+    (_, index) => cellColors?.[index] ?? internalColors[index] ?? defaultColor,
   );
   const resolvedSectionTitles = resolveValues(
     sectionTitles,
     internalSectionTitles.length > 0 ? internalSectionTitles : fallbackTitles,
-    cellCount
+    cellCount,
   );
   const resolvedSectionNotes = resolveValues(
     sectionNotes,
     internalSectionNotes.length > 0 ? internalSectionNotes : fallbackNotes,
-    cellCount
+    cellCount,
   );
   const rowOptions = Array.from(
     { length: Math.max(1, maxRows - minRows + 1) },
-    (_, index) => minRows + index
+    (_, index) => minRows + index,
   );
   const colOptions = Array.from(
     { length: Math.max(1, maxCols - minCols + 1) },
-    (_, index) => minCols + index
+    (_, index) => minCols + index,
   );
 
+  /**
+   * Handles handle color change.
+   */
   const handleColorChange = (cellIndex: number, color: string) => {
     if (!cellColors) {
       setInternalColors((current) => {
@@ -159,6 +189,9 @@ export function GridContainer({
     onCellColorChange?.(cellIndex, color);
   };
 
+  /**
+   * Handles commit container title.
+   */
   const commitContainerTitle = () => {
     const nextTitle = containerTitleDraft.trim() || "Grid Container";
     if (!containerTitle) {
@@ -169,8 +202,13 @@ export function GridContainer({
     setIsEditingContainerTitle(false);
   };
 
+  /**
+   * Handles commit section title.
+   */
   const commitSectionTitle = (cellIndex: number) => {
-    const nextTitle = (sectionTitleDrafts[cellIndex] ?? "").trim() || defaultSectionTitle(cellIndex);
+    const nextTitle =
+      (sectionTitleDrafts[cellIndex] ?? "").trim() ||
+      defaultSectionTitle(cellIndex);
     if (!sectionTitles) {
       setInternalSectionTitles((current) => {
         const next = [...current];
@@ -187,6 +225,9 @@ export function GridContainer({
     setEditingSectionIndex(null);
   };
 
+  /**
+   * Handles handle section note change.
+   */
   const handleSectionNoteChange = (cellIndex: number, nextNote: string) => {
     if (!sectionNotes) {
       setInternalSectionNotes((current) => {
@@ -203,7 +244,7 @@ export function GridContainer({
     <div
       className={cn(
         "flex h-full min-h-0 flex-col rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm",
-        className
+        className,
       )}
     >
       <div className="mb-3 grid gap-2">
@@ -229,7 +270,9 @@ export function GridContainer({
               className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm font-semibold text-slate-900"
             />
           ) : (
-            <h3 className="m-0 truncate text-sm font-semibold text-slate-800">{resolvedTitle}</h3>
+            <h3 className="m-0 truncate text-sm font-semibold text-slate-800">
+              {resolvedTitle}
+            </h3>
           )}
           {onContainerTitleChange && !isEditingContainerTitle ? (
             <button
@@ -299,11 +342,12 @@ export function GridContainer({
         style={{
           gridTemplateColumns: `repeat(${safeCols}, minmax(0, 1fr))`,
           gridTemplateRows: `repeat(${safeRows}, minmax(0, 1fr))`,
-          gap
+          gap,
         }}
       >
         {Array.from({ length: cellCount }).map((_, cellIndex) => {
-          const cellTitle = resolvedSectionTitles[cellIndex] ?? defaultSectionTitle(cellIndex);
+          const cellTitle =
+            resolvedSectionTitles[cellIndex] ?? defaultSectionTitle(cellIndex);
           const cellNote = resolvedSectionNotes[cellIndex] ?? "";
           const isEditingSection = editingSectionIndex === cellIndex;
           const cellColor = resolvedColors[cellIndex] ?? defaultColor;
@@ -314,11 +358,11 @@ export function GridContainer({
               key={cellIndex}
               className={cn(
                 "relative flex h-full min-h-0 flex-col rounded-xl border border-slate-300 p-3 shadow-inner transition-colors",
-                cellClassName
+                cellClassName,
               )}
               style={{
                 background: isTransparentCell ? "transparent" : cellColor,
-                minHeight: minCellHeight
+                minHeight: minCellHeight,
               }}
             >
               <div className="mb-2 flex items-center justify-between gap-2">
@@ -352,7 +396,9 @@ export function GridContainer({
                       className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm font-semibold text-slate-900"
                     />
                   ) : (
-                    <strong className="truncate text-sm font-semibold text-slate-800">{cellTitle}</strong>
+                    <strong className="truncate text-sm font-semibold text-slate-800">
+                      {cellTitle}
+                    </strong>
                   )}
                   {onSectionTitleChange && !isEditingSection ? (
                     <button
@@ -379,7 +425,8 @@ export function GridContainer({
                   <div className="ml-auto flex max-w-[124px] items-center gap-1 overflow-x-auto pl-1">
                     {GRID_SWATCHES.map((swatch) => {
                       const isSelected =
-                        resolvedColors[cellIndex]?.toLowerCase() === swatch.toLowerCase();
+                        resolvedColors[cellIndex]?.toLowerCase() ===
+                        swatch.toLowerCase();
                       const isTransparent = swatch === "transparent";
                       return (
                         <button
@@ -391,12 +438,14 @@ export function GridContainer({
                           onClick={() => handleColorChange(cellIndex, swatch)}
                           className={cn(
                             "h-4 w-4 shrink-0 rounded-full border",
-                            isSelected ? "border-slate-800 ring-1 ring-slate-500" : "border-slate-400"
+                            isSelected
+                              ? "border-slate-800 ring-1 ring-slate-500"
+                              : "border-slate-400",
                           )}
                           style={{
                             background: isTransparent
                               ? "repeating-conic-gradient(#94a3b8 0% 25%, #e2e8f0 0% 50%) 50% / 8px 8px"
-                              : swatch
+                              : swatch,
                           }}
                         />
                       );
@@ -410,7 +459,9 @@ export function GridContainer({
                   <textarea
                     value={cellNote}
                     onPointerDown={(event) => event.stopPropagation()}
-                    onChange={(event) => handleSectionNoteChange(cellIndex, event.target.value)}
+                    onChange={(event) =>
+                      handleSectionNoteChange(cellIndex, event.target.value)
+                    }
                     className="min-h-[72px] w-full resize-none border-none bg-transparent p-0 text-sm text-slate-800 outline-none placeholder:text-slate-500"
                     placeholder={stickyPlaceholder}
                   />
@@ -421,7 +472,9 @@ export function GridContainer({
                 <div
                   className={cn(
                     "min-h-0 flex-1",
-                    showSectionStickyNotes ? "mt-2 text-sm text-slate-700" : "text-sm text-slate-700"
+                    showSectionStickyNotes
+                      ? "mt-2 text-sm text-slate-700"
+                      : "text-sm text-slate-700",
                   )}
                 >
                   {renderCellContent(cellIndex)}

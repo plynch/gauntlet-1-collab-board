@@ -15,7 +15,7 @@ const BOARD_STATE: BoardObjectSnapshot[] = [
     rotationDeg: 0,
     color: "#93c5fd",
     text: "",
-    updatedAt: null
+    updatedAt: null,
   },
   {
     id: "obj-2",
@@ -28,8 +28,8 @@ const BOARD_STATE: BoardObjectSnapshot[] = [
     rotationDeg: 0,
     color: "#fde68a",
     text: "Old",
-    updatedAt: null
-  }
+    updatedAt: null,
+  },
 ];
 
 describe("planDeterministicCommand", () => {
@@ -37,7 +37,7 @@ describe("planDeterministicCommand", () => {
     const result = planDeterministicCommand({
       message: "clear the board",
       boardState: BOARD_STATE,
-      selectedObjectIds: []
+      selectedObjectIds: [],
     });
 
     expect(result.planned).toBe(true);
@@ -52,7 +52,7 @@ describe("planDeterministicCommand", () => {
     const result = planDeterministicCommand({
       message: "remove all shapes",
       boardState: [],
-      selectedObjectIds: []
+      selectedObjectIds: [],
     });
 
     expect(result.planned).toBe(false);
@@ -63,7 +63,7 @@ describe("planDeterministicCommand", () => {
     const result = planDeterministicCommand({
       message: "delete all shapes",
       boardState: BOARD_STATE,
-      selectedObjectIds: []
+      selectedObjectIds: [],
     });
 
     expect(result.planned).toBe(true);
@@ -77,7 +77,7 @@ describe("planDeterministicCommand", () => {
     const result = planDeterministicCommand({
       message: "delete selected",
       boardState: BOARD_STATE,
-      selectedObjectIds: ["obj-1", "obj-2"]
+      selectedObjectIds: ["obj-1", "obj-2"],
     });
 
     expect(result.planned).toBe(true);
@@ -86,7 +86,10 @@ describe("planDeterministicCommand", () => {
       expect(result.plan.operations).toHaveLength(1);
       expect(result.plan.operations[0]?.tool).toBe("deleteObjects");
       if (result.plan.operations[0]?.tool === "deleteObjects") {
-        expect(result.plan.operations[0].args.objectIds).toEqual(["obj-1", "obj-2"]);
+        expect(result.plan.operations[0].args.objectIds).toEqual([
+          "obj-1",
+          "obj-2",
+        ]);
       }
     }
   });
@@ -95,7 +98,7 @@ describe("planDeterministicCommand", () => {
     const result = planDeterministicCommand({
       message: "Add a yellow sticky note that says User Research",
       boardState: BOARD_STATE,
-      selectedObjectIds: []
+      selectedObjectIds: [],
     });
 
     expect(result.planned).toBe(true);
@@ -109,7 +112,7 @@ describe("planDeterministicCommand", () => {
     const result = planDeterministicCommand({
       message: "Move selected objects right by 120",
       boardState: BOARD_STATE,
-      selectedObjectIds: ["obj-1", "obj-2"]
+      selectedObjectIds: ["obj-1", "obj-2"],
     });
 
     expect(result.planned).toBe(true);
@@ -124,7 +127,7 @@ describe("planDeterministicCommand", () => {
     const result = planDeterministicCommand({
       message: "Resize selected to 220 by 140",
       boardState: BOARD_STATE,
-      selectedObjectIds: []
+      selectedObjectIds: [],
     });
 
     expect(result.planned).toBe(false);
@@ -135,7 +138,7 @@ describe("planDeterministicCommand", () => {
     const result = planDeterministicCommand({
       message: "Tell me a joke",
       boardState: BOARD_STATE,
-      selectedObjectIds: []
+      selectedObjectIds: [],
     });
 
     expect(result.planned).toBe(false);

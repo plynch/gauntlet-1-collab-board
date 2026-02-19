@@ -6,7 +6,7 @@ import {
   checkUserRateLimit,
   releaseBoardCommandLock,
   setGuardrailStoreForTests,
-  validateTemplatePlan
+  validateTemplatePlan,
 } from "@/features/ai/guardrails";
 import { SWOT_TEMPLATE_ID } from "@/features/ai/templates/template-types";
 
@@ -32,10 +32,10 @@ describe("validateTemplatePlan", () => {
             y: 0,
             width: 100,
             height: 100,
-            color: "#dbeafe"
-          }
-        }
-      ]
+            color: "#dbeafe",
+          },
+        },
+      ],
     });
 
     expect(result.ok).toBe(true);
@@ -49,10 +49,13 @@ describe("validateTemplatePlan", () => {
         {
           tool: "deleteObjects",
           args: {
-            objectIds: Array.from({ length: 2_001 }, (_, index) => `obj-${index}`)
-          }
-        }
-      ]
+            objectIds: Array.from(
+              { length: 2_001 },
+              (_, index) => `obj-${index}`,
+            ),
+          },
+        },
+      ],
     });
 
     expect(result.ok).toBe(false);

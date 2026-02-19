@@ -1,7 +1,14 @@
 import type { Meta, StoryObj } from "@storybook/react";
 
-import { Card, CardDescription, CardTitle } from "@/features/ui/components/card";
+import {
+  Card,
+  CardDescription,
+  CardTitle,
+} from "@/features/ui/components/card";
 
+/**
+ * Handles card preview.
+ */
 function CardPreview() {
   return (
     <Card className="w-[360px] space-y-2">
@@ -15,7 +22,7 @@ function CardPreview() {
 
 const meta = {
   title: "UI/Card",
-  component: CardPreview
+  component: CardPreview,
 } satisfies Meta<typeof CardPreview>;
 
 export default meta;

@@ -1,8 +1,11 @@
-import type { TemplateInstantiateInput, TemplatePlan } from "@/features/ai/types";
+import type {
+  TemplateInstantiateInput,
+  TemplatePlan,
+} from "@/features/ai/types";
 import {
   normalizeBounds,
   SWOT_TEMPLATE_ID,
-  SWOT_TEMPLATE_NAME
+  SWOT_TEMPLATE_NAME,
 } from "@/features/ai/templates/template-types";
 
 type SwotQuadrant = {
@@ -20,6 +23,9 @@ const QUADRANT_GRID_ROWS = 2;
 const QUADRANT_GRID_COLS = 2;
 const QUADRANT_RIGHT_PADDING = 160;
 
+/**
+ * Builds swot quadrants.
+ */
 function buildSwotQuadrants(): SwotQuadrant[] {
   return [
     {
@@ -27,41 +33,50 @@ function buildSwotQuadrants(): SwotQuadrant[] {
       label: "Strengths",
       color: "#d1fae5",
       row: 0,
-      col: 0
+      col: 0,
     },
     {
       key: "weaknesses",
       label: "Weaknesses",
       color: "#fee2e2",
       row: 0,
-      col: 1
+      col: 1,
     },
     {
       key: "opportunities",
       label: "Opportunities",
       color: "#dbeafe",
       row: 1,
-      col: 0
+      col: 0,
     },
     {
       key: "threats",
       label: "Threats",
       color: "#fef3c7",
       row: 1,
-      col: 1
-    }
+      col: 1,
+    },
   ];
 }
 
-export function buildSwotTemplatePlan(input: TemplateInstantiateInput): TemplatePlan {
+/**
+ * Builds swot template plan.
+ */
+export function buildSwotTemplatePlan(
+  input: TemplateInstantiateInput,
+): TemplatePlan {
   const normalizedBounds = normalizeBounds(input.boardBounds);
-  const startX = normalizedBounds ? normalizedBounds.right + QUADRANT_RIGHT_PADDING : 160;
+  const startX = normalizedBounds
+    ? normalizedBounds.right + QUADRANT_RIGHT_PADDING
+    : 160;
   const startY = normalizedBounds ? normalizedBounds.top : 120;
   const quadrants = buildSwotQuadrants();
   const gridWidth =
-    QUADRANT_WIDTH * QUADRANT_GRID_COLS + QUADRANT_GAP * (QUADRANT_GRID_COLS - 1);
+    QUADRANT_WIDTH * QUADRANT_GRID_COLS +
+    QUADRANT_GAP * (QUADRANT_GRID_COLS - 1);
   const gridHeight =
-    QUADRANT_HEIGHT * QUADRANT_GRID_ROWS + QUADRANT_GAP * (QUADRANT_GRID_ROWS - 1);
+    QUADRANT_HEIGHT * QUADRANT_GRID_ROWS +
+    QUADRANT_GAP * (QUADRANT_GRID_ROWS - 1);
 
   const operations: TemplatePlan["operations"] = [
     {
@@ -77,9 +92,9 @@ export function buildSwotTemplatePlan(input: TemplateInstantiateInput): Template
         containerTitle: "SWOT Analysis",
         cellColors: quadrants.map((quadrant) => quadrant.color),
         sectionTitles: quadrants.map((quadrant) => quadrant.label),
-        sectionNotes: quadrants.map(() => "")
-      }
-    }
+        sectionNotes: quadrants.map(() => ""),
+      },
+    },
   ];
 
   return {
@@ -88,7 +103,7 @@ export function buildSwotTemplatePlan(input: TemplateInstantiateInput): Template
     operations,
     metadata: {
       autoPlacement: "right-of-existing-content",
-      quadrants: quadrants.map((quadrant) => quadrant.key)
-    }
+      quadrants: quadrants.map((quadrant) => quadrant.key),
+    },
   };
 }

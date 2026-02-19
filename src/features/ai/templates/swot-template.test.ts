@@ -9,13 +9,15 @@ describe("buildSwotTemplatePlan", () => {
       templateId: SWOT_TEMPLATE_ID,
       boardBounds: null,
       selectedObjectIds: [],
-      existingObjectCount: 0
+      existingObjectCount: 0,
     });
 
     expect(plan.templateId).toBe(SWOT_TEMPLATE_ID);
     expect(plan.operations).toHaveLength(1);
     expect(
-      plan.operations.filter((operation) => operation.tool === "createGridContainer")
+      plan.operations.filter(
+        (operation) => operation.tool === "createGridContainer",
+      ),
     ).toHaveLength(1);
     const first = plan.operations[0];
     expect(first?.tool).toBe("createGridContainer");
@@ -25,7 +27,7 @@ describe("buildSwotTemplatePlan", () => {
         "Strengths",
         "Weaknesses",
         "Opportunities",
-        "Threats"
+        "Threats",
       ]);
       expect(first.args.sectionNotes).toEqual(["", "", "", ""]);
     }
@@ -40,14 +42,14 @@ describe("buildSwotTemplatePlan", () => {
         top: 40,
         bottom: 400,
         width: 490,
-        height: 360
+        height: 360,
       },
       selectedObjectIds: [],
-      existingObjectCount: 12
+      existingObjectCount: 12,
     });
 
     const firstGridContainer = plan.operations.find(
-      (operation) => operation.tool === "createGridContainer"
+      (operation) => operation.tool === "createGridContainer",
     );
 
     expect(firstGridContainer?.tool).toBe("createGridContainer");

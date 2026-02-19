@@ -6,9 +6,12 @@ import { z } from "zod";
 import { planDeterministicCommand } from "@/features/ai/commands/deterministic-command-planner";
 import {
   instantiateLocalTemplate,
-  listLocalTemplates
+  listLocalTemplates,
 } from "@/features/ai/templates/local-template-provider";
-import type { BoardObjectSnapshot, TemplateInstantiateInput } from "@/features/ai/types";
+import type {
+  BoardObjectSnapshot,
+  TemplateInstantiateInput,
+} from "@/features/ai/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,7 +27,7 @@ const boardStateObjectSchema = z.object({
   color: z.string(),
   text: z.string(),
   zIndex: z.number().finite(),
-  updatedAt: z.string().nullable().optional()
+  updatedAt: z.string().nullable().optional(),
 });
 
 const boardStateSchema = z.array(boardStateObjectSchema);
@@ -38,25 +41,31 @@ const templateInstantiateArgsSchema = z.object({
       top: z.number(),
       bottom: z.number(),
       width: z.number(),
-      height: z.number()
+      height: z.number(),
     })
     .nullable()
     .optional(),
   selectedObjectIds: z.array(z.string()).optional(),
-  existingObjectCount: z.number().int().min(0).optional()
+  existingObjectCount: z.number().int().min(0).optional(),
 });
 
 const commandPlanArgsSchema = z.object({
   message: z.string().min(1),
   selectedObjectIds: z.array(z.string()).optional(),
-  boardState: boardStateSchema.optional()
+  boardState: boardStateSchema.optional(),
 });
 
+/**
+ * Gets internal token.
+ */
 function getInternalToken(): string | null {
   const token = process.env.MCP_INTERNAL_TOKEN?.trim();
   return token && token.length > 0 ? token : null;
 }
 
+/**
+ * Returns whether authorized is true.
+ */
 function isAuthorized(request: NextRequest): boolean {
   const expected = getInternalToken();
   if (!expected) {
@@ -67,6 +76,9 @@ function isAuthorized(request: NextRequest): boolean {
   return Boolean(received && received === expected);
 }
 
+/**
+ * Handles to template instantiate input.
+ */
 function toTemplateInstantiateInput(args: {
   templateId: string;
   boardBounds?: {
@@ -84,10 +96,13 @@ function toTemplateInstantiateInput(args: {
     templateId: args.templateId,
     boardBounds: args.boardBounds ?? null,
     selectedObjectIds: args.selectedObjectIds ?? [],
-    existingObjectCount: args.existingObjectCount ?? 0
+    existingObjectCount: args.existingObjectCount ?? 0,
   };
 }
 
+/**
+ * Handles to board state.
+ */
 function toBoardState(raw: unknown): BoardObjectSnapshot[] {
   const parsed = boardStateSchema.safeParse(raw);
   if (!parsed.success) {
@@ -95,23 +110,26 @@ function toBoardState(raw: unknown): BoardObjectSnapshot[] {
   }
 
   return parsed.data.map((value) => ({
-      ...value,
-      type: value.type as BoardObjectSnapshot["type"],
-      updatedAt: value.updatedAt ?? null
-    }));
+    ...value,
+    type: value.type as BoardObjectSnapshot["type"],
+    updatedAt: value.updatedAt ?? null,
+  }));
 }
 
+/**
+ * Creates template mcp server.
+ */
 function createTemplateMcpServer(): McpServer {
   const server = new McpServer({
     name: "collabboard-template-mcp",
-    version: "1.0.0"
+    version: "1.0.0",
   });
 
   server.registerTool(
     "template.list",
     {
       description: "List available whiteboard templates.",
-      inputSchema: {}
+      inputSchema: {},
     },
     async () => {
       const templates = listLocalTemplates();
@@ -119,14 +137,14 @@ function createTemplateMcpServer(): McpServer {
         content: [
           {
             type: "text",
-            text: JSON.stringify({ templates })
-          }
+            text: JSON.stringify({ templates }),
+          },
         ],
         structuredContent: {
-          templates
-        }
+          templates,
+        },
       };
-    }
+    },
   );
 
   server.registerTool(
@@ -142,13 +160,13 @@ function createTemplateMcpServer(): McpServer {
             top: z.number(),
             bottom: z.number(),
             width: z.number(),
-            height: z.number()
+            height: z.number(),
           })
           .nullable()
           .optional(),
         selectedObjectIds: z.array(z.string()).optional(),
-        existingObjectCount: z.number().int().min(0).optional()
-      }
+        existingObjectCount: z.number().int().min(0).optional(),
+      },
     },
     async (args) => {
       const parsedArgs = templateInstantiateArgsSchema.safeParse(args);
@@ -163,23 +181,24 @@ function createTemplateMcpServer(): McpServer {
         content: [
           {
             type: "text",
-            text: `Instantiated template ${input.templateId}.`
-          }
+            text: `Instantiated template ${input.templateId}.`,
+          },
         ],
-        structuredContent: output
+        structuredContent: output,
       };
-    }
+    },
   );
 
   server.registerTool(
     "command.plan",
     {
-      description: "Plan deterministic board tool operations from a natural language command.",
+      description:
+        "Plan deterministic board tool operations from a natural language command.",
       inputSchema: {
         message: z.string(),
         selectedObjectIds: z.array(z.string()).optional(),
-        boardState: z.array(z.unknown()).optional()
-      }
+        boardState: z.array(z.unknown()).optional(),
+      },
     },
     async (args) => {
       const parsedArgs = commandPlanArgsSchema.safeParse(args);
@@ -190,7 +209,7 @@ function createTemplateMcpServer(): McpServer {
       const result = planDeterministicCommand({
         message: parsedArgs.data.message,
         selectedObjectIds: parsedArgs.data.selectedObjectIds ?? [],
-        boardState: toBoardState(parsedArgs.data.boardState)
+        boardState: toBoardState(parsedArgs.data.boardState),
       });
 
       return {
@@ -199,20 +218,23 @@ function createTemplateMcpServer(): McpServer {
             type: "text",
             text: result.planned
               ? `Planned command intent: ${result.intent}.`
-              : `No deterministic plan generated (${result.intent}).`
-          }
+              : `No deterministic plan generated (${result.intent}).`,
+          },
         ],
-        structuredContent: result
+        structuredContent: result,
       };
-    }
+    },
   );
 
   return server;
 }
 
+/**
+ * Handles handle mcp request.
+ */
 async function handleMcpRequest(request: NextRequest): Promise<Response> {
   const transport = new WebStandardStreamableHTTPServerTransport({
-    sessionIdGenerator: undefined
+    sessionIdGenerator: undefined,
   });
   const server = createTemplateMcpServer();
 
@@ -224,11 +246,14 @@ async function handleMcpRequest(request: NextRequest): Promise<Response> {
   }
 }
 
+/**
+ * Handles handle method.
+ */
 async function handleMethod(request: NextRequest): Promise<Response> {
   if (!getInternalToken()) {
     return NextResponse.json(
       { error: "MCP internal token is not configured." },
-      { status: 503 }
+      { status: 503 },
     );
   }
 
@@ -239,14 +264,23 @@ async function handleMethod(request: NextRequest): Promise<Response> {
   return handleMcpRequest(request);
 }
 
+/**
+ * Handles post.
+ */
 export async function POST(request: NextRequest) {
   return handleMethod(request);
 }
 
+/**
+ * Handles get.
+ */
 export async function GET(request: NextRequest) {
   return handleMethod(request);
 }
 
+/**
+ * Handles delete.
+ */
 export async function DELETE(request: NextRequest) {
   return handleMethod(request);
 }

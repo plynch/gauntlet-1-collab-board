@@ -5,8 +5,13 @@ import { updateProfile } from "firebase/auth";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuthSession } from "@/features/auth/hooks/use-auth-session";
-import AppHeader, { HeaderBackLink } from "@/features/layout/components/app-header";
+import AppHeader, {
+  HeaderBackLink,
+} from "@/features/layout/components/app-header";
 
+/**
+ * Handles account workspace.
+ */
 export default function AccountWorkspace() {
   const router = useRouter();
   const [displayNameInput, setDisplayNameInput] = useState("");
@@ -15,7 +20,8 @@ export default function AccountWorkspace() {
   const [signingOut, setSigningOut] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const { firebaseIsConfigured, user, authLoading, signOutCurrentUser } = useAuthSession();
+  const { firebaseIsConfigured, user, authLoading, signOutCurrentUser } =
+    useAuthSession();
 
   useEffect(() => {
     setDisplayNameInput(user?.displayName ?? "");
@@ -29,11 +35,16 @@ export default function AccountWorkspace() {
   }, [authLoading, router, user]);
 
   const profileLabel = useMemo(
-    () => user?.displayName?.trim() || user?.email?.trim() || user?.uid || "Account",
-    [user]
+    () =>
+      user?.displayName?.trim() ||
+      user?.email?.trim() ||
+      user?.uid ||
+      "Account",
+    [user],
   );
   const avatarInitial = profileLabel[0]?.toUpperCase() ?? "A";
-  const avatarPreviewUrl = photoUrlInput.trim().length > 0 ? photoUrlInput.trim() : null;
+  const avatarPreviewUrl =
+    photoUrlInput.trim().length > 0 ? photoUrlInput.trim() : null;
 
   const handleSignOut = useCallback(async () => {
     setErrorMessage(null);
@@ -43,7 +54,9 @@ export default function AccountWorkspace() {
     try {
       await signOutCurrentUser();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Sign out failed.");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Sign out failed.",
+      );
     } finally {
       setSigningOut(false);
     }
@@ -64,11 +77,13 @@ export default function AccountWorkspace() {
     try {
       await updateProfile(user, {
         displayName: nextDisplayName.length > 0 ? nextDisplayName : null,
-        photoURL: nextPhotoUrl.length > 0 ? nextPhotoUrl : null
+        photoURL: nextPhotoUrl.length > 0 ? nextPhotoUrl : null,
       });
       setSuccessMessage("Profile updated.");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to update profile.");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Failed to update profile.",
+      );
     } finally {
       setIsSaving(false);
     }
@@ -79,8 +94,8 @@ export default function AccountWorkspace() {
       <main style={{ padding: "2rem", maxWidth: 760, margin: "0 auto" }}>
         <h1>Account</h1>
         <p>
-          Firebase is not configured yet. Add your values to <code>.env.local</code>{" "}
-          using <code>.env.example</code>.
+          Firebase is not configured yet. Add your values to{" "}
+          <code>.env.local</code> using <code>.env.example</code>.
         </p>
       </main>
     );
@@ -97,7 +112,7 @@ export default function AccountWorkspace() {
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
-        background: "#ffffff"
+        background: "#ffffff",
       }}
     >
       <AppHeader
@@ -115,7 +130,7 @@ export default function AccountWorkspace() {
           overflowY: "auto",
           width: "min(100%, 760px)",
           margin: "0 auto",
-          padding: "1.25rem"
+          padding: "1.25rem",
         }}
       >
         {authLoading || !user ? <p>Redirecting to My Boards...</p> : null}
@@ -128,7 +143,7 @@ export default function AccountWorkspace() {
               background: "white",
               padding: "1.25rem",
               display: "grid",
-              gap: "1rem"
+              gap: "1rem",
             }}
           >
             <h2 style={{ margin: 0 }}>Account Settings</h2>
@@ -146,7 +161,7 @@ export default function AccountWorkspace() {
                   justifyContent: "center",
                   textTransform: "uppercase",
                   fontWeight: 700,
-                  overflow: "hidden"
+                  overflow: "hidden",
                 }}
               >
                 {avatarPreviewUrl ? (
@@ -157,7 +172,7 @@ export default function AccountWorkspace() {
                     style={{
                       width: "100%",
                       height: "100%",
-                      objectFit: "cover"
+                      objectFit: "cover",
                     }}
                   />
                 ) : (
@@ -202,7 +217,9 @@ export default function AccountWorkspace() {
               </button>
             </div>
 
-            {errorMessage ? <p style={{ color: "#b91c1c", margin: 0 }}>{errorMessage}</p> : null}
+            {errorMessage ? (
+              <p style={{ color: "#b91c1c", margin: 0 }}>{errorMessage}</p>
+            ) : null}
             {successMessage ? (
               <p style={{ color: "#166534", margin: 0 }}>{successMessage}</p>
             ) : null}

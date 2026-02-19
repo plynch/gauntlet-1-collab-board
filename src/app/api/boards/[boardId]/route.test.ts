@@ -17,6 +17,9 @@ vi.mock("@/server/auth/require-user", () => {
   class AuthError extends Error {
     readonly status: number;
 
+    /**
+     * Initializes this class instance.
+     */
     constructor(message: string, status = 401) {
       super(message);
       this.status = status;
@@ -25,13 +28,13 @@ vi.mock("@/server/auth/require-user", () => {
 
   return {
     AuthError,
-    requireUser: requireUserMock
+    requireUser: requireUserMock,
   };
 });
 
 vi.mock("@/lib/firebase/admin", () => ({
   getFirebaseAdminDb: getFirebaseAdminDbMock,
-  assertFirestoreWritesAllowedInDev: assertFirestoreWritesAllowedInDevMock
+  assertFirestoreWritesAllowedInDev: assertFirestoreWritesAllowedInDevMock,
 }));
 
 vi.mock("@/server/boards/board-access", () => ({
@@ -39,31 +42,48 @@ vi.mock("@/server/boards/board-access", () => ({
   canUserEditBoard: canUserEditBoardMock,
   parseBoardDoc: parseBoardDocMock,
   resolveUserProfiles: resolveUserProfilesMock,
-  toIsoDate: () => null
+  toIsoDate: () => null,
 }));
 
 type BoardDoc = Record<string, unknown>;
 
+/**
+ * Creates fake db.
+ */
 function createFakeDb(initialBoards: Array<{ id: string; data: BoardDoc }>) {
-  const boards = new Map(initialBoards.map((entry) => [entry.id, { ...entry.data }]));
+  const boards = new Map(
+    initialBoards.map((entry) => [entry.id, { ...entry.data }]),
+  );
 
   return {
+    /**
+     * Handles collection.
+     */
     collection(name: string) {
       if (name !== "boards") {
         throw new Error(`Unsupported collection: ${name}`);
       }
 
       return {
+        /**
+         * Handles doc.
+         */
         doc(id: string) {
           return {
+            /**
+             * Handles get.
+             */
             async get() {
               const board = boards.get(id);
               return {
                 id,
                 exists: Boolean(board),
-                data: () => board
+                data: () => board,
               };
             },
+            /**
+             * Handles update.
+             */
             async update(value: Record<string, unknown>) {
               const board = boards.get(id);
               if (!board) {
@@ -72,31 +92,37 @@ function createFakeDb(initialBoards: Array<{ id: string; data: BoardDoc }>) {
 
               boards.set(id, {
                 ...board,
-                ...value
+                ...value,
               });
             },
+            /**
+             * Handles delete.
+             */
             async delete() {
               boards.delete(id);
-            }
+            },
           };
-        }
+        },
       };
-    }
+    },
   };
 }
 
+/**
+ * Creates request.
+ */
 function createRequest(method: "GET" | "PATCH" | "DELETE", body?: unknown) {
   return new NextRequest("http://localhost:3000/api/boards/board-1", {
     method,
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
     },
-    body: body === undefined ? null : JSON.stringify(body)
+    body: body === undefined ? null : JSON.stringify(body),
   });
 }
 
 const context = {
-  params: Promise.resolve({ boardId: "board-1" })
+  params: Promise.resolve({ boardId: "board-1" }),
 };
 
 describe("/api/boards/[boardId]", () => {
@@ -110,7 +136,9 @@ describe("/api/boards/[boardId]", () => {
 
   it("returns 401 when auth fails", async () => {
     const authModule = await import("@/server/auth/require-user");
-    requireUserMock.mockRejectedValue(new authModule.AuthError("Missing Authorization header.", 401));
+    requireUserMock.mockRejectedValue(
+      new authModule.AuthError("Missing Authorization header.", 401),
+    );
     getFirebaseAdminDbMock.mockReturnValue(createFakeDb([]));
 
     const { GET } = await import("./route");
@@ -132,10 +160,10 @@ describe("/api/boards/[boardId]", () => {
             editorIds: [],
             readerIds: [],
             openEdit: false,
-            openRead: false
-          }
-        }
-      ])
+            openRead: false,
+          },
+        },
+      ]),
     );
 
     const { GET } = await import("./route");
@@ -156,18 +184,18 @@ describe("/api/boards/[boardId]", () => {
             editorIds: [],
             readerIds: [],
             openEdit: true,
-            openRead: true
-          }
-        }
-      ])
+            openRead: true,
+          },
+        },
+      ]),
     );
 
     const { PATCH } = await import("./route");
     const response = await PATCH(
       createRequest("PATCH", {
-        title: "  "
+        title: "  ",
       }),
-      context
+      context,
     );
 
     expect(response.status).toBe(400);
@@ -186,10 +214,10 @@ describe("/api/boards/[boardId]", () => {
             editorIds: [],
             readerIds: [],
             openEdit: true,
-            openRead: true
-          }
-        }
-      ])
+            openRead: true,
+          },
+        },
+      ]),
     );
 
     const { DELETE } = await import("./route");

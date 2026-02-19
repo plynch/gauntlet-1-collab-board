@@ -2,7 +2,10 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 
 import { MAX_OWNED_BOARDS, type BoardSummary } from "@/features/boards/types";
-import { assertFirestoreWritesAllowedInDev, getFirebaseAdminDb } from "@/lib/firebase/admin";
+import {
+  assertFirestoreWritesAllowedInDev,
+  getFirebaseAdminDb,
+} from "@/lib/firebase/admin";
 import { boardTitleBodySchema } from "@/server/api/board-route-schemas";
 import { handleRouteError, readJsonBody } from "@/server/api/route-helpers";
 import { requireUser } from "@/server/auth/require-user";
@@ -19,6 +22,9 @@ type BoardDoc = {
   updatedAt?: unknown;
 };
 
+/**
+ * Handles to iso date.
+ */
 function toIsoDate(value: unknown): string | null {
   if (value instanceof Timestamp) {
     return value.toDate().toISOString();
@@ -27,23 +33,33 @@ function toIsoDate(value: unknown): string | null {
   return null;
 }
 
+/**
+ * Handles to board summary.
+ */
 function toBoardSummary(id: string, boardDoc: BoardDoc): BoardSummary {
   return {
     id,
-    title: typeof boardDoc.title === "string" ? boardDoc.title : "Untitled board",
+    title:
+      typeof boardDoc.title === "string" ? boardDoc.title : "Untitled board",
     ownerId: typeof boardDoc.ownerId === "string" ? boardDoc.ownerId : "",
     openEdit: Boolean(boardDoc.openEdit),
     openRead: Boolean(boardDoc.openRead),
     createdAt: toIsoDate(boardDoc.createdAt),
-    updatedAt: toIsoDate(boardDoc.updatedAt)
+    updatedAt: toIsoDate(boardDoc.updatedAt),
   };
 }
 
+/**
+ * Handles board sort value.
+ */
 function boardSortValue(board: BoardSummary): number {
   const rawValue = board.updatedAt ?? board.createdAt;
   return rawValue ? Date.parse(rawValue) : 0;
 }
 
+/**
+ * Handles get.
+ */
 export async function GET(request: NextRequest) {
   try {
     const user = await requireUser(request);
@@ -60,7 +76,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       boards,
-      maxOwnedBoards: MAX_OWNED_BOARDS
+      maxOwnedBoards: MAX_OWNED_BOARDS,
     });
   } catch (error) {
     console.error("Failed to list boards", error);
@@ -68,6 +84,9 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/**
+ * Handles post.
+ */
 export async function POST(request: NextRequest) {
   try {
     assertFirestoreWritesAllowedInDev();
@@ -84,9 +103,9 @@ export async function POST(request: NextRequest) {
     if (existingBoardsSnapshot.size >= MAX_OWNED_BOARDS) {
       return NextResponse.json(
         {
-          error: `Board limit reached. Max ${MAX_OWNED_BOARDS} owned boards per user.`
+          error: `Board limit reached. Max ${MAX_OWNED_BOARDS} owned boards per user.`,
         },
-        { status: 409 }
+        { status: 409 },
       );
     }
 
@@ -97,7 +116,10 @@ export async function POST(request: NextRequest) {
 
     const parsedPayload = boardTitleBodySchema.safeParse(bodyResult.value);
     if (!parsedPayload.success) {
-      return NextResponse.json({ error: "Board title is required." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Board title is required." },
+        { status: 400 },
+      );
     }
 
     const title = parsedPayload.data.title;
@@ -111,20 +133,20 @@ export async function POST(request: NextRequest) {
       editorIds: [],
       readerIds: [],
       createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp(),
     });
 
     const createdSnapshot = await boardRef.get();
     const createdBoard = toBoardSummary(
       createdSnapshot.id,
-      createdSnapshot.data() as BoardDoc
+      createdSnapshot.data() as BoardDoc,
     );
 
     return NextResponse.json(
       {
-        board: createdBoard
+        board: createdBoard,
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (error) {
     console.error("Failed to create board", error);

@@ -3,13 +3,16 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "CollabBoard",
-  description: "Real-time collaborative whiteboard MVP"
+  description: "Real-time collaborative whiteboard MVP",
 };
 
 type RootLayoutProps = Readonly<{
   children: React.ReactNode;
 }>;
 
+/**
+ * Handles root layout.
+ */
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en">

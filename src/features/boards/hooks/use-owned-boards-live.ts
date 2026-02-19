@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import type { BoardSummary } from "@/features/boards/types";
 import {
   boardSortValue,
-  toBoardSummary
+  toBoardSummary,
 } from "@/features/boards/lib/live-board-utils";
 import { getFirebaseClientDb } from "@/lib/firebase/client";
 
@@ -23,11 +23,15 @@ type OwnedBoardsState = {
   ready: boolean;
 };
 
+/**
+ * Handles to listener error message.
+ */
 function toListenerErrorMessage(error: unknown, fallback: string): string {
   if (typeof error === "object" && error !== null) {
     const candidate = error as { code?: unknown; message?: unknown };
     const code = typeof candidate.code === "string" ? candidate.code : null;
-    const message = typeof candidate.message === "string" ? candidate.message : null;
+    const message =
+      typeof candidate.message === "string" ? candidate.message : null;
 
     if (code && message) {
       return `${fallback} (${code}: ${message})`;
@@ -45,12 +49,17 @@ function toListenerErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-export function useOwnedBoardsLive(userUid: string | null): UseOwnedBoardsLiveResult {
+/**
+ * Handles use owned boards live.
+ */
+export function useOwnedBoardsLive(
+  userUid: string | null,
+): UseOwnedBoardsLiveResult {
   const [state, setState] = useState<OwnedBoardsState>({
     sourceUid: null,
     boards: [],
     boardsError: null,
-    ready: false
+    ready: false,
   });
 
   useEffect(() => {
@@ -59,7 +68,10 @@ export function useOwnedBoardsLive(userUid: string | null): UseOwnedBoardsLiveRe
     }
 
     const db = getFirebaseClientDb();
-    const boardsQuery = query(collection(db, "boards"), where("ownerId", "==", userUid));
+    const boardsQuery = query(
+      collection(db, "boards"),
+      where("ownerId", "==", userUid),
+    );
 
     const unsubscribe = onSnapshot(
       boardsQuery,
@@ -68,8 +80,8 @@ export function useOwnedBoardsLive(userUid: string | null): UseOwnedBoardsLiveRe
           .map((docSnapshot) =>
             toBoardSummary(
               docSnapshot.id,
-              docSnapshot.data() as Record<string, unknown>
-            )
+              docSnapshot.data() as Record<string, unknown>,
+            ),
           )
           .sort((left, right) => boardSortValue(right) - boardSortValue(left));
 
@@ -77,7 +89,7 @@ export function useOwnedBoardsLive(userUid: string | null): UseOwnedBoardsLiveRe
           sourceUid: userUid,
           boards: nextBoards,
           boardsError: null,
-          ready: true
+          ready: true,
         });
       },
       (error) => {
@@ -85,9 +97,9 @@ export function useOwnedBoardsLive(userUid: string | null): UseOwnedBoardsLiveRe
           sourceUid: userUid,
           boards: [],
           boardsError: toListenerErrorMessage(error, "Failed to sync boards."),
-          ready: true
+          ready: true,
         });
-      }
+      },
     );
 
     return unsubscribe;
@@ -97,7 +109,7 @@ export function useOwnedBoardsLive(userUid: string | null): UseOwnedBoardsLiveRe
     return {
       boards: [],
       boardsLoading: false,
-      boardsError: null
+      boardsError: null,
     };
   }
 
@@ -105,13 +117,13 @@ export function useOwnedBoardsLive(userUid: string | null): UseOwnedBoardsLiveRe
     return {
       boards: [],
       boardsLoading: true,
-      boardsError: null
+      boardsError: null,
     };
   }
 
   return {
     boards: state.boards,
     boardsLoading: !state.ready,
-    boardsError: state.boardsError
+    boardsError: state.boardsError,
   };
 }

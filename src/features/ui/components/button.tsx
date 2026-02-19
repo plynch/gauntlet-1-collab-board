@@ -11,21 +11,22 @@ const buttonVariants = cva(
         primary: "bg-slate-900 text-white hover:bg-slate-800",
         secondary: "bg-slate-100 text-slate-900 hover:bg-slate-200",
         success: "bg-emerald-600 text-white hover:bg-emerald-700",
-        outline: "border border-slate-300 bg-white text-slate-900 hover:bg-slate-50",
+        outline:
+          "border border-slate-300 bg-white text-slate-900 hover:bg-slate-50",
         ghost: "text-slate-700 hover:bg-slate-100",
-        danger: "bg-rose-600 text-white hover:bg-rose-700"
+        danger: "bg-rose-600 text-white hover:bg-rose-700",
       },
       size: {
         sm: "h-8 px-3",
         md: "h-9 px-4",
-        lg: "h-11 px-5"
-      }
+        lg: "h-11 px-5",
+      },
     },
     defaultVariants: {
       variant: "primary",
-      size: "md"
-    }
-  }
+      size: "md",
+    },
+  },
 );
 
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> &
@@ -39,7 +40,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       className={cn(buttonVariants({ variant, size }), className)}
       {...props}
     />
-  )
+  ),
 );
 
 Button.displayName = "Button";

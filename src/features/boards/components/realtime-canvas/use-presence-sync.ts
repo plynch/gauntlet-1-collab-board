@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 
 import type { PresenceUser } from "@/features/boards/types";
 
+/**
+ * Handles use presence clock.
+ */
 export function usePresenceClock(intervalMs = 1_000): number {
   const [presenceClock, setPresenceClock] = useState(() => Date.now());
 
@@ -18,14 +21,20 @@ export function usePresenceClock(intervalMs = 1_000): number {
   return presenceClock;
 }
 
+/**
+ * Gets presence label.
+ */
 export function getPresenceLabel(user: PresenceUser): string {
   return user.displayName ?? user.email ?? user.uid;
 }
 
+/**
+ * Gets active presence users.
+ */
 export function getActivePresenceUsers(
   users: PresenceUser[],
   nowMs: number,
-  ttlMs: number
+  ttlMs: number,
 ): PresenceUser[] {
   return users.filter((presenceUser) => {
     if (!presenceUser.active) {
@@ -40,14 +49,17 @@ export function getActivePresenceUsers(
   });
 }
 
+/**
+ * Gets remote cursors.
+ */
 export function getRemoteCursors(
   users: PresenceUser[],
-  currentUserId: string
+  currentUserId: string,
 ): PresenceUser[] {
   return users.filter(
     (presenceUser) =>
       presenceUser.uid !== currentUserId &&
       presenceUser.cursorX !== null &&
-      presenceUser.cursorY !== null
+      presenceUser.cursorY !== null,
   );
 }

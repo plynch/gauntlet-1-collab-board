@@ -27,11 +27,15 @@ describe("next security headers", () => {
     try {
       mutableEnv.NODE_ENV = "development";
       const devHeaders = (await nextConfig.headers?.())?.[0]?.headers ?? [];
-      expect(devHeaders.some((entry) => entry.key === "Strict-Transport-Security")).toBe(false);
+      expect(
+        devHeaders.some((entry) => entry.key === "Strict-Transport-Security"),
+      ).toBe(false);
 
       mutableEnv.NODE_ENV = "production";
       const prodHeaders = (await nextConfig.headers?.())?.[0]?.headers ?? [];
-      expect(prodHeaders.some((entry) => entry.key === "Strict-Transport-Security")).toBe(true);
+      expect(
+        prodHeaders.some((entry) => entry.key === "Strict-Transport-Security"),
+      ).toBe(true);
     } finally {
       mutableEnv.NODE_ENV = originalEnv;
     }

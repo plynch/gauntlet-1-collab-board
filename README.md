@@ -12,6 +12,7 @@ Built with Next.js and Firebase Firestore.
 ## Build And Run Locally
 
 1. Install dependencies:
+
 ```bash
 npm install
 ```
@@ -19,6 +20,7 @@ npm install
 2. Add Firebase environment variables in `.env.local` (see `.env.example`).
 
 3. For no-paid local development, enable strict Firestore emulator mode in `.env.local`:
+
 ```bash
 NEXT_PUBLIC_USE_FIRESTORE_EMULATOR=true
 NEXT_PUBLIC_USE_AUTH_EMULATOR=false
@@ -28,17 +30,19 @@ DEV_REQUIRE_FIRESTORE_EMULATOR=true
 ```
 
 4. Start emulators (Terminal 1):
+
 ```bash
 npm run firebase:emulators
 ```
 
 5. Start app (Terminal 2):
+
 ```bash
 npm run dev
 ```
 
 6. Open:
-`http://localhost:3000`
+   `http://localhost:3000`
 
 Useful scripts:
 
@@ -47,8 +51,10 @@ npm run storybook
 npm run build-storybook
 npm run test
 npm run test:e2e
+npm run test:e2e:emulator
 npm run lint
 npm run typecheck
+npm run docs:api
 npm run build
 ```
 
@@ -58,9 +64,39 @@ Playwright first-run setup:
 npx playwright install chromium
 ```
 
+Firebase emulator e2e (no paid Firebase usage):
+
+```bash
+npm run test:e2e:emulator
+```
+
+Prerequisite: Java runtime (required by Firestore emulator).
+
 Styleguide route (component library preview in app):
 
 - `http://localhost:3000/styleguide`
+
+## Coding Standards
+
+- Project coding standards: `/Users/patrick/Code/gauntlet/1-collab-board/CODING_STANDARDS.md`
+- JSDoc is required for named functions and class methods in source files.
+- To auto-add missing JSDoc blocks:
+
+```bash
+npm run jsdoc:add
+```
+
+## API Documentation
+
+Generate API docs from TypeScript comments:
+
+```bash
+npm run docs:api
+```
+
+Generated docs location:
+
+- `/Users/patrick/Code/gauntlet/1-collab-board/docs/api`
 
 ## Current Features
 

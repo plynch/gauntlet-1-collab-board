@@ -2,7 +2,7 @@ import { BOARD_AI_TOOLS } from "@/features/ai/board-tool-schema";
 import type {
   BoardCommandRequest,
   BoardCommandResponse,
-  BoardCommandExecutionSummary
+  BoardCommandExecutionSummary,
 } from "@/features/ai/types";
 
 export const MAX_BOARD_COMMAND_CHARS = 500;
@@ -12,7 +12,12 @@ export const MCP_TEMPLATE_TIMEOUT_MS = 1_200;
 
 export type BoardCommandIntent = "swot-template" | "stub";
 
-export function parseBoardCommandRequest(input: unknown): BoardCommandRequest | null {
+/**
+ * Parses board command request.
+ */
+export function parseBoardCommandRequest(
+  input: unknown,
+): BoardCommandRequest | null {
   if (!input || typeof input !== "object") {
     return null;
   }
@@ -23,7 +28,10 @@ export function parseBoardCommandRequest(input: unknown): BoardCommandRequest | 
     selectedObjectIds?: unknown;
   };
 
-  if (typeof candidate.boardId !== "string" || candidate.boardId.trim().length === 0) {
+  if (
+    typeof candidate.boardId !== "string" ||
+    candidate.boardId.trim().length === 0
+  ) {
     return null;
   }
 
@@ -57,10 +65,13 @@ export function parseBoardCommandRequest(input: unknown): BoardCommandRequest | 
   return {
     boardId: candidate.boardId.trim(),
     message,
-    selectedObjectIds
+    selectedObjectIds,
   };
 }
 
+/**
+ * Builds stub board command response.
+ */
 export function buildStubBoardCommandResponse(options: {
   message: string;
   canEdit: boolean;
@@ -81,11 +92,14 @@ export function buildStubBoardCommandResponse(options: {
       mcpUsed: false,
       fallbackUsed: false,
       toolCalls: 0,
-      objectsCreated: 0
-    }
+      objectsCreated: 0,
+    },
   };
 }
 
+/**
+ * Handles detect board command intent.
+ */
 export function detectBoardCommandIntent(message: string): BoardCommandIntent {
   const normalized = message.trim().toLowerCase();
   const swotMatches =
@@ -103,16 +117,41 @@ export function detectBoardCommandIntent(message: string): BoardCommandIntent {
   return "stub";
 }
 
+/**
+ * Builds swot assistant message.
+ */
 export function buildSwotAssistantMessage(options: {
   fallbackUsed: boolean;
   objectsCreated: number;
 }): string {
-  const suffix = options.fallbackUsed
-    ? " (MCP fallback mode)"
-    : "";
+  const suffix = options.fallbackUsed ? " (MCP fallback mode)" : "";
   return `Created SWOT analysis template with 4 labeled quadrants (${options.objectsCreated} objects).${suffix}`;
 }
 
+/**
+ * Builds clear board assistant message.
+ */
+export function buildClearBoardAssistantMessage(options: {
+  deletedCount: number;
+  remainingCount: number;
+}): string {
+  const deletedCount = Math.max(0, Math.floor(options.deletedCount));
+  const remainingCount = Math.max(0, Math.floor(options.remainingCount));
+
+  if (remainingCount === 0) {
+    return `Cleared board and deleted ${deletedCount} object${deletedCount === 1 ? "" : "s"}.`;
+  }
+
+  if (deletedCount === 0) {
+    return `I could not clear the board yet. ${remainingCount} object${remainingCount === 1 ? "" : "s"} still remain.`;
+  }
+
+  return `Deleted ${deletedCount} object${deletedCount === 1 ? "" : "s"}, but ${remainingCount} object${remainingCount === 1 ? "" : "s"} still remain. Try clear board again.`;
+}
+
+/**
+ * Builds deterministic board command response.
+ */
 export function buildDeterministicBoardCommandResponse(options: {
   assistantMessage: string;
   traceId: string;
@@ -125,10 +164,13 @@ export function buildDeterministicBoardCommandResponse(options: {
     tools: BOARD_AI_TOOLS,
     mode: "deterministic",
     traceId: options.traceId,
-    execution: options.execution
+    execution: options.execution,
   };
 }
 
+/**
+ * Gets board command error message.
+ */
 export function getBoardCommandErrorMessage(options: {
   status: number | null;
   timedOut?: boolean;

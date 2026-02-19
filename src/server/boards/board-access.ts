@@ -20,6 +20,9 @@ export type BoardEditorProfile = {
   displayName: string | null;
 };
 
+/**
+ * Handles to string array.
+ */
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -31,19 +34,24 @@ function toStringArray(value: unknown): string[] {
     .filter((entry) => entry.length > 0);
 }
 
+/**
+ * Parses board doc.
+ */
 export function parseBoardDoc(raw: unknown): BoardDoc | null {
   if (!raw || typeof raw !== "object") {
     return null;
   }
 
   const candidate = raw as Record<string, unknown>;
-  const ownerId = typeof candidate.ownerId === "string" ? candidate.ownerId : null;
+  const ownerId =
+    typeof candidate.ownerId === "string" ? candidate.ownerId : null;
 
   if (!ownerId) {
     return null;
   }
 
-  const titleValue = typeof candidate.title === "string" ? candidate.title.trim() : "";
+  const titleValue =
+    typeof candidate.title === "string" ? candidate.title.trim() : "";
 
   return {
     title: titleValue.length > 0 ? titleValue : "Untitled board",
@@ -53,10 +61,13 @@ export function parseBoardDoc(raw: unknown): BoardDoc | null {
     editorIds: toStringArray(candidate.editorIds),
     readerIds: toStringArray(candidate.readerIds),
     createdAt: candidate.createdAt,
-    updatedAt: candidate.updatedAt
+    updatedAt: candidate.updatedAt,
   };
 }
 
+/**
+ * Handles to iso date.
+ */
 export function toIsoDate(value: unknown): string | null {
   if (value instanceof Timestamp) {
     return value.toDate().toISOString();
@@ -65,6 +76,9 @@ export function toIsoDate(value: unknown): string | null {
   return null;
 }
 
+/**
+ * Handles can user read board.
+ */
 export function canUserReadBoard(board: BoardDoc, userUid: string): boolean {
   return (
     board.openRead ||
@@ -75,13 +89,23 @@ export function canUserReadBoard(board: BoardDoc, userUid: string): boolean {
   );
 }
 
+/**
+ * Handles can user edit board.
+ */
 export function canUserEditBoard(board: BoardDoc, userUid: string): boolean {
   return (
-    board.openEdit || board.ownerId === userUid || board.editorIds.includes(userUid)
+    board.openEdit ||
+    board.ownerId === userUid ||
+    board.editorIds.includes(userUid)
   );
 }
 
-export async function resolveUserProfiles(userIds: string[]): Promise<BoardEditorProfile[]> {
+/**
+ * Handles resolve user profiles.
+ */
+export async function resolveUserProfiles(
+  userIds: string[],
+): Promise<BoardEditorProfile[]> {
   if (userIds.length === 0) {
     return [];
   }
@@ -91,7 +115,7 @@ export async function resolveUserProfiles(userIds: string[]): Promise<BoardEdito
     const usersResult = await auth.getUsers(userIds.map((uid) => ({ uid })));
 
     const usersByUid = new Map<string, UserRecord>(
-      usersResult.users.map((user) => [user.uid, user])
+      usersResult.users.map((user) => [user.uid, user]),
     );
 
     return userIds.map((uid) => {
@@ -99,20 +123,23 @@ export async function resolveUserProfiles(userIds: string[]): Promise<BoardEdito
       return {
         uid,
         email: user?.email ?? null,
-        displayName: user?.displayName ?? null
+        displayName: user?.displayName ?? null,
       };
     });
   } catch {
     return userIds.map((uid) => ({
       uid,
       email: null,
-      displayName: null
+      displayName: null,
     }));
   }
 }
 
+/**
+ * Handles resolve editor profiles.
+ */
 export async function resolveEditorProfiles(
-  editorIds: string[]
+  editorIds: string[],
 ): Promise<BoardEditorProfile[]> {
   return resolveUserProfiles(editorIds);
 }

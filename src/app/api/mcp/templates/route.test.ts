@@ -7,14 +7,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { POST } from "./route";
 
-function createPostRequest(options?: { headers?: Record<string, string>; body?: unknown }) {
+/**
+ * Creates post request.
+ */
+function createPostRequest(options?: {
+  headers?: Record<string, string>;
+  body?: unknown;
+}) {
   return new NextRequest("http://localhost:3000/api/mcp/templates", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(options?.headers ?? {})
+      ...(options?.headers ?? {}),
     },
-    body: JSON.stringify(options?.body ?? {})
+    body: JSON.stringify(options?.body ?? {}),
   });
 }
 
@@ -46,9 +52,9 @@ describe("POST /api/mcp/templates", () => {
     const response = await POST(
       createPostRequest({
         headers: {
-          "x-mcp-internal-token": "wrong"
-        }
-      })
+          "x-mcp-internal-token": "wrong",
+        },
+      }),
     );
     const payload = (await response.json()) as { error?: string };
 

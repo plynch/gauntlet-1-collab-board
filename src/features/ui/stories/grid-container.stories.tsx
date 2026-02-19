@@ -9,11 +9,11 @@ const meta = {
     rows: 2,
     cols: 2,
     gap: 2,
-    minCellHeight: 120
+    minCellHeight: 120,
   },
   parameters: {
-    layout: "fullscreen"
-  }
+    layout: "fullscreen",
+  },
 } satisfies Meta<typeof GridContainer>;
 
 export default meta;
@@ -23,8 +23,8 @@ type Story = StoryObj<typeof meta>;
 export const TwoByTwo: Story = {
   args: {
     containerTitle: "SWOT Analysis",
-    sectionTitles: ["Strengths", "Weaknesses", "Opportunities", "Threats"]
-  }
+    sectionTitles: ["Strengths", "Weaknesses", "Opportunities", "Threats"],
+  },
 };
 
 export const ThreeByThreeWithColorPickers: Story = {
@@ -34,6 +34,6 @@ export const ThreeByThreeWithColorPickers: Story = {
     gap: 2,
     minCellHeight: 92,
     showCellColorPickers: true,
-    containerTitle: "Planning Matrix"
-  }
+    containerTitle: "Planning Matrix",
+  },
 };

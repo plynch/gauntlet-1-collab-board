@@ -22,7 +22,11 @@ export type GuardrailLockOptions = {
 };
 
 export type GuardrailStore = {
-  checkUserRateLimit(options: GuardrailRateLimitOptions): Promise<GuardrailResult>;
-  acquireBoardCommandLock(options: GuardrailLockOptions): Promise<GuardrailResult>;
+  checkUserRateLimit(
+    options: GuardrailRateLimitOptions,
+  ): Promise<GuardrailResult>;
+  acquireBoardCommandLock(
+    options: GuardrailLockOptions,
+  ): Promise<GuardrailResult>;
   releaseBoardCommandLock(boardId: string): Promise<void>;
 };

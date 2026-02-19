@@ -6,12 +6,12 @@ import {
   onIdTokenChanged,
   signInWithPopup,
   signOut,
-  type User
+  type User,
 } from "firebase/auth";
 
 import {
   getFirebaseClientAuth,
-  isFirebaseClientConfigured
+  isFirebaseClientConfigured,
 } from "@/lib/firebase/client";
 
 type AuthSessionState = {
@@ -23,6 +23,9 @@ type AuthSessionState = {
   signOutCurrentUser: () => Promise<void>;
 };
 
+/**
+ * Handles use auth session.
+ */
 export function useAuthSession(): AuthSessionState {
   const [user, setUser] = useState<User | null>(null);
   const [idToken, setIdToken] = useState<string | null>(null);
@@ -31,7 +34,7 @@ export function useAuthSession(): AuthSessionState {
   const firebaseIsConfigured = isFirebaseClientConfigured();
   const auth = useMemo(
     () => (firebaseIsConfigured ? getFirebaseClientAuth() : null),
-    [firebaseIsConfigured]
+    [firebaseIsConfigured],
   );
 
   useEffect(() => {
@@ -87,6 +90,6 @@ export function useAuthSession(): AuthSessionState {
     idToken,
     authLoading,
     signInWithGoogle,
-    signOutCurrentUser
+    signOutCurrentUser,
   };
 }

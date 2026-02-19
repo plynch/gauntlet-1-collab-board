@@ -2,7 +2,7 @@ import type {
   GuardrailLockOptions,
   GuardrailRateLimitOptions,
   GuardrailResult,
-  GuardrailStore
+  GuardrailStore,
 } from "@/features/ai/guardrail-store";
 
 type RateWindow = {
@@ -14,19 +14,26 @@ type MemoryGuardrailStoreOptions = {
   boardLocks?: Map<string, number>;
 };
 
+/**
+ * Creates memory guardrail store.
+ */
 export function createMemoryGuardrailStore(
-  options?: MemoryGuardrailStoreOptions
+  options?: MemoryGuardrailStoreOptions,
 ): GuardrailStore {
-  const userRateWindows = options?.userRateWindows ?? new Map<string, RateWindow>();
+  const userRateWindows =
+    options?.userRateWindows ?? new Map<string, RateWindow>();
   const boardLocks = options?.boardLocks ?? new Map<string, number>();
 
+  /**
+   * Handles check user rate limit.
+   */
   async function checkUserRateLimit(
-    input: GuardrailRateLimitOptions
+    input: GuardrailRateLimitOptions,
   ): Promise<GuardrailResult> {
     const windowStart = input.nowMs - input.windowMs;
     const current = userRateWindows.get(input.userId) ?? { timestamps: [] };
     const nextTimestamps = current.timestamps.filter(
-      (timestamp) => timestamp >= windowStart
+      (timestamp) => timestamp >= windowStart,
     );
 
     if (nextTimestamps.length >= input.maxCommandsPerWindow) {
@@ -34,7 +41,7 @@ export function createMemoryGuardrailStore(
       return {
         ok: false,
         status: 429,
-        error: "Too many AI commands. Please wait a minute and retry."
+        error: "Too many AI commands. Please wait a minute and retry.",
       };
     }
 
@@ -43,15 +50,18 @@ export function createMemoryGuardrailStore(
     return { ok: true };
   }
 
+  /**
+   * Handles acquire board command lock.
+   */
   async function acquireBoardCommandLock(
-    input: GuardrailLockOptions
+    input: GuardrailLockOptions,
   ): Promise<GuardrailResult> {
     const existingExpiresAt = boardLocks.get(input.boardId) ?? 0;
     if (existingExpiresAt > input.nowMs) {
       return {
         ok: false,
         status: 409,
-        error: "Another AI command is already running on this board."
+        error: "Another AI command is already running on this board.",
       };
     }
 
@@ -59,6 +69,9 @@ export function createMemoryGuardrailStore(
     return { ok: true };
   }
 
+  /**
+   * Handles release board command lock.
+   */
   async function releaseBoardCommandLock(boardId: string): Promise<void> {
     boardLocks.delete(boardId);
   }
@@ -66,6 +79,6 @@ export function createMemoryGuardrailStore(
   return {
     checkUserRateLimit,
     acquireBoardCommandLock,
-    releaseBoardCommandLock
+    releaseBoardCommandLock,
   };
 }

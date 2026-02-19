@@ -2,12 +2,15 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 
 import type { BoardDetail, BoardPermissions } from "@/features/boards/types";
-import { assertFirestoreWritesAllowedInDev, getFirebaseAdminDb } from "@/lib/firebase/admin";
+import {
+  assertFirestoreWritesAllowedInDev,
+  getFirebaseAdminDb,
+} from "@/lib/firebase/admin";
 import { boardTitleBodySchema } from "@/server/api/board-route-schemas";
 import {
   handleRouteError,
   readJsonBody,
-  trimParam
+  trimParam,
 } from "@/server/api/route-helpers";
 import { requireUser } from "@/server/auth/require-user";
 import {
@@ -16,7 +19,7 @@ import {
   parseBoardDoc,
   resolveUserProfiles,
   toIsoDate,
-  type BoardDoc
+  type BoardDoc,
 } from "@/server/boards/board-access";
 
 export const runtime = "nodejs";
@@ -28,11 +31,14 @@ type BoardRouteContext = {
   }>;
 };
 
+/**
+ * Handles to board detail.
+ */
 function toBoardDetail(
   boardId: string,
   board: BoardDoc,
   editors: Awaited<ReturnType<typeof resolveUserProfiles>>,
-  readers: Awaited<ReturnType<typeof resolveUserProfiles>>
+  readers: Awaited<ReturnType<typeof resolveUserProfiles>>,
 ): BoardDetail {
   return {
     id: boardId,
@@ -45,10 +51,13 @@ function toBoardDetail(
     editors,
     readers,
     createdAt: toIsoDate(board.createdAt),
-    updatedAt: toIsoDate(board.updatedAt)
+    updatedAt: toIsoDate(board.updatedAt),
   };
 }
 
+/**
+ * Handles get.
+ */
 export async function GET(request: NextRequest, context: BoardRouteContext) {
   try {
     const user = await requireUser(request);
@@ -68,25 +77,32 @@ export async function GET(request: NextRequest, context: BoardRouteContext) {
 
     const board = parseBoardDoc(boardSnapshot.data());
     if (!board) {
-      return NextResponse.json({ error: "Invalid board data." }, { status: 500 });
+      return NextResponse.json(
+        { error: "Invalid board data." },
+        { status: 500 },
+      );
     }
 
     const permissions: BoardPermissions = {
       isOwner: board.ownerId === user.uid,
       canRead: canUserReadBoard(board, user.uid),
-      canEdit: canUserEditBoard(board, user.uid)
+      canEdit: canUserEditBoard(board, user.uid),
     };
 
     if (!permissions.canRead) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
 
-    const editors = permissions.isOwner ? await resolveUserProfiles(board.editorIds) : [];
-    const readers = permissions.isOwner ? await resolveUserProfiles(board.readerIds) : [];
+    const editors = permissions.isOwner
+      ? await resolveUserProfiles(board.editorIds)
+      : [];
+    const readers = permissions.isOwner
+      ? await resolveUserProfiles(board.readerIds)
+      : [];
 
     return NextResponse.json({
       board: toBoardDetail(boardId, board, editors, readers),
-      permissions
+      permissions,
     });
   } catch (error) {
     console.error("Failed to load board", error);
@@ -94,6 +110,9 @@ export async function GET(request: NextRequest, context: BoardRouteContext) {
   }
 }
 
+/**
+ * Handles delete.
+ */
 export async function DELETE(request: NextRequest, context: BoardRouteContext) {
   try {
     assertFirestoreWritesAllowedInDev();
@@ -116,7 +135,10 @@ export async function DELETE(request: NextRequest, context: BoardRouteContext) {
 
     const board = parseBoardDoc(boardSnapshot.data());
     if (!board) {
-      return NextResponse.json({ error: "Invalid board data." }, { status: 500 });
+      return NextResponse.json(
+        { error: "Invalid board data." },
+        { status: 500 },
+      );
     }
 
     if (board.ownerId !== user.uid) {
@@ -132,6 +154,9 @@ export async function DELETE(request: NextRequest, context: BoardRouteContext) {
   }
 }
 
+/**
+ * Handles patch.
+ */
 export async function PATCH(request: NextRequest, context: BoardRouteContext) {
   try {
     assertFirestoreWritesAllowedInDev();
@@ -154,7 +179,10 @@ export async function PATCH(request: NextRequest, context: BoardRouteContext) {
 
     const board = parseBoardDoc(boardSnapshot.data());
     if (!board) {
-      return NextResponse.json({ error: "Invalid board data." }, { status: 500 });
+      return NextResponse.json(
+        { error: "Invalid board data." },
+        { status: 500 },
+      );
     }
 
     if (board.ownerId !== user.uid) {
@@ -168,23 +196,29 @@ export async function PATCH(request: NextRequest, context: BoardRouteContext) {
 
     const parsedPayload = boardTitleBodySchema.safeParse(bodyResult.value);
     if (!parsedPayload.success) {
-      return NextResponse.json({ error: "Board title is required." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Board title is required." },
+        { status: 400 },
+      );
     }
     const title = parsedPayload.data.title;
 
     await boardRef.update({
       title,
-      updatedAt: FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp(),
     });
 
     const updatedSnapshot = await boardRef.get();
     const updatedBoard = parseBoardDoc(updatedSnapshot.data());
     if (!updatedBoard) {
-      return NextResponse.json({ error: "Invalid board data." }, { status: 500 });
+      return NextResponse.json(
+        { error: "Invalid board data." },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json({
-      board: toBoardDetail(updatedSnapshot.id, updatedBoard, [], [])
+      board: toBoardDetail(updatedSnapshot.id, updatedBoard, [], []),
     });
   } catch (error) {
     console.error("Failed to update board", error);

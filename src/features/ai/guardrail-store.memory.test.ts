@@ -12,7 +12,7 @@ describe("createMemoryGuardrailStore", () => {
         userId: "user-1",
         nowMs: nowMs + index,
         windowMs: 1_000,
-        maxCommandsPerWindow: 3
+        maxCommandsPerWindow: 3,
       });
       expect(allowed.ok).toBe(true);
     }
@@ -21,7 +21,7 @@ describe("createMemoryGuardrailStore", () => {
       userId: "user-1",
       nowMs: nowMs + 4,
       windowMs: 1_000,
-      maxCommandsPerWindow: 3
+      maxCommandsPerWindow: 3,
     });
     expect(blocked.ok).toBe(false);
 
@@ -29,7 +29,7 @@ describe("createMemoryGuardrailStore", () => {
       userId: "user-1",
       nowMs: nowMs + 2_000,
       windowMs: 1_000,
-      maxCommandsPerWindow: 3
+      maxCommandsPerWindow: 3,
     });
     expect(allowedAfterWindow.ok).toBe(true);
   });
@@ -41,17 +41,17 @@ describe("createMemoryGuardrailStore", () => {
     const first = await store.acquireBoardCommandLock({
       boardId: "board-1",
       nowMs,
-      ttlMs: 100
+      ttlMs: 100,
     });
     const second = await store.acquireBoardCommandLock({
       boardId: "board-1",
       nowMs: nowMs + 50,
-      ttlMs: 100
+      ttlMs: 100,
     });
     const third = await store.acquireBoardCommandLock({
       boardId: "board-1",
       nowMs: nowMs + 120,
-      ttlMs: 100
+      ttlMs: 100,
     });
 
     expect(first.ok).toBe(true);

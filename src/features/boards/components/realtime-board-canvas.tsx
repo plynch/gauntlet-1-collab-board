@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
   type FormEvent as ReactFormEvent,
-  type PointerEvent as ReactPointerEvent
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { User } from "firebase/auth";
 import {
@@ -20,7 +20,7 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
-  writeBatch
+  writeBatch,
 } from "firebase/firestore";
 
 import type {
@@ -28,33 +28,39 @@ import type {
   BoardObjectKind,
   BoardPermissions,
   ConnectorAnchor,
-  PresenceUser
+  PresenceUser,
 } from "@/features/boards/types";
 import {
   AI_COMMAND_REQUEST_TIMEOUT_MS,
-  getBoardCommandErrorMessage
+  getBoardCommandErrorMessage,
 } from "@/features/ai/board-command";
 import {
   getPathLength,
   getPathMidPoint,
   getPointSequenceBounds,
   getRouteEndDirections,
-  toRoundedConnectorPath
+  toRoundedConnectorPath,
 } from "@/features/boards/components/realtime-canvas/connector-routing-geometry";
 import {
   OnlineUsersList,
-  RemoteCursorLayer
+  RemoteCursorLayer,
 } from "@/features/boards/components/realtime-canvas/render-primitives";
 import { calculateSelectionHudPosition } from "@/features/boards/components/realtime-canvas/selection-hud-layout";
+import {
+  areContainerMembershipPatchesEqual,
+  getMembershipPatchFromObject,
+  type ContainerMembershipPatch,
+  useContainerMembership,
+} from "@/features/boards/components/realtime-canvas/use-container-membership";
 import {
   getActivePresenceUsers,
   getPresenceLabel,
   getRemoteCursors,
-  usePresenceClock
+  usePresenceClock,
 } from "@/features/boards/components/realtime-canvas/use-presence-sync";
 import {
   createRealtimeWriteMetrics,
-  isWriteMetricsDebugEnabled
+  isWriteMetricsDebugEnabled,
 } from "@/features/boards/lib/realtime-write-metrics";
 import { GridContainer } from "@/features/ui/components/grid-container";
 import { getFirebaseClientDb } from "@/lib/firebase/client";
@@ -228,30 +234,6 @@ type GridContainerContentDraft = {
   sectionNotes: string[];
 };
 
-type ContainerMembershipPatch = {
-  containerId: string | null;
-  containerSectionIndex: number | null;
-  containerRelX: number | null;
-  containerRelY: number | null;
-};
-
-type GridSectionBounds = {
-  containerId: string;
-  containerZIndex: number;
-  sectionIndex: number;
-  bounds: ObjectBounds;
-};
-
-type ContainerSectionsInfo = {
-  containerId: string;
-  containerZIndex: number;
-  rows: number;
-  cols: number;
-  gap: number;
-  geometry: ObjectGeometry;
-  sections: ObjectBounds[];
-};
-
 type ColorSwatch = {
   name: string;
   value: string;
@@ -266,13 +248,14 @@ const BOARD_TOOLS: BoardObjectKind[] = [
   "connectorArrow",
   "connectorBidirectional",
   "triangle",
-  "star"
+  "star",
 ];
 const RESIZE_THROTTLE_MS = 45;
 const ROTATE_THROTTLE_MS = 45;
 const RESIZE_HANDLE_SIZE = 10;
 const LINE_MIN_LENGTH = 40;
-const SELECTED_OBJECT_HALO = "0 0 0 2px rgba(59, 130, 246, 0.45), 0 8px 14px rgba(0,0,0,0.14)";
+const SELECTED_OBJECT_HALO =
+  "0 0 0 2px rgba(59, 130, 246, 0.45), 0 8px 14px rgba(0,0,0,0.14)";
 const OBJECT_SPAWN_STEP_PX = 20;
 const PANEL_SEPARATOR_COLOR = "#6f8196";
 const PANEL_SEPARATOR_WIDTH = 4;
@@ -294,16 +277,15 @@ const BOARD_COLOR_SWATCHES: ColorSwatch[] = [
   { name: "Teal", value: "#99f6e4" },
   { name: "Green", value: "#86efac" },
   { name: "Gray", value: "#d1d5db" },
-  { name: "Tan", value: "#d2b48c" }
+  { name: "Tan", value: "#d2b48c" },
 ];
 const DEFAULT_SWOT_SECTION_TITLES = [
   "Strengths",
   "Weaknesses",
   "Opportunities",
-  "Threats"
+  "Threats",
 ] as const;
 const GRID_CONTAINER_DEFAULT_GAP = 2;
-const GRID_CONTAINER_PADDING = 8;
 const GRID_CONTAINER_MAX_ROWS = 6;
 const GRID_CONTAINER_MAX_COLS = 6;
 
@@ -316,36 +298,59 @@ const CONNECTOR_SNAP_DISTANCE_PX = 20;
 const CONNECTOR_TYPES: readonly BoardObjectKind[] = [
   "connectorUndirected",
   "connectorArrow",
-  "connectorBidirectional"
+  "connectorBidirectional",
 ];
-const CONNECTOR_ANCHORS: readonly ConnectorAnchor[] = ["top", "right", "bottom", "left"];
+const CONNECTOR_ANCHORS: readonly ConnectorAnchor[] = [
+  "top",
+  "right",
+  "bottom",
+  "left",
+];
 
 const INITIAL_VIEWPORT: ViewportState = {
   x: 120,
   y: 80,
-  scale: 1
+  scale: 1,
 };
 
+/**
+ * Handles clamp scale.
+ */
 function clampScale(nextScale: number): number {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, nextScale));
 }
 
+/**
+ * Handles clamp ai footer height.
+ */
 function clampAiFooterHeight(nextHeight: number): number {
-  return Math.min(AI_FOOTER_MAX_HEIGHT, Math.max(AI_FOOTER_MIN_HEIGHT, Math.round(nextHeight)));
+  return Math.min(
+    AI_FOOTER_MAX_HEIGHT,
+    Math.max(AI_FOOTER_MIN_HEIGHT, Math.round(nextHeight)),
+  );
 }
 
+/**
+ * Gets accelerated wheel zoom delta.
+ */
 function getAcceleratedWheelZoomDelta(deltaY: number): number {
   const magnitude = Math.abs(deltaY);
   const acceleration = 1 + Math.min(2.4, magnitude / 110);
   const acceleratedMagnitude = Math.min(
     ZOOM_WHEEL_MAX_EFFECTIVE_DELTA,
-    magnitude * acceleration
+    magnitude * acceleration,
   );
 
   return Math.sign(deltaY) * acceleratedMagnitude;
 }
 
-function toNormalizedRect(start: BoardPoint, end: BoardPoint): {
+/**
+ * Handles to normalized rect.
+ */
+function toNormalizedRect(
+  start: BoardPoint,
+  end: BoardPoint,
+): {
   left: number;
   right: number;
   top: number;
@@ -355,10 +360,13 @@ function toNormalizedRect(start: BoardPoint, end: BoardPoint): {
     left: Math.min(start.x, end.x),
     right: Math.max(start.x, end.x),
     top: Math.min(start.y, end.y),
-    bottom: Math.max(start.y, end.y)
+    bottom: Math.max(start.y, end.y),
   };
 }
 
+/**
+ * Gets spawn offset.
+ */
 function getSpawnOffset(index: number, step: number): BoardPoint {
   if (index <= 0) {
     return { x: 0, y: 0 };
@@ -391,18 +399,27 @@ function getSpawnOffset(index: number, step: number): BoardPoint {
 
   return {
     x: gridX * step,
-    y: gridY * step
+    y: gridY * step,
   };
 }
 
+/**
+ * Creates chat message id.
+ */
 function createChatMessageId(prefix: "u" | "a"): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+/**
+ * Gets string.
+ */
 function getString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
 
+/**
+ * Gets nullable string.
+ */
 function getNullableString(value: unknown): string | null {
   if (typeof value === "string") {
     return value;
@@ -411,10 +428,16 @@ function getNullableString(value: unknown): string | null {
   return null;
 }
 
+/**
+ * Gets number.
+ */
 function getNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+/**
+ * Gets timestamp millis.
+ */
 function getTimestampMillis(value: unknown): number | null {
   if (value instanceof Timestamp) {
     return value.toMillis();
@@ -423,18 +446,36 @@ function getTimestampMillis(value: unknown): number | null {
   return null;
 }
 
+/**
+ * Gets finite number.
+ */
 function getFiniteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function getGridDimension(value: unknown, fallback: number | null): number | null {
+/**
+ * Gets grid dimension.
+ */
+function getGridDimension(
+  value: unknown,
+  fallback: number | null,
+): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return fallback;
   }
 
-  return Math.max(1, Math.min(Math.max(GRID_CONTAINER_MAX_ROWS, GRID_CONTAINER_MAX_COLS), Math.floor(value)));
+  return Math.max(
+    1,
+    Math.min(
+      Math.max(GRID_CONTAINER_MAX_ROWS, GRID_CONTAINER_MAX_COLS),
+      Math.floor(value),
+    ),
+  );
 }
 
+/**
+ * Gets grid gap.
+ */
 function getGridGap(value: unknown, fallback: number | null): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return fallback;
@@ -443,6 +484,9 @@ function getGridGap(value: unknown, fallback: number | null): number | null {
   return Math.max(0, Math.min(24, Math.round(value)));
 }
 
+/**
+ * Gets non negative integer.
+ */
 function getNonNegativeInteger(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return null;
@@ -452,15 +496,23 @@ function getNonNegativeInteger(value: unknown): number | null {
   return floored >= 0 ? floored : null;
 }
 
+/**
+ * Gets grid cell colors.
+ */
 function getGridCellColors(value: unknown): string[] | null {
   if (!Array.isArray(value)) {
     return null;
   }
 
-  const colors = value.filter((item): item is string => typeof item === "string");
+  const colors = value.filter(
+    (item): item is string => typeof item === "string",
+  );
   return colors.length > 0 ? colors : null;
 }
 
+/**
+ * Gets string array.
+ */
 function getStringArray(value: unknown): string[] | null {
   if (!Array.isArray(value)) {
     return null;
@@ -472,20 +524,30 @@ function getStringArray(value: unknown): string[] | null {
   return values.length > 0 ? values : null;
 }
 
+/**
+ * Gets default section titles.
+ */
 function getDefaultSectionTitles(rows: number, cols: number): string[] {
   const count = Math.max(1, rows * cols);
   if (rows === 2 && cols === 2) {
-    return Array.from({ length: count }, (_, index) => DEFAULT_SWOT_SECTION_TITLES[index] ?? `Section ${index + 1}`);
+    return Array.from(
+      { length: count },
+      (_, index) =>
+        DEFAULT_SWOT_SECTION_TITLES[index] ?? `Section ${index + 1}`,
+    );
   }
 
   return Array.from({ length: count }, (_, index) => `Section ${index + 1}`);
 }
 
+/**
+ * Handles normalize section values.
+ */
 function normalizeSectionValues(
   values: string[] | null | undefined,
   count: number,
   fallback: (index: number) => string,
-  maxLength: number
+  maxLength: number,
 ): string[] {
   return Array.from({ length: count }, (_, index) => {
     const value = values?.[index]?.trim() ?? "";
@@ -497,129 +559,9 @@ function normalizeSectionValues(
   });
 }
 
-function clamp(value: number, minValue: number, maxValue: number): number {
-  return Math.max(minValue, Math.min(maxValue, value));
-}
-
-function isContainerChildEligible(type: BoardObjectKind): boolean {
-  return type !== "gridContainer" && !isConnectorKind(type);
-}
-
-function getGridSectionBoundsFromGeometry(
-  containerGeometry: ObjectGeometry,
-  rows: number,
-  cols: number,
-  gap: number
-): ObjectBounds[] {
-  const safeRows = Math.max(1, Math.floor(rows));
-  const safeCols = Math.max(1, Math.floor(cols));
-  const safeGap = Math.max(0, gap);
-  const innerWidth = Math.max(
-    1,
-    containerGeometry.width - GRID_CONTAINER_PADDING * 2 - safeGap * (safeCols - 1)
-  );
-  const innerHeight = Math.max(
-    1,
-    containerGeometry.height - GRID_CONTAINER_PADDING * 2 - safeGap * (safeRows - 1)
-  );
-  const cellWidth = innerWidth / safeCols;
-  const cellHeight = innerHeight / safeRows;
-  const sections: ObjectBounds[] = [];
-
-  for (let row = 0; row < safeRows; row += 1) {
-    for (let col = 0; col < safeCols; col += 1) {
-      const left =
-        containerGeometry.x + GRID_CONTAINER_PADDING + col * (cellWidth + safeGap);
-      const top =
-        containerGeometry.y + GRID_CONTAINER_PADDING + row * (cellHeight + safeGap);
-      sections.push({
-        left,
-        right: left + cellWidth,
-        top,
-        bottom: top + cellHeight
-      });
-    }
-  }
-
-  return sections;
-}
-
-function getObjectCenterForPlacement(geometry: ObjectGeometry): BoardPoint {
-  return {
-    x: geometry.x + geometry.width / 2,
-    y: geometry.y + geometry.height / 2
-  };
-}
-
-function isPointInsideBounds(point: BoardPoint, bounds: ObjectBounds): boolean {
-  return (
-    point.x >= bounds.left &&
-    point.x <= bounds.right &&
-    point.y >= bounds.top &&
-    point.y <= bounds.bottom
-  );
-}
-
-function areContainerMembershipPatchesEqual(
-  left: ContainerMembershipPatch,
-  right: ContainerMembershipPatch
-): boolean {
-  return (
-    left.containerId === right.containerId &&
-    left.containerSectionIndex === right.containerSectionIndex &&
-    left.containerRelX === right.containerRelX &&
-    left.containerRelY === right.containerRelY
-  );
-}
-
-function getMembershipPatchFromObject(objectItem: BoardObject): ContainerMembershipPatch {
-  return {
-    containerId: objectItem.containerId ?? null,
-    containerSectionIndex: objectItem.containerSectionIndex ?? null,
-    containerRelX: objectItem.containerRelX ?? null,
-    containerRelY: objectItem.containerRelY ?? null
-  };
-}
-
-function getSectionBoundsCenter(bounds: ObjectBounds): BoardPoint {
-  return {
-    x: (bounds.left + bounds.right) / 2,
-    y: (bounds.top + bounds.bottom) / 2
-  };
-}
-
-function getClosestSectionIndex(point: BoardPoint, sections: ObjectBounds[]): number | null {
-  if (sections.length === 0) {
-    return null;
-  }
-
-  let bestIndex = 0;
-  let bestDistance = Number.POSITIVE_INFINITY;
-
-  sections.forEach((section, index) => {
-    const center = getSectionBoundsCenter(section);
-    const distance = Math.hypot(center.x - point.x, center.y - point.y);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      bestIndex = index;
-    }
-  });
-
-  return bestIndex;
-}
-
-function toSectionRelativeCoordinate(
-  center: BoardPoint,
-  section: ObjectBounds
-): { x: number; y: number } {
-  const sectionWidth = Math.max(1, section.right - section.left);
-  const sectionHeight = Math.max(1, section.bottom - section.top);
-  return {
-    x: clamp((center.x - section.left) / sectionWidth, 0, 1),
-    y: clamp((center.y - section.top) / sectionHeight, 0, 1)
-  };
-}
-
+/**
+ * Gets timestamp iso.
+ */
 function getTimestampIso(value: unknown): string | null {
   if (value instanceof Timestamp) {
     return value.toDate().toISOString();
@@ -628,6 +570,9 @@ function getTimestampIso(value: unknown): string | null {
   return null;
 }
 
+/**
+ * Handles hash to color.
+ */
 function hashToColor(input: string): string {
   const palette = [
     "#2563eb",
@@ -637,7 +582,7 @@ function hashToColor(input: string): string {
     "#f59e0b",
     "#dc2626",
     "#7c3aed",
-    "#db2777"
+    "#db2777",
   ];
 
   let hash = 0;
@@ -648,6 +593,9 @@ function hashToColor(input: string): string {
   return palette[Math.abs(hash) % palette.length];
 }
 
+/**
+ * Returns whether board object kind is true.
+ */
 function isBoardObjectKind(value: unknown): value is BoardObjectKind {
   return (
     value === "sticky" ||
@@ -663,12 +611,18 @@ function isBoardObjectKind(value: unknown): value is BoardObjectKind {
   );
 }
 
+/**
+ * Returns whether connector kind is true.
+ */
 function isConnectorKind(value: BoardObjectKind): boolean {
   return CONNECTOR_TYPES.includes(value);
 }
 
+/**
+ * Returns whether connectable shape kind is true.
+ */
 function isConnectableShapeKind(
-  value: BoardObjectKind
+  value: BoardObjectKind,
 ): value is Exclude<
   BoardObjectKind,
   "line" | "connectorUndirected" | "connectorArrow" | "connectorBidirectional"
@@ -676,7 +630,13 @@ function isConnectableShapeKind(
   return value !== "line" && !isConnectorKind(value);
 }
 
-function getDefaultObjectSize(kind: BoardObjectKind): { width: number; height: number } {
+/**
+ * Gets default object size.
+ */
+function getDefaultObjectSize(kind: BoardObjectKind): {
+  width: number;
+  height: number;
+} {
   if (kind === "sticky") {
     return { width: 220, height: 170 };
   }
@@ -708,7 +668,13 @@ function getDefaultObjectSize(kind: BoardObjectKind): { width: number; height: n
   return { width: 240, height: 64 };
 }
 
-function getMinimumObjectSize(kind: BoardObjectKind): { width: number; height: number } {
+/**
+ * Gets minimum object size.
+ */
+function getMinimumObjectSize(kind: BoardObjectKind): {
+  width: number;
+  height: number;
+} {
   if (kind === "sticky") {
     return { width: 140, height: 100 };
   }
@@ -736,6 +702,9 @@ function getMinimumObjectSize(kind: BoardObjectKind): { width: number; height: n
   return { width: LINE_MIN_LENGTH, height: 32 };
 }
 
+/**
+ * Gets default object color.
+ */
 function getDefaultObjectColor(kind: BoardObjectKind): string {
   if (kind === "sticky") {
     return "#fde68a";
@@ -776,6 +745,9 @@ function getDefaultObjectColor(kind: BoardObjectKind): string {
   return "#1f2937";
 }
 
+/**
+ * Gets object label.
+ */
 function getObjectLabel(kind: BoardObjectKind): string {
   if (kind === "sticky") {
     return "Sticky";
@@ -816,64 +788,109 @@ function getObjectLabel(kind: BoardObjectKind): string {
   return "Line";
 }
 
+/**
+ * Handles to radians.
+ */
 function toRadians(degrees: number): number {
   return (degrees * Math.PI) / 180;
 }
 
+/**
+ * Handles to degrees.
+ */
 function toDegrees(radians: number): number {
   return (radians * 180) / Math.PI;
 }
 
+/**
+ * Handles round to step.
+ */
 function roundToStep(value: number, step: number): number {
   return Math.round(value / step) * step;
 }
 
+/**
+ * Handles to write point.
+ */
 function toWritePoint(point: BoardPoint): BoardPoint {
   return {
     x: roundToStep(point.x, POSITION_WRITE_STEP),
-    y: roundToStep(point.y, POSITION_WRITE_STEP)
+    y: roundToStep(point.y, POSITION_WRITE_STEP),
   };
 }
 
+/**
+ * Gets distance.
+ */
 function getDistance(left: BoardPoint, right: BoardPoint): number {
   return Math.hypot(left.x - right.x, left.y - right.y);
 }
 
-function arePointsClose(left: BoardPoint, right: BoardPoint, epsilon: number): boolean {
-  return Math.abs(left.x - right.x) <= epsilon && Math.abs(left.y - right.y) <= epsilon;
+/**
+ * Handles are points close.
+ */
+function arePointsClose(
+  left: BoardPoint,
+  right: BoardPoint,
+  epsilon: number,
+): boolean {
+  return (
+    Math.abs(left.x - right.x) <= epsilon &&
+    Math.abs(left.y - right.y) <= epsilon
+  );
 }
 
+/**
+ * Handles normalize rotation deg.
+ */
 function normalizeRotationDeg(rotationDeg: number): number {
   return ((rotationDeg % 360) + 360) % 360;
 }
 
-function getRotationDelta(leftRotationDeg: number, rightRotationDeg: number): number {
+/**
+ * Gets rotation delta.
+ */
+function getRotationDelta(
+  leftRotationDeg: number,
+  rightRotationDeg: number,
+): number {
   const normalizedLeft = normalizeRotationDeg(leftRotationDeg);
   const normalizedRight = normalizeRotationDeg(rightRotationDeg);
   const rawDelta = Math.abs(normalizedLeft - normalizedRight);
   return Math.min(rawDelta, 360 - rawDelta);
 }
 
+/**
+ * Handles are geometries close.
+ */
 function areGeometriesClose(
   leftGeometry: ObjectGeometry,
-  rightGeometry: ObjectGeometry
+  rightGeometry: ObjectGeometry,
 ): boolean {
   return (
     Math.abs(leftGeometry.x - rightGeometry.x) <= GEOMETRY_WRITE_EPSILON &&
     Math.abs(leftGeometry.y - rightGeometry.y) <= GEOMETRY_WRITE_EPSILON &&
-    Math.abs(leftGeometry.width - rightGeometry.width) <= GEOMETRY_WRITE_EPSILON &&
-    Math.abs(leftGeometry.height - rightGeometry.height) <= GEOMETRY_WRITE_EPSILON &&
+    Math.abs(leftGeometry.width - rightGeometry.width) <=
+      GEOMETRY_WRITE_EPSILON &&
+    Math.abs(leftGeometry.height - rightGeometry.height) <=
+      GEOMETRY_WRITE_EPSILON &&
     getRotationDelta(leftGeometry.rotationDeg, rightGeometry.rotationDeg) <=
       GEOMETRY_ROTATION_EPSILON_DEG
   );
 }
 
+/**
+ * Handles has meaningful rotation.
+ */
 function hasMeaningfulRotation(rotationDeg: number): boolean {
   const normalized = normalizeRotationDeg(rotationDeg);
   const distanceToZero = Math.min(normalized, 360 - normalized);
   return distanceToZero > 0.25;
 }
 
+/**
+ * Gets rotated bounds.
+ */
 function getRotatedBounds(geometry: ObjectGeometry): ObjectBounds {
   const centerX = geometry.x + geometry.width / 2;
   const centerY = geometry.y + geometry.height / 2;
@@ -887,7 +904,7 @@ function getRotatedBounds(geometry: ObjectGeometry): ObjectBounds {
     { x: -halfWidth, y: -halfHeight },
     { x: halfWidth, y: -halfHeight },
     { x: halfWidth, y: halfHeight },
-    { x: -halfWidth, y: halfHeight }
+    { x: -halfWidth, y: halfHeight },
   ];
 
   let left = Number.POSITIVE_INFINITY;
@@ -907,20 +924,29 @@ function getRotatedBounds(geometry: ObjectGeometry): ObjectBounds {
   return { left, right, top, bottom };
 }
 
-function getObjectVisualBounds(type: BoardObjectKind, geometry: ObjectGeometry): ObjectBounds {
+/**
+ * Gets object visual bounds.
+ */
+function getObjectVisualBounds(
+  type: BoardObjectKind,
+  geometry: ObjectGeometry,
+): ObjectBounds {
   if (type === "line") {
     const endpoints = getLineEndpoints(geometry);
     return {
       left: Math.min(endpoints.start.x, endpoints.end.x),
       right: Math.max(endpoints.start.x, endpoints.end.x),
       top: Math.min(endpoints.start.y, endpoints.end.y),
-      bottom: Math.max(endpoints.start.y, endpoints.end.y)
+      bottom: Math.max(endpoints.start.y, endpoints.end.y),
     };
   }
 
   return getRotatedBounds(geometry);
 }
 
+/**
+ * Handles merge bounds.
+ */
 function mergeBounds(bounds: ObjectBounds[]): ObjectBounds | null {
   if (bounds.length === 0) {
     return null;
@@ -930,10 +956,13 @@ function mergeBounds(bounds: ObjectBounds[]): ObjectBounds | null {
     left: Math.min(combined.left, current.left),
     right: Math.max(combined.right, current.right),
     top: Math.min(combined.top, current.top),
-    bottom: Math.max(combined.bottom, current.bottom)
+    bottom: Math.max(combined.bottom, current.bottom),
   }));
 }
 
+/**
+ * Gets line endpoints.
+ */
 function getLineEndpoints(geometry: ObjectGeometry): {
   start: BoardPoint;
   end: BoardPoint;
@@ -948,15 +977,18 @@ function getLineEndpoints(geometry: ObjectGeometry): {
   return {
     start: {
       x: centerX - cos * halfLength,
-      y: centerY - sin * halfLength
+      y: centerY - sin * halfLength,
     },
     end: {
       x: centerX + cos * halfLength,
-      y: centerY + sin * halfLength
-    }
+      y: centerY + sin * halfLength,
+    },
   };
 }
 
+/**
+ * Gets line endpoint offsets.
+ */
 function getLineEndpointOffsets(geometry: ObjectGeometry): {
   start: BoardPoint;
   end: BoardPoint;
@@ -971,16 +1003,23 @@ function getLineEndpointOffsets(geometry: ObjectGeometry): {
   return {
     start: {
       x: centerX - cos * halfLength,
-      y: centerY - sin * halfLength
+      y: centerY - sin * halfLength,
     },
     end: {
       x: centerX + cos * halfLength,
-      y: centerY + sin * halfLength
-    }
+      y: centerY + sin * halfLength,
+    },
   };
 }
 
-function rotatePointAroundCenter(point: BoardPoint, center: BoardPoint, rotationDeg: number): BoardPoint {
+/**
+ * Handles rotate point around center.
+ */
+function rotatePointAroundCenter(
+  point: BoardPoint,
+  center: BoardPoint,
+  rotationDeg: number,
+): BoardPoint {
   const radians = toRadians(rotationDeg);
   const cos = Math.cos(radians);
   const sin = Math.sin(radians);
@@ -989,10 +1028,13 @@ function rotatePointAroundCenter(point: BoardPoint, center: BoardPoint, rotation
 
   return {
     x: center.x + offsetX * cos - offsetY * sin,
-    y: center.y + offsetX * sin + offsetY * cos
+    y: center.y + offsetX * sin + offsetY * cos,
   };
 }
 
+/**
+ * Handles rotate vector.
+ */
 function rotateVector(vector: BoardPoint, rotationDeg: number): BoardPoint {
   if (Math.abs(rotationDeg) < 0.001) {
     return vector;
@@ -1004,10 +1046,13 @@ function rotateVector(vector: BoardPoint, rotationDeg: number): BoardPoint {
 
   return {
     x: vector.x * cos - vector.y * sin,
-    y: vector.x * sin + vector.y * cos
+    y: vector.x * sin + vector.y * cos,
   };
 }
 
+/**
+ * Gets anchor direction vector.
+ */
 function getAnchorDirectionVector(anchor: ConnectorAnchor): BoardPoint {
   if (anchor === "top") {
     return { x: 0, y: -1 };
@@ -1021,17 +1066,23 @@ function getAnchorDirectionVector(anchor: ConnectorAnchor): BoardPoint {
   return { x: -1, y: 0 };
 }
 
+/**
+ * Gets anchor direction for geometry.
+ */
 function getAnchorDirectionForGeometry(
   anchor: ConnectorAnchor,
-  geometry: ObjectGeometry
+  geometry: ObjectGeometry,
 ): BoardPoint {
   return rotateVector(getAnchorDirectionVector(anchor), geometry.rotationDeg);
 }
 
+/**
+ * Gets ray box intersection.
+ */
 function getRayBoxIntersection(
   direction: BoardPoint,
   halfWidth: number,
-  halfHeight: number
+  halfHeight: number,
 ): BoardPoint {
   const absDx = Math.abs(direction.x);
   const absDy = Math.abs(direction.y);
@@ -1045,14 +1096,17 @@ function getRayBoxIntersection(
 
   return {
     x: direction.x * t,
-    y: direction.y * t
+    y: direction.y * t,
   };
 }
 
+/**
+ * Gets ray ellipse intersection.
+ */
 function getRayEllipseIntersection(
   direction: BoardPoint,
   halfWidth: number,
-  halfHeight: number
+  halfHeight: number,
 ): BoardPoint {
   const denominator =
     (direction.x * direction.x) / (halfWidth * halfWidth) +
@@ -1065,17 +1119,23 @@ function getRayEllipseIntersection(
   const t = 1 / Math.sqrt(denominator);
   return {
     x: direction.x * t,
-    y: direction.y * t
+    y: direction.y * t,
   };
 }
 
+/**
+ * Handles cross2d.
+ */
 function cross2d(left: BoardPoint, right: BoardPoint): number {
   return left.x * right.y - left.y * right.x;
 }
 
+/**
+ * Gets ray polygon intersection.
+ */
 function getRayPolygonIntersection(
   direction: BoardPoint,
-  polygonPoints: BoardPoint[]
+  polygonPoints: BoardPoint[],
 ): BoardPoint | null {
   if (polygonPoints.length < 3) {
     return null;
@@ -1089,7 +1149,7 @@ function getRayPolygonIntersection(
     const end = polygonPoints[(index + 1) % polygonPoints.length];
     const segmentVector = {
       x: end.x - start.x,
-      y: end.y - start.y
+      y: end.y - start.y,
     };
     const denominator = cross2d(direction, segmentVector);
 
@@ -1107,7 +1167,7 @@ function getRayPolygonIntersection(
       bestT = t;
       bestPoint = {
         x: direction.x * t,
-        y: direction.y * t
+        y: direction.y * t,
       };
     }
   }
@@ -1115,17 +1175,25 @@ function getRayPolygonIntersection(
   return bestPoint;
 }
 
-function toLocalPolygonPoint(u: number, v: number, width: number, height: number): BoardPoint {
+/**
+ * Handles to local polygon point.
+ */
+function toLocalPolygonPoint(
+  u: number,
+  v: number,
+  width: number,
+  height: number,
+): BoardPoint {
   return {
     x: (u - 0.5) * width,
-    y: (v - 0.5) * height
+    y: (v - 0.5) * height,
   };
 }
 
 const TRIANGLE_POLYGON_NORMALIZED: ReadonlyArray<readonly [number, number]> = [
   [0.5, 0.06],
   [0.94, 0.92],
-  [0.06, 0.92]
+  [0.06, 0.92],
 ];
 
 const STAR_POLYGON_NORMALIZED: ReadonlyArray<readonly [number, number]> = [
@@ -1138,9 +1206,12 @@ const STAR_POLYGON_NORMALIZED: ReadonlyArray<readonly [number, number]> = [
   [0.22, 0.9],
   [0.33, 0.57],
   [0.05, 0.38],
-  [0.39, 0.38]
+  [0.39, 0.38],
 ];
 
+/**
+ * Gets anchor point for geometry.
+ */
 function getAnchorPointForGeometry(
   geometry: ObjectGeometry,
   anchor: ConnectorAnchor,
@@ -1150,11 +1221,11 @@ function getAnchorPointForGeometry(
     | "circle"
     | "gridContainer"
     | "triangle"
-    | "star" = "rect"
+    | "star" = "rect",
 ): BoardPoint {
   const center = {
     x: geometry.x + geometry.width / 2,
-    y: geometry.y + geometry.height / 2
+    y: geometry.y + geometry.height / 2,
   };
   const halfWidth = geometry.width / 2;
   const halfHeight = geometry.height / 2;
@@ -1165,9 +1236,11 @@ function getAnchorPointForGeometry(
     localPoint = getRayEllipseIntersection(direction, halfWidth, halfHeight);
   } else if (shapeType === "triangle" || shapeType === "star") {
     const normalizedPoints =
-      shapeType === "triangle" ? TRIANGLE_POLYGON_NORMALIZED : STAR_POLYGON_NORMALIZED;
+      shapeType === "triangle"
+        ? TRIANGLE_POLYGON_NORMALIZED
+        : STAR_POLYGON_NORMALIZED;
     const polygonPoints = normalizedPoints.map(([u, v]) =>
-      toLocalPolygonPoint(u, v, geometry.width, geometry.height)
+      toLocalPolygonPoint(u, v, geometry.width, geometry.height),
     );
     localPoint =
       getRayPolygonIntersection(direction, polygonPoints) ??
@@ -1178,7 +1251,7 @@ function getAnchorPointForGeometry(
 
   const unrotatedPoint = {
     x: center.x + localPoint.x,
-    y: center.y + localPoint.y
+    y: center.y + localPoint.y,
   };
 
   if (Math.abs(geometry.rotationDeg) < 0.001) {
@@ -1188,22 +1261,28 @@ function getAnchorPointForGeometry(
   return rotatePointAroundCenter(unrotatedPoint, center, geometry.rotationDeg);
 }
 
+/**
+ * Gets connector bounds from endpoints.
+ */
 function getConnectorBoundsFromEndpoints(
   fromPoint: BoardPoint,
   toPoint: BoardPoint,
-  padding = 0
+  padding = 0,
 ): ObjectBounds {
   return {
     left: Math.min(fromPoint.x, toPoint.x) - padding,
     right: Math.max(fromPoint.x, toPoint.x) + padding,
     top: Math.min(fromPoint.y, toPoint.y) - padding,
-    bottom: Math.max(fromPoint.y, toPoint.y) + padding
+    bottom: Math.max(fromPoint.y, toPoint.y) + padding,
   };
 }
 
+/**
+ * Handles to connector geometry from endpoints.
+ */
 function toConnectorGeometryFromEndpoints(
   fromPoint: BoardPoint,
-  toPoint: BoardPoint
+  toPoint: BoardPoint,
 ): ObjectGeometry {
   const bounds = getConnectorBoundsFromEndpoints(fromPoint, toPoint);
   return {
@@ -1211,7 +1290,7 @@ function toConnectorGeometryFromEndpoints(
     y: bounds.top,
     width: Math.max(CONNECTOR_MIN_SEGMENT_SIZE, bounds.right - bounds.left),
     height: Math.max(CONNECTOR_MIN_SEGMENT_SIZE, bounds.bottom - bounds.top),
-    rotationDeg: 0
+    rotationDeg: 0,
   };
 }
 
@@ -1228,19 +1307,28 @@ type ConnectorRouteGeometry = {
   endDirection: BoardPoint;
 };
 
-function inflateObjectBounds(bounds: ObjectBounds, padding: number): ObjectBounds {
+/**
+ * Handles inflate object bounds.
+ */
+function inflateObjectBounds(
+  bounds: ObjectBounds,
+  padding: number,
+): ObjectBounds {
   return {
     left: bounds.left - padding,
     right: bounds.right + padding,
     top: bounds.top - padding,
-    bottom: bounds.bottom + padding
+    bottom: bounds.bottom + padding,
   };
 }
 
+/**
+ * Handles segment intersects bounds.
+ */
 function segmentIntersectsBounds(
   start: BoardPoint,
   end: BoardPoint,
-  bounds: ObjectBounds
+  bounds: ObjectBounds,
 ): boolean {
   const epsilon = 0.8;
   const isHorizontal = Math.abs(start.y - end.y) <= 0.001;
@@ -1271,9 +1359,12 @@ function segmentIntersectsBounds(
   return false;
 }
 
+/**
+ * Handles count route intersections.
+ */
 function countRouteIntersections(
   points: BoardPoint[],
-  obstacles: ConnectorRoutingObstacle[]
+  obstacles: ConnectorRoutingObstacle[],
 ): number {
   if (points.length < 2 || obstacles.length === 0) {
     return 0;
@@ -1292,6 +1383,9 @@ function countRouteIntersections(
   return hits;
 }
 
+/**
+ * Handles simplify route points.
+ */
 function simplifyRoutePoints(points: BoardPoint[]): BoardPoint[] {
   if (points.length <= 2) {
     return points;
@@ -1319,8 +1413,10 @@ function simplifyRoutePoints(points: BoardPoint[]): BoardPoint[] {
     const prevToCurrentY = current.y - previous.y;
     const currentToNextX = next.x - current.x;
     const currentToNextY = next.y - current.y;
-    const collinearX = Math.abs(prevToCurrentX) <= 0.001 && Math.abs(currentToNextX) <= 0.001;
-    const collinearY = Math.abs(prevToCurrentY) <= 0.001 && Math.abs(currentToNextY) <= 0.001;
+    const collinearX =
+      Math.abs(prevToCurrentX) <= 0.001 && Math.abs(currentToNextX) <= 0.001;
+    const collinearY =
+      Math.abs(prevToCurrentY) <= 0.001 && Math.abs(currentToNextY) <= 0.001;
 
     if (collinearX || collinearY) {
       continue;
@@ -1333,6 +1429,9 @@ function simplifyRoutePoints(points: BoardPoint[]): BoardPoint[] {
   return simplified;
 }
 
+/**
+ * Gets anchor direction.
+ */
 function getAnchorDirection(anchor: ConnectorAnchor | null): BoardPoint | null {
   if (anchor === "top") {
     return { x: 0, y: -1 };
@@ -1349,11 +1448,14 @@ function getAnchorDirection(anchor: ConnectorAnchor | null): BoardPoint | null {
   return null;
 }
 
+/**
+ * Handles score endpoint direction alignment.
+ */
 function scoreEndpointDirectionAlignment(
   fromPoint: BoardPoint,
   toPoint: BoardPoint,
   fromDirection: BoardPoint | null,
-  toDirection: BoardPoint | null
+  toDirection: BoardPoint | null,
 ): number {
   const deltaX = toPoint.x - fromPoint.x;
   const deltaY = toPoint.y - fromPoint.y;
@@ -1367,7 +1469,8 @@ function scoreEndpointDirectionAlignment(
   const forwardY = deltaY / distance;
 
   if (fromDirection) {
-    const fromAlignment = fromDirection.x * forwardX + fromDirection.y * forwardY;
+    const fromAlignment =
+      fromDirection.x * forwardX + fromDirection.y * forwardY;
     if (fromAlignment < 0) {
       penalty += 2500 + Math.abs(fromAlignment) * 1400;
     } else {
@@ -1389,10 +1492,13 @@ function scoreEndpointDirectionAlignment(
   return penalty;
 }
 
+/**
+ * Creates orthogonal route candidates.
+ */
 function createOrthogonalRouteCandidates(
   fromPoint: BoardPoint,
   toPoint: BoardPoint,
-  detourDistance: number
+  detourDistance: number,
 ): BoardPoint[][] {
   const routes: BoardPoint[][] = [];
   const middleX = (fromPoint.x + toPoint.x) / 2;
@@ -1412,19 +1518,52 @@ function createOrthogonalRouteCandidates(
   routes.push(
     [fromPoint, { x: toPoint.x, y: fromPoint.y }, toPoint],
     [fromPoint, { x: fromPoint.x, y: toPoint.y }, toPoint],
-    [fromPoint, { x: middleX, y: fromPoint.y }, { x: middleX, y: toPoint.y }, toPoint],
-    [fromPoint, { x: fromPoint.x, y: middleY }, { x: toPoint.x, y: middleY }, toPoint],
-    [fromPoint, { x: fromPoint.x, y: topY }, { x: toPoint.x, y: topY }, toPoint],
-    [fromPoint, { x: fromPoint.x, y: bottomY }, { x: toPoint.x, y: bottomY }, toPoint],
-    [fromPoint, { x: leftX, y: fromPoint.y }, { x: leftX, y: toPoint.y }, toPoint],
-    [fromPoint, { x: rightX, y: fromPoint.y }, { x: rightX, y: toPoint.y }, toPoint]
+    [
+      fromPoint,
+      { x: middleX, y: fromPoint.y },
+      { x: middleX, y: toPoint.y },
+      toPoint,
+    ],
+    [
+      fromPoint,
+      { x: fromPoint.x, y: middleY },
+      { x: toPoint.x, y: middleY },
+      toPoint,
+    ],
+    [
+      fromPoint,
+      { x: fromPoint.x, y: topY },
+      { x: toPoint.x, y: topY },
+      toPoint,
+    ],
+    [
+      fromPoint,
+      { x: fromPoint.x, y: bottomY },
+      { x: toPoint.x, y: bottomY },
+      toPoint,
+    ],
+    [
+      fromPoint,
+      { x: leftX, y: fromPoint.y },
+      { x: leftX, y: toPoint.y },
+      toPoint,
+    ],
+    [
+      fromPoint,
+      { x: rightX, y: fromPoint.y },
+      { x: rightX, y: toPoint.y },
+      toPoint,
+    ],
   );
 
   const unique = new Map<string, BoardPoint[]>();
   routes.forEach((candidate) => {
     const simplified = simplifyRoutePoints(candidate);
     const key = simplified
-      .map((point) => `${Math.round(point.x * 10) / 10},${Math.round(point.y * 10) / 10}`)
+      .map(
+        (point) =>
+          `${Math.round(point.x * 10) / 10},${Math.round(point.y * 10) / 10}`,
+      )
       .join("|");
     if (!unique.has(key)) {
       unique.set(key, simplified);
@@ -1434,9 +1573,12 @@ function createOrthogonalRouteCandidates(
   return Array.from(unique.values());
 }
 
+/**
+ * Handles score connector route.
+ */
 function scoreConnectorRoute(
   points: BoardPoint[],
-  obstacles: ConnectorRoutingObstacle[]
+  obstacles: ConnectorRoutingObstacle[],
 ): number {
   const intersections = countRouteIntersections(points, obstacles);
   const bends = Math.max(0, points.length - 2);
@@ -1444,6 +1586,9 @@ function scoreConnectorRoute(
   return intersections * 1_000_000 + bends * 120 + length;
 }
 
+/**
+ * Builds connector route geometry.
+ */
 function buildConnectorRouteGeometry(options: {
   from: ResolvedConnectorEndpoint;
   to: ResolvedConnectorEndpoint;
@@ -1452,20 +1597,22 @@ function buildConnectorRouteGeometry(options: {
 }): ConnectorRouteGeometry {
   const start = { x: options.from.x, y: options.from.y };
   const end = { x: options.to.x, y: options.to.y };
-  const fromDirection = options.from.direction ?? getAnchorDirection(options.from.anchor);
-  const toDirection = options.to.direction ?? getAnchorDirection(options.to.anchor);
+  const fromDirection =
+    options.from.direction ?? getAnchorDirection(options.from.anchor);
+  const toDirection =
+    options.to.direction ?? getAnchorDirection(options.to.anchor);
   const leadDistance = 30;
 
   const startLead = fromDirection
     ? {
         x: start.x + fromDirection.x * leadDistance,
-        y: start.y + fromDirection.y * leadDistance
+        y: start.y + fromDirection.y * leadDistance,
       }
     : null;
   const endLead = toDirection
     ? {
         x: end.x + toDirection.x * leadDistance,
-        y: end.y + toDirection.y * leadDistance
+        y: end.y + toDirection.y * leadDistance,
       }
     : null;
 
@@ -1473,12 +1620,20 @@ function buildConnectorRouteGeometry(options: {
   const routeEnd = endLead ?? end;
   const detourDistance = Math.max(
     52,
-    Math.min(200, 48 + Math.max(Math.abs(routeStart.x - routeEnd.x), Math.abs(routeStart.y - routeEnd.y)) * 0.2)
+    Math.min(
+      200,
+      48 +
+        Math.max(
+          Math.abs(routeStart.x - routeEnd.x),
+          Math.abs(routeStart.y - routeEnd.y),
+        ) *
+          0.2,
+    ),
   );
   const bridgeCandidates = createOrthogonalRouteCandidates(
     routeStart,
     routeEnd,
-    detourDistance
+    detourDistance,
   );
 
   const fullCandidates = bridgeCandidates.map((bridge) =>
@@ -1487,8 +1642,8 @@ function buildConnectorRouteGeometry(options: {
       ...(startLead ? [startLead] : []),
       ...bridge.slice(1, -1),
       ...(endLead ? [endLead] : []),
-      end
-    ])
+      end,
+    ]),
   );
 
   if (fullCandidates.length === 0) {
@@ -1515,18 +1670,50 @@ function buildConnectorRouteGeometry(options: {
     bounds,
     midPoint,
     startDirection: directions.startDirection,
-    endDirection: directions.endDirection
+    endDirection: directions.endDirection,
   };
 }
 
+/**
+ * Handles tool icon.
+ */
 function ToolIcon({ kind }: { kind: BoardObjectKind }) {
   if (kind === "sticky") {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-        <rect x="2" y="2" width="12" height="12" rx="1.8" fill="#fde68a" stroke="#b08928" />
-        <rect x="3.2" y="3.2" width="9.6" height="2.2" rx="0.8" fill="#fcd34d" />
-        <line x1="4.1" y1="7.2" x2="11.9" y2="7.2" stroke="#9a7b19" strokeWidth="0.9" />
-        <line x1="4.1" y1="9.4" x2="10.4" y2="9.4" stroke="#9a7b19" strokeWidth="0.9" />
+        <rect
+          x="2"
+          y="2"
+          width="12"
+          height="12"
+          rx="1.8"
+          fill="#fde68a"
+          stroke="#b08928"
+        />
+        <rect
+          x="3.2"
+          y="3.2"
+          width="9.6"
+          height="2.2"
+          rx="0.8"
+          fill="#fcd34d"
+        />
+        <line
+          x1="4.1"
+          y1="7.2"
+          x2="11.9"
+          y2="7.2"
+          stroke="#9a7b19"
+          strokeWidth="0.9"
+        />
+        <line
+          x1="4.1"
+          y1="9.4"
+          x2="10.4"
+          y2="9.4"
+          stroke="#9a7b19"
+          strokeWidth="0.9"
+        />
       </svg>
     );
   }
@@ -1534,7 +1721,15 @@ function ToolIcon({ kind }: { kind: BoardObjectKind }) {
   if (kind === "rect") {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-        <rect x="2" y="3" width="12" height="10" rx="0.5" fill="#93c5fd" stroke="#1d4ed8" />
+        <rect
+          x="2"
+          y="3"
+          width="12"
+          height="10"
+          rx="0.5"
+          fill="#93c5fd"
+          stroke="#1d4ed8"
+        />
       </svg>
     );
   }
@@ -1550,11 +1745,47 @@ function ToolIcon({ kind }: { kind: BoardObjectKind }) {
   if (kind === "gridContainer") {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-        <rect x="2" y="2" width="12" height="12" rx="1.2" fill="#f8fafc" stroke="#475569" />
-        <rect x="3.2" y="3.2" width="4.6" height="4.6" rx="0.6" fill="#d1fae5" />
-        <rect x="8.2" y="3.2" width="4.6" height="4.6" rx="0.6" fill="#fee2e2" />
-        <rect x="3.2" y="8.2" width="4.6" height="4.6" rx="0.6" fill="#dbeafe" />
-        <rect x="8.2" y="8.2" width="4.6" height="4.6" rx="0.6" fill="#fef3c7" />
+        <rect
+          x="2"
+          y="2"
+          width="12"
+          height="12"
+          rx="1.2"
+          fill="#f8fafc"
+          stroke="#475569"
+        />
+        <rect
+          x="3.2"
+          y="3.2"
+          width="4.6"
+          height="4.6"
+          rx="0.6"
+          fill="#d1fae5"
+        />
+        <rect
+          x="8.2"
+          y="3.2"
+          width="4.6"
+          height="4.6"
+          rx="0.6"
+          fill="#fee2e2"
+        />
+        <rect
+          x="3.2"
+          y="8.2"
+          width="4.6"
+          height="4.6"
+          rx="0.6"
+          fill="#dbeafe"
+        />
+        <rect
+          x="8.2"
+          y="8.2"
+          width="4.6"
+          height="4.6"
+          rx="0.6"
+          fill="#fef3c7"
+        />
       </svg>
     );
   }
@@ -1563,8 +1794,22 @@ function ToolIcon({ kind }: { kind: BoardObjectKind }) {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
         <line x1="3" y1="8" x2="13" y2="8" stroke="#334155" strokeWidth="2.2" />
-        <circle cx="3" cy="8" r="1.6" fill="white" stroke="#334155" strokeWidth="1" />
-        <circle cx="13" cy="8" r="1.6" fill="white" stroke="#334155" strokeWidth="1" />
+        <circle
+          cx="3"
+          cy="8"
+          r="1.6"
+          fill="white"
+          stroke="#334155"
+          strokeWidth="1"
+        />
+        <circle
+          cx="13"
+          cy="8"
+          r="1.6"
+          fill="white"
+          stroke="#334155"
+          strokeWidth="1"
+        />
       </svg>
     );
   }
@@ -1572,9 +1817,23 @@ function ToolIcon({ kind }: { kind: BoardObjectKind }) {
   if (kind === "connectorArrow") {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-        <line x1="2.8" y1="8" x2="12.3" y2="8" stroke="#1d4ed8" strokeWidth="2.2" />
+        <line
+          x1="2.8"
+          y1="8"
+          x2="12.3"
+          y2="8"
+          stroke="#1d4ed8"
+          strokeWidth="2.2"
+        />
         <polygon points="12.3,5.5 14.6,8 12.3,10.5" fill="#1d4ed8" />
-        <circle cx="2.8" cy="8" r="1.3" fill="white" stroke="#1d4ed8" strokeWidth="1" />
+        <circle
+          cx="2.8"
+          cy="8"
+          r="1.3"
+          fill="white"
+          stroke="#1d4ed8"
+          strokeWidth="1"
+        />
       </svg>
     );
   }
@@ -1582,7 +1841,14 @@ function ToolIcon({ kind }: { kind: BoardObjectKind }) {
   if (kind === "connectorBidirectional") {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-        <line x1="3.6" y1="8" x2="12.4" y2="8" stroke="#0f766e" strokeWidth="2.2" />
+        <line
+          x1="3.6"
+          y1="8"
+          x2="12.4"
+          y2="8"
+          stroke="#0f766e"
+          strokeWidth="2.2"
+        />
         <polygon points="3.6,5.6 1.4,8 3.6,10.4" fill="#0f766e" />
         <polygon points="12.4,5.6 14.6,8 12.4,10.4" fill="#0f766e" />
       </svg>
@@ -1592,7 +1858,12 @@ function ToolIcon({ kind }: { kind: BoardObjectKind }) {
   if (kind === "triangle") {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-        <polygon points="8,2 14,13 2,13" fill="#c4b5fd" stroke="#6d28d9" strokeWidth="1.1" />
+        <polygon
+          points="8,2 14,13 2,13"
+          fill="#c4b5fd"
+          stroke="#6d28d9"
+          strokeWidth="1.1"
+        />
       </svg>
     );
   }
@@ -1612,14 +1883,24 @@ function ToolIcon({ kind }: { kind: BoardObjectKind }) {
 
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-      <line x1="2.5" y1="8" x2="13.5" y2="8" stroke="#1f2937" strokeWidth="2.5" />
+      <line
+        x1="2.5"
+        y1="8"
+        x2="13.5"
+        y2="8"
+        stroke="#1f2937"
+        strokeWidth="2.5"
+      />
     </svg>
   );
 }
 
+/**
+ * Handles color swatch picker.
+ */
 function ColorSwatchPicker({
   currentColor,
-  onSelectColor
+  onSelectColor,
 }: {
   currentColor: string | null;
   onSelectColor: (nextColor: string) => void;
@@ -1631,13 +1912,14 @@ function ColorSwatchPicker({
       style={{
         display: "grid",
         gridTemplateColumns: "repeat(5, 18px)",
-        gap: 6
+        gap: 6,
       }}
       onPointerDown={(event) => event.stopPropagation()}
     >
       {BOARD_COLOR_SWATCHES.map((swatch) => {
         const isSelected =
-          currentColorKey !== null && swatch.value.toLowerCase() === currentColorKey;
+          currentColorKey !== null &&
+          swatch.value.toLowerCase() === currentColorKey;
 
         return (
           <button
@@ -1650,10 +1932,12 @@ function ColorSwatchPicker({
               width: 18,
               height: 18,
               borderRadius: "50%",
-              border: isSelected ? "2px solid #0f172a" : "1px solid rgba(15, 23, 42, 0.25)",
+              border: isSelected
+                ? "2px solid #0f172a"
+                : "1px solid rgba(15, 23, 42, 0.25)",
               boxSizing: "border-box",
               background: swatch.value,
-              cursor: "pointer"
+              cursor: "pointer",
             }}
           />
         );
@@ -1662,6 +1946,9 @@ function ColorSwatchPicker({
   );
 }
 
+/**
+ * Handles trash icon.
+ */
 function TrashIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -1677,10 +1964,21 @@ function TrashIcon() {
   );
 }
 
+/**
+ * Handles briefcase icon.
+ */
 function BriefcaseIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-      <rect x="2" y="4.6" width="12" height="8.8" rx="1.5" fill="#e0e7ff" stroke="#3730a3" />
+      <rect
+        x="2"
+        y="4.6"
+        width="12"
+        height="8.8"
+        rx="1.5"
+        fill="#e0e7ff"
+        stroke="#3730a3"
+      />
       <path
         d="M6 4V3.2c0-.4.3-.7.7-.7h2.6c.4 0 .7.3.7.7V4"
         stroke="#3730a3"
@@ -1696,10 +1994,16 @@ function BriefcaseIcon() {
 
 const CORNER_HANDLES: ResizeCorner[] = ["nw", "ne", "sw", "se"];
 
+/**
+ * Gets corner cursor.
+ */
 function getCornerCursor(corner: ResizeCorner): string {
   return corner === "nw" || corner === "se" ? "nwse-resize" : "nesw-resize";
 }
 
+/**
+ * Gets corner position style.
+ */
 function getCornerPositionStyle(corner: ResizeCorner): {
   left?: number;
   right?: number;
@@ -1722,6 +2026,9 @@ function getCornerPositionStyle(corner: ResizeCorner): {
   return { right: 0, bottom: 0, transform: "translate(50%, 50%)" };
 }
 
+/**
+ * Gets connector anchor.
+ */
 function getConnectorAnchor(value: unknown): ConnectorAnchor | null {
   if (
     value === "top" ||
@@ -1735,7 +2042,13 @@ function getConnectorAnchor(value: unknown): ConnectorAnchor | null {
   return null;
 }
 
-function toBoardObject(rawId: string, rawData: Record<string, unknown>): BoardObject | null {
+/**
+ * Handles to board object.
+ */
+function toBoardObject(
+  rawId: string,
+  rawData: Record<string, unknown>,
+): BoardObject | null {
   const type = rawData.type;
   if (!isBoardObjectKind(type)) {
     return null;
@@ -1763,9 +2076,18 @@ function toBoardObject(rawId: string, rawData: Record<string, unknown>): BoardOb
     fromY: getFiniteNumber(rawData.fromY),
     toX: getFiniteNumber(rawData.toX),
     toY: getFiniteNumber(rawData.toY),
-    gridRows: getGridDimension(rawData.gridRows, type === "gridContainer" ? 2 : null),
-    gridCols: getGridDimension(rawData.gridCols, type === "gridContainer" ? 2 : null),
-    gridGap: getGridGap(rawData.gridGap, type === "gridContainer" ? GRID_CONTAINER_DEFAULT_GAP : null),
+    gridRows: getGridDimension(
+      rawData.gridRows,
+      type === "gridContainer" ? 2 : null,
+    ),
+    gridCols: getGridDimension(
+      rawData.gridCols,
+      type === "gridContainer" ? 2 : null,
+    ),
+    gridGap: getGridGap(
+      rawData.gridGap,
+      type === "gridContainer" ? GRID_CONTAINER_DEFAULT_GAP : null,
+    ),
     gridCellColors: getGridCellColors(rawData.gridCellColors),
     containerTitle:
       type === "gridContainer"
@@ -1777,11 +2099,17 @@ function toBoardObject(rawId: string, rawData: Record<string, unknown>): BoardOb
     containerSectionIndex: getNonNegativeInteger(rawData.containerSectionIndex),
     containerRelX: getFiniteNumber(rawData.containerRelX),
     containerRelY: getFiniteNumber(rawData.containerRelY),
-    updatedAt: getTimestampIso(rawData.updatedAt)
+    updatedAt: getTimestampIso(rawData.updatedAt),
   };
 }
 
-function toPresenceUser(rawId: string, rawData: Record<string, unknown>): PresenceUser {
+/**
+ * Handles to presence user.
+ */
+function toPresenceUser(
+  rawId: string,
+  rawData: Record<string, unknown>,
+): PresenceUser {
   const lastSeenAtMs = getFiniteNumber(rawData.lastSeenAtMs);
   const lastSeenAt = lastSeenAtMs ?? getTimestampMillis(rawData.lastSeenAt);
 
@@ -1793,10 +2121,13 @@ function toPresenceUser(rawId: string, rawData: Record<string, unknown>): Presen
     cursorX: typeof rawData.cursorX === "number" ? rawData.cursorX : null,
     cursorY: typeof rawData.cursorY === "number" ? rawData.cursorY : null,
     active: Boolean(rawData.active),
-    lastSeenAt
+    lastSeenAt,
   };
 }
 
+/**
+ * Handles to board error message.
+ */
 function toBoardErrorMessage(error: unknown, fallback: string): string {
   if (typeof error === "object" && error !== null) {
     const candidate = error as {
@@ -1805,7 +2136,8 @@ function toBoardErrorMessage(error: unknown, fallback: string): string {
     };
 
     const code = typeof candidate.code === "string" ? candidate.code : null;
-    const message = typeof candidate.message === "string" ? candidate.message : null;
+    const message =
+      typeof candidate.message === "string" ? candidate.message : null;
 
     if (code === "permission-denied") {
       return `${fallback} Firestore denied the request (permission-denied).`;
@@ -1831,10 +2163,13 @@ function toBoardErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+/**
+ * Handles realtime board canvas.
+ */
 export default function RealtimeBoardCanvas({
   boardId,
   user,
-  permissions
+  permissions,
 }: RealtimeBoardCanvasProps) {
   const db = useMemo(() => getFirebaseClientDb(), []);
   const canEdit = permissions.canEdit;
@@ -1846,8 +2181,11 @@ export default function RealtimeBoardCanvas({
   const panStateRef = useRef<PanState | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const cornerResizeStateRef = useRef<CornerResizeState | null>(null);
-  const lineEndpointResizeStateRef = useRef<LineEndpointResizeState | null>(null);
-  const connectorEndpointDragStateRef = useRef<ConnectorEndpointDragState | null>(null);
+  const lineEndpointResizeStateRef = useRef<LineEndpointResizeState | null>(
+    null,
+  );
+  const connectorEndpointDragStateRef =
+    useRef<ConnectorEndpointDragState | null>(null);
   const rotateStateRef = useRef<RotateState | null>(null);
   const marqueeSelectionStateRef = useRef<MarqueeSelectionState | null>(null);
   const aiFooterResizeStateRef = useRef<AiFooterResizeState | null>(null);
@@ -1857,14 +2195,20 @@ export default function RealtimeBoardCanvas({
   const selectedObjectIdsRef = useRef<Set<string>>(new Set());
   const draftGeometryByIdRef = useRef<Record<string, ObjectGeometry>>({});
   const draftConnectorByIdRef = useRef<Record<string, ConnectorDraft>>({});
-  const gridContentDraftByIdRef = useRef<Record<string, GridContainerContentDraft>>({});
-  const stickyTextSyncStateRef = useRef<Map<string, StickyTextSyncState>>(new Map());
+  const gridContentDraftByIdRef = useRef<
+    Record<string, GridContainerContentDraft>
+  >({});
+  const stickyTextSyncStateRef = useRef<Map<string, StickyTextSyncState>>(
+    new Map(),
+  );
   const gridContentSyncTimerByIdRef = useRef<Map<string, number>>(new Map());
   const sendCursorAtRef = useRef(0);
   const canEditRef = useRef(canEdit);
   const lastCursorWriteRef = useRef<BoardPoint | null>(null);
   const lastPositionWriteByIdRef = useRef<Map<string, BoardPoint>>(new Map());
-  const lastGeometryWriteByIdRef = useRef<Map<string, ObjectGeometry>>(new Map());
+  const lastGeometryWriteByIdRef = useRef<Map<string, ObjectGeometry>>(
+    new Map(),
+  );
   const lastStickyWriteByIdRef = useRef<Map<string, string>>(new Map());
   const writeMetricsRef = useRef(createRealtimeWriteMetrics());
 
@@ -1872,12 +2216,12 @@ export default function RealtimeBoardCanvas({
   const [objects, setObjects] = useState<BoardObject[]>([]);
   const [presenceUsers, setPresenceUsers] = useState<PresenceUser[]>([]);
   const [textDrafts, setTextDrafts] = useState<Record<string, string>>({});
-  const [draftGeometryById, setDraftGeometryById] = useState<Record<string, ObjectGeometry>>(
-    {}
-  );
-  const [draftConnectorById, setDraftConnectorById] = useState<Record<string, ConnectorDraft>>(
-    {}
-  );
+  const [draftGeometryById, setDraftGeometryById] = useState<
+    Record<string, ObjectGeometry>
+  >({});
+  const [draftConnectorById, setDraftConnectorById] = useState<
+    Record<string, ConnectorDraft>
+  >({});
   const [gridContentDraftById, setGridContentDraftById] = useState<
     Record<string, GridContainerContentDraft>
   >({});
@@ -1889,25 +2233,30 @@ export default function RealtimeBoardCanvas({
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
   const [isAiFooterCollapsed, setIsAiFooterCollapsed] = useState(false);
-  const [aiFooterHeight, setAiFooterHeight] = useState(AI_FOOTER_DEFAULT_HEIGHT);
+  const [aiFooterHeight, setAiFooterHeight] = useState(
+    AI_FOOTER_DEFAULT_HEIGHT,
+  );
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [isAiSubmitting, setIsAiSubmitting] = useState(false);
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
-  const [selectionHudSize, setSelectionHudSize] = useState({ width: 0, height: 0 });
+  const [selectionHudSize, setSelectionHudSize] = useState({
+    width: 0,
+    height: 0,
+  });
 
   const boardColor = useMemo(() => hashToColor(user.uid), [user.uid]);
   const objectsCollectionRef = useMemo(
     () => collection(db, `boards/${boardId}/objects`),
-    [boardId, db]
+    [boardId, db],
   );
   const presenceCollectionRef = useMemo(
     () => collection(db, `boards/${boardId}/presence`),
-    [boardId, db]
+    [boardId, db],
   );
   const selfPresenceRef = useMemo(
     () => doc(db, `boards/${boardId}/presence/${user.uid}`),
-    [boardId, db, user.uid]
+    [boardId, db, user.uid],
   );
 
   useEffect(() => {
@@ -1922,18 +2271,21 @@ export default function RealtimeBoardCanvas({
     objectsByIdRef.current = new Map(objects.map((item) => [item.id, item]));
 
     const objectIds = new Set(objects.map((item) => item.id));
-    [lastPositionWriteByIdRef.current, lastGeometryWriteByIdRef.current, lastStickyWriteByIdRef.current]
-      .forEach((cache) => {
-        Array.from(cache.keys()).forEach((objectId) => {
-          if (!objectIds.has(objectId)) {
-            cache.delete(objectId);
-          }
-        });
+    [
+      lastPositionWriteByIdRef.current,
+      lastGeometryWriteByIdRef.current,
+      lastStickyWriteByIdRef.current,
+    ].forEach((cache) => {
+      Array.from(cache.keys()).forEach((objectId) => {
+        if (!objectIds.has(objectId)) {
+          cache.delete(objectId);
+        }
       });
+    });
 
-    const removedGridDraftIds = Object.keys(gridContentDraftByIdRef.current).filter(
-      (objectId) => !objectIds.has(objectId)
-    );
+    const removedGridDraftIds = Object.keys(
+      gridContentDraftByIdRef.current,
+    ).filter((objectId) => !objectIds.has(objectId));
     if (removedGridDraftIds.length > 0) {
       setGridContentDraftById((previous) => {
         const next = { ...previous };
@@ -1973,7 +2325,9 @@ export default function RealtimeBoardCanvas({
       return;
     }
 
-    const savedHeight = window.localStorage.getItem(AI_FOOTER_HEIGHT_STORAGE_KEY);
+    const savedHeight = window.localStorage.getItem(
+      AI_FOOTER_HEIGHT_STORAGE_KEY,
+    );
     if (!savedHeight) {
       return;
     }
@@ -1991,7 +2345,10 @@ export default function RealtimeBoardCanvas({
       return;
     }
 
-    window.localStorage.setItem(AI_FOOTER_HEIGHT_STORAGE_KEY, String(aiFooterHeight));
+    window.localStorage.setItem(
+      AI_FOOTER_HEIGHT_STORAGE_KEY,
+      String(aiFooterHeight),
+    );
   }, [aiFooterHeight]);
 
   useEffect(() => {
@@ -2001,10 +2358,13 @@ export default function RealtimeBoardCanvas({
     }
 
     element.scrollTop = element.scrollHeight;
-  }, [chatMessages, isAiFooterCollapsed]);
+  }, [chatMessages, isAiFooterCollapsed, isAiSubmitting]);
 
   useEffect(() => {
-    if (process.env.NODE_ENV === "production" || !isWriteMetricsDebugEnabled()) {
+    if (
+      process.env.NODE_ENV === "production" ||
+      !isWriteMetricsDebugEnabled()
+    ) {
       return;
     }
 
@@ -2024,10 +2384,13 @@ export default function RealtimeBoardCanvas({
       return;
     }
 
+    /**
+     * Handles sync stage size.
+     */
     const syncStageSize = () => {
       setStageSize({
         width: stageElement.clientWidth,
-        height: stageElement.clientHeight
+        height: stageElement.clientHeight,
       });
     };
 
@@ -2071,6 +2434,9 @@ export default function RealtimeBoardCanvas({
   useEffect(() => {
     let cancelled = false;
 
+    /**
+     * Handles refresh id token.
+     */
     const refreshIdToken = async () => {
       try {
         const token = await user.getIdToken();
@@ -2096,7 +2462,14 @@ export default function RealtimeBoardCanvas({
   }, [user]);
 
   const pushPresencePatchToApi = useCallback(
-    (payload: { active: boolean; cursorX: number | null; cursorY: number | null }, keepalive: boolean) => {
+    (
+      payload: {
+        active: boolean;
+        cursorX: number | null;
+        cursorY: number | null;
+      },
+      keepalive: boolean,
+    ) => {
       const idToken = idTokenRef.current;
       if (!idToken) {
         return;
@@ -2106,15 +2479,15 @@ export default function RealtimeBoardCanvas({
         method: "PATCH",
         headers: {
           Authorization: `Bearer ${idToken}`,
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
-        keepalive
+        keepalive,
       }).catch(() => {
         // Best-effort fallback for tab close/navigation transitions.
       });
     },
-    [boardId]
+    [boardId],
   );
 
   const markPresenceInactive = useCallback(
@@ -2124,7 +2497,7 @@ export default function RealtimeBoardCanvas({
       const payload = {
         active: false,
         cursorX: null,
-        cursorY: null
+        cursorY: null,
       };
 
       void setDoc(
@@ -2132,16 +2505,16 @@ export default function RealtimeBoardCanvas({
         {
           ...payload,
           lastSeenAtMs: Date.now(),
-          lastSeenAt: serverTimestamp()
+          lastSeenAt: serverTimestamp(),
         },
-        { merge: true }
+        { merge: true },
       ).catch(() => {
         // Ignore write failures during navigation/tab close.
       });
 
       pushPresencePatchToApi(payload, keepalive);
     },
-    [pushPresencePatchToApi, selfPresenceRef]
+    [pushPresencePatchToApi, selfPresenceRef],
   );
 
   useEffect(() => {
@@ -2152,7 +2525,7 @@ export default function RealtimeBoardCanvas({
         snapshot.docs.forEach((documentSnapshot) => {
           const parsed = toBoardObject(
             documentSnapshot.id,
-            documentSnapshot.data() as Record<string, unknown>
+            documentSnapshot.data() as Record<string, unknown>,
           );
           if (parsed) {
             nextObjects.push(parsed);
@@ -2167,17 +2540,21 @@ export default function RealtimeBoardCanvas({
           return left.id.localeCompare(right.id);
         });
 
-        const nextObjectIds = new Set(nextObjects.map((objectItem) => objectItem.id));
+        const nextObjectIds = new Set(
+          nextObjects.map((objectItem) => objectItem.id),
+        );
         setSelectedObjectIds((previous) =>
-          previous.filter((objectId) => nextObjectIds.has(objectId))
+          previous.filter((objectId) => nextObjectIds.has(objectId)),
         );
 
         setObjects(nextObjects);
       },
       (error) => {
         console.error("Failed to sync board objects", error);
-        setBoardError(toBoardErrorMessage(error, "Failed to sync board objects."));
-      }
+        setBoardError(
+          toBoardErrorMessage(error, "Failed to sync board objects."),
+        );
+      },
     );
 
     return unsubscribe;
@@ -2191,22 +2568,28 @@ export default function RealtimeBoardCanvas({
           toPresenceUser(
             documentSnapshot.id,
             documentSnapshot.data({
-              serverTimestamps: "estimate"
-            }) as Record<string, unknown>
-          )
+              serverTimestamps: "estimate",
+            }) as Record<string, unknown>,
+          ),
         );
         setPresenceUsers(users);
       },
       (error) => {
         console.error("Failed to sync presence", error);
-      }
+      },
     );
 
     return unsubscribe;
   }, [presenceCollectionRef]);
 
   useEffect(() => {
-    const setPresenceState = async (cursor: BoardPoint | null, active: boolean) => {
+    /**
+     * Sets presence state.
+     */
+    const setPresenceState = async (
+      cursor: BoardPoint | null,
+      active: boolean,
+    ) => {
       await setDoc(
         selfPresenceRef,
         {
@@ -2218,9 +2601,9 @@ export default function RealtimeBoardCanvas({
           cursorY: cursor?.y ?? null,
           active,
           lastSeenAtMs: Date.now(),
-          lastSeenAt: serverTimestamp()
+          lastSeenAt: serverTimestamp(),
         },
-        { merge: true }
+        { merge: true },
       );
     };
 
@@ -2234,9 +2617,19 @@ export default function RealtimeBoardCanvas({
       window.clearInterval(heartbeatInterval);
       markPresenceInactive(false);
     };
-  }, [boardColor, markPresenceInactive, selfPresenceRef, user.displayName, user.email, user.uid]);
+  }, [
+    boardColor,
+    markPresenceInactive,
+    selfPresenceRef,
+    user.displayName,
+    user.email,
+    user.uid,
+  ]);
 
   useEffect(() => {
+    /**
+     * Handles handle page hide.
+     */
     const handlePageHide = () => {
       markPresenceInactive(true);
     };
@@ -2250,32 +2643,38 @@ export default function RealtimeBoardCanvas({
     };
   }, [markPresenceInactive]);
 
-  const getCurrentObjectGeometry = useCallback((objectId: string): ObjectGeometry | null => {
-    const draftGeometry = draftGeometryByIdRef.current[objectId];
-    if (draftGeometry) {
-      return draftGeometry;
-    }
+  const getCurrentObjectGeometry = useCallback(
+    (objectId: string): ObjectGeometry | null => {
+      const draftGeometry = draftGeometryByIdRef.current[objectId];
+      if (draftGeometry) {
+        return draftGeometry;
+      }
 
-    const objectItem = objectsByIdRef.current.get(objectId);
-    if (!objectItem) {
-      return null;
-    }
+      const objectItem = objectsByIdRef.current.get(objectId);
+      if (!objectItem) {
+        return null;
+      }
 
-    return {
-      x: objectItem.x,
-      y: objectItem.y,
-      width: objectItem.width,
-      height: objectItem.height,
-      rotationDeg: objectItem.rotationDeg
-    };
-  }, []);
+      return {
+        x: objectItem.x,
+        y: objectItem.y,
+        width: objectItem.width,
+        height: objectItem.height,
+        rotationDeg: objectItem.rotationDeg,
+      };
+    },
+    [],
+  );
 
-  const setDraftGeometry = useCallback((objectId: string, geometry: ObjectGeometry) => {
-    setDraftGeometryById((previous) => ({
-      ...previous,
-      [objectId]: geometry
-    }));
-  }, []);
+  const setDraftGeometry = useCallback(
+    (objectId: string, geometry: ObjectGeometry) => {
+      setDraftGeometryById((previous) => ({
+        ...previous,
+        [objectId]: geometry,
+      }));
+    },
+    [],
+  );
 
   const clearDraftGeometry = useCallback((objectId: string) => {
     setDraftGeometryById((previous) => {
@@ -2289,12 +2688,15 @@ export default function RealtimeBoardCanvas({
     });
   }, []);
 
-  const setDraftConnector = useCallback((objectId: string, draft: ConnectorDraft) => {
-    setDraftConnectorById((previous) => ({
-      ...previous,
-      [objectId]: draft
-    }));
-  }, []);
+  const setDraftConnector = useCallback(
+    (objectId: string, draft: ConnectorDraft) => {
+      setDraftConnectorById((previous) => ({
+        ...previous,
+        [objectId]: draft,
+      }));
+    },
+    [],
+  );
 
   const clearDraftConnector = useCallback((objectId: string) => {
     setDraftConnectorById((previous) => {
@@ -2320,27 +2722,30 @@ export default function RealtimeBoardCanvas({
       }
 
       const objectGeometry = getCurrentObjectGeometry(objectItem.id);
-      const fallbackGeometry: ObjectGeometry =
-        objectGeometry ?? {
-          x: objectItem.x,
-          y: objectItem.y,
-          width: objectItem.width,
-          height: objectItem.height,
-          rotationDeg: objectItem.rotationDeg
-        };
+      const fallbackGeometry: ObjectGeometry = objectGeometry ?? {
+        x: objectItem.x,
+        y: objectItem.y,
+        width: objectItem.width,
+        height: objectItem.height,
+        rotationDeg: objectItem.rotationDeg,
+      };
 
       const defaultFromX =
         objectItem.fromX ??
-        fallbackGeometry.x + Math.max(CONNECTOR_MIN_SEGMENT_SIZE, fallbackGeometry.width) * 0.1;
+        fallbackGeometry.x +
+          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, fallbackGeometry.width) * 0.1;
       const defaultFromY =
         objectItem.fromY ??
-        fallbackGeometry.y + Math.max(CONNECTOR_MIN_SEGMENT_SIZE, fallbackGeometry.height) * 0.5;
+        fallbackGeometry.y +
+          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, fallbackGeometry.height) * 0.5;
       const defaultToX =
         objectItem.toX ??
-        fallbackGeometry.x + Math.max(CONNECTOR_MIN_SEGMENT_SIZE, fallbackGeometry.width) * 0.9;
+        fallbackGeometry.x +
+          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, fallbackGeometry.width) * 0.9;
       const defaultToY =
         objectItem.toY ??
-        fallbackGeometry.y + Math.max(CONNECTOR_MIN_SEGMENT_SIZE, fallbackGeometry.height) * 0.5;
+        fallbackGeometry.y +
+          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, fallbackGeometry.height) * 0.5;
 
       return {
         fromObjectId: objectItem.fromObjectId ?? null,
@@ -2350,17 +2755,17 @@ export default function RealtimeBoardCanvas({
         fromX: defaultFromX,
         fromY: defaultFromY,
         toX: defaultToX,
-        toY: defaultToY
+        toY: defaultToY,
       };
     },
-    [getCurrentObjectGeometry]
+    [getCurrentObjectGeometry],
   );
 
   const resolveConnectorEndpoint = useCallback(
     (
       objectId: string | null,
       anchor: ConnectorAnchor | null,
-      fallbackPoint: BoardPoint
+      fallbackPoint: BoardPoint,
     ): ResolvedConnectorEndpoint => {
       if (!objectId || !anchor) {
         return {
@@ -2369,7 +2774,7 @@ export default function RealtimeBoardCanvas({
           objectId: null,
           anchor: null,
           direction: null,
-          connected: false
+          connected: false,
         };
       }
 
@@ -2381,7 +2786,7 @@ export default function RealtimeBoardCanvas({
           objectId: null,
           anchor: null,
           direction: null,
-          connected: false
+          connected: false,
         };
       }
 
@@ -2393,26 +2798,30 @@ export default function RealtimeBoardCanvas({
           objectId: null,
           anchor: null,
           direction: null,
-          connected: false
+          connected: false,
         };
       }
 
-      const anchorPoint = getAnchorPointForGeometry(geometry, anchor, anchorObject.type);
+      const anchorPoint = getAnchorPointForGeometry(
+        geometry,
+        anchor,
+        anchorObject.type,
+      );
       return {
         x: anchorPoint.x,
         y: anchorPoint.y,
         objectId,
         anchor,
         direction: getAnchorDirectionForGeometry(anchor, geometry),
-        connected: true
+        connected: true,
       };
     },
-    [getCurrentObjectGeometry]
+    [getCurrentObjectGeometry],
   );
 
   const getResolvedConnectorEndpoints = useCallback(
     (
-      objectItem: BoardObject
+      objectItem: BoardObject,
     ): {
       from: ResolvedConnectorEndpoint;
       to: ResolvedConnectorEndpoint;
@@ -2432,229 +2841,49 @@ export default function RealtimeBoardCanvas({
         connectorDraft.fromAnchor,
         {
           x: connectorDraft.fromX,
-          y: connectorDraft.fromY
-        }
+          y: connectorDraft.fromY,
+        },
       );
-      const to = resolveConnectorEndpoint(connectorDraft.toObjectId, connectorDraft.toAnchor, {
-        x: connectorDraft.toX,
-        y: connectorDraft.toY
-      });
+      const to = resolveConnectorEndpoint(
+        connectorDraft.toObjectId,
+        connectorDraft.toAnchor,
+        {
+          x: connectorDraft.toX,
+          y: connectorDraft.toY,
+        },
+      );
 
       return {
         from,
         to,
-        draft: connectorDraft
+        draft: connectorDraft,
       };
     },
-    [getConnectorDraftForObject, resolveConnectorEndpoint]
+    [getConnectorDraftForObject, resolveConnectorEndpoint],
   );
 
-  const getContainerSectionsInfoById = useCallback(
-    (
-      geometryOverrides: Record<string, ObjectGeometry> = {}
-    ): Map<string, ContainerSectionsInfo> => {
-      const infos = new Map<string, ContainerSectionsInfo>();
-
-      objectsByIdRef.current.forEach((objectItem) => {
-        if (objectItem.type !== "gridContainer") {
-          return;
-        }
-
-        const geometry =
-          geometryOverrides[objectItem.id] ??
-          getCurrentObjectGeometry(objectItem.id) ?? {
-            x: objectItem.x,
-            y: objectItem.y,
-            width: objectItem.width,
-            height: objectItem.height,
-            rotationDeg: objectItem.rotationDeg
-          };
-        const rows = Math.max(1, Math.min(GRID_CONTAINER_MAX_ROWS, objectItem.gridRows ?? 2));
-        const cols = Math.max(1, Math.min(GRID_CONTAINER_MAX_COLS, objectItem.gridCols ?? 2));
-        const gap = Math.max(0, objectItem.gridGap ?? GRID_CONTAINER_DEFAULT_GAP);
-        infos.set(objectItem.id, {
-          containerId: objectItem.id,
-          containerZIndex: objectItem.zIndex,
-          rows,
-          cols,
-          gap,
-          geometry,
-          sections: getGridSectionBoundsFromGeometry(geometry, rows, cols, gap)
-        });
-      });
-
-      return infos;
-    },
-    [getCurrentObjectGeometry]
-  );
-
-  const resolveContainerMembershipForGeometry = useCallback(
-    (
-      objectId: string,
-      geometry: ObjectGeometry,
-      containerSectionsById: Map<string, ContainerSectionsInfo>
-    ): ContainerMembershipPatch => {
-      const objectItem = objectsByIdRef.current.get(objectId);
-      if (!objectItem || !isContainerChildEligible(objectItem.type)) {
-        return {
-          containerId: null,
-          containerSectionIndex: null,
-          containerRelX: null,
-          containerRelY: null
-        };
-      }
-
-      const center = getObjectCenterForPlacement(geometry);
-      const candidateSections: GridSectionBounds[] = [];
-
-      containerSectionsById.forEach((containerInfo) => {
-        if (containerInfo.containerId === objectId) {
-          return;
-        }
-
-        containerInfo.sections.forEach((section, sectionIndex) => {
-          if (isPointInsideBounds(center, section)) {
-            candidateSections.push({
-              containerId: containerInfo.containerId,
-              containerZIndex: containerInfo.containerZIndex,
-              sectionIndex,
-              bounds: section
-            });
-          }
-        });
-      });
-
-      if (candidateSections.length === 0) {
-        return {
-          containerId: null,
-          containerSectionIndex: null,
-          containerRelX: null,
-          containerRelY: null
-        };
-      }
-
-      candidateSections.sort((left, right) => {
-        if (left.containerZIndex !== right.containerZIndex) {
-          return right.containerZIndex - left.containerZIndex;
-        }
-
-        const leftCenter = getSectionBoundsCenter(left.bounds);
-        const rightCenter = getSectionBoundsCenter(right.bounds);
-        const leftDistance = getDistance(center, leftCenter);
-        const rightDistance = getDistance(center, rightCenter);
-        return leftDistance - rightDistance;
-      });
-
-      const winner = candidateSections[0];
-      const relative = toSectionRelativeCoordinate(center, winner.bounds);
-
-      return {
-        containerId: winner.containerId,
-        containerSectionIndex: winner.sectionIndex,
-        containerRelX: roundToStep(relative.x, 0.001),
-        containerRelY: roundToStep(relative.y, 0.001)
-      };
-    },
-    []
-  );
-
-  const getSectionAnchoredObjectUpdatesForContainer = useCallback(
-    (
-      containerId: string,
-      containerGeometry: ObjectGeometry,
-      rows: number,
-      cols: number,
-      gap: number
-    ): {
-      positionByObjectId: Record<string, BoardPoint>;
-      membershipByObjectId: Record<string, ContainerMembershipPatch>;
-    } => {
-      const sections = getGridSectionBoundsFromGeometry(containerGeometry, rows, cols, gap);
-      const containerBounds: ObjectBounds = {
-        left: containerGeometry.x,
-        right: containerGeometry.x + containerGeometry.width,
-        top: containerGeometry.y,
-        bottom: containerGeometry.y + containerGeometry.height
-      };
-      const positionByObjectId: Record<string, BoardPoint> = {};
-      const membershipByObjectId: Record<string, ContainerMembershipPatch> = {};
-
-      objectsByIdRef.current.forEach((objectItem) => {
-        if (!isContainerChildEligible(objectItem.type)) {
-          return;
-        }
-
-        const geometry =
-          getCurrentObjectGeometry(objectItem.id) ?? {
-            x: objectItem.x,
-            y: objectItem.y,
-            width: objectItem.width,
-            height: objectItem.height,
-            rotationDeg: objectItem.rotationDeg
-          };
-        const center = getObjectCenterForPlacement(geometry);
-        const belongsToContainer =
-          objectItem.containerId === containerId || isPointInsideBounds(center, containerBounds);
-
-        if (!belongsToContainer) {
-          return;
-        }
-
-        const explicitSectionIndex = objectItem.containerSectionIndex;
-        const sectionIndex =
-          typeof explicitSectionIndex === "number" &&
-          explicitSectionIndex >= 0 &&
-          explicitSectionIndex < sections.length
-            ? explicitSectionIndex
-            : getClosestSectionIndex(center, sections);
-        if (sectionIndex === null) {
-          return;
-        }
-
-        const section = sections[sectionIndex];
-        const sectionWidth = Math.max(1, section.right - section.left);
-        const sectionHeight = Math.max(1, section.bottom - section.top);
-        const relX = clamp(objectItem.containerRelX ?? 0.5, 0, 1);
-        const relY = clamp(objectItem.containerRelY ?? 0.5, 0, 1);
-        const targetCenterX = section.left + relX * sectionWidth;
-        const targetCenterY = section.top + relY * sectionHeight;
-        const maxX = section.right - geometry.width;
-        const maxY = section.bottom - geometry.height;
-
-        let nextX = targetCenterX - geometry.width / 2;
-        let nextY = targetCenterY - geometry.height / 2;
-        nextX =
-          maxX < section.left
-            ? section.left + (sectionWidth - geometry.width) / 2
-            : clamp(nextX, section.left, maxX);
-        nextY =
-          maxY < section.top
-            ? section.top + (sectionHeight - geometry.height) / 2
-            : clamp(nextY, section.top, maxY);
-
-        const nextCenter = {
-          x: nextX + geometry.width / 2,
-          y: nextY + geometry.height / 2
-        };
-        const nextRelative = toSectionRelativeCoordinate(nextCenter, section);
-        const nextMembership: ContainerMembershipPatch = {
-          containerId,
-          containerSectionIndex: sectionIndex,
-          containerRelX: roundToStep(nextRelative.x, 0.001),
-          containerRelY: roundToStep(nextRelative.y, 0.001)
-        };
-
-        positionByObjectId[objectItem.id] = { x: nextX, y: nextY };
-        membershipByObjectId[objectItem.id] = nextMembership;
-      });
-
-      return { positionByObjectId, membershipByObjectId };
-    },
-    [getCurrentObjectGeometry]
-  );
+  const {
+    getContainerSectionsInfoById,
+    resolveContainerMembershipForGeometry,
+    getSectionAnchoredObjectUpdatesForContainer,
+    buildContainerMembershipPatchesForPositions,
+  } = useContainerMembership({
+    objectsByIdRef,
+    getCurrentObjectGeometry,
+    maxRows: GRID_CONTAINER_MAX_ROWS,
+    maxCols: GRID_CONTAINER_MAX_COLS,
+    defaultGap: GRID_CONTAINER_DEFAULT_GAP,
+    getDistance,
+    roundToStep,
+    isConnectorKind,
+  });
 
   const updateObjectGeometry = useCallback(
-    async (objectId: string, geometry: ObjectGeometry, options: ObjectWriteOptions = {}) => {
+    async (
+      objectId: string,
+      geometry: ObjectGeometry,
+      options: ObjectWriteOptions = {},
+    ) => {
       const writeMetrics = writeMetricsRef.current;
       writeMetrics.markAttempted("object-geometry");
 
@@ -2671,7 +2900,8 @@ export default function RealtimeBoardCanvas({
         y: roundToStep(geometry.y, POSITION_WRITE_STEP),
         width: roundToStep(geometry.width, POSITION_WRITE_STEP),
         height: roundToStep(geometry.height, POSITION_WRITE_STEP),
-        rotationDeg: objectItem?.type === "gridContainer" ? 0 : geometry.rotationDeg
+        rotationDeg:
+          objectItem?.type === "gridContainer" ? 0 : geometry.rotationDeg,
       };
       const currentMembership = objectItem
         ? getMembershipPatchFromObject(objectItem)
@@ -2679,18 +2909,21 @@ export default function RealtimeBoardCanvas({
             containerId: null,
             containerSectionIndex: null,
             containerRelX: null,
-            containerRelY: null
+            containerRelY: null,
           };
-      const membershipPatchFromOptions = options.containerMembershipById?.[objectId];
+      const membershipPatchFromOptions =
+        options.containerMembershipById?.[objectId];
       const membershipPatch =
         membershipPatchFromOptions ??
-        (objectItem && isContainerChildEligible(objectItem.type)
+        (objectItem &&
+        objectItem.type !== "gridContainer" &&
+        !isConnectorKind(objectItem.type)
           ? resolveContainerMembershipForGeometry(
               objectId,
               nextGeometry,
               getContainerSectionsInfoById({
-                [objectId]: nextGeometry
-              })
+                [objectId]: nextGeometry,
+              }),
             )
           : null);
       const previousGeometry =
@@ -2701,11 +2934,14 @@ export default function RealtimeBoardCanvas({
               y: objectItem.y,
               width: objectItem.width,
               height: objectItem.height,
-              rotationDeg: objectItem.rotationDeg
+              rotationDeg: objectItem.rotationDeg,
             }
           : null);
       const hasMembershipChange = membershipPatch
-        ? !areContainerMembershipPatchesEqual(currentMembership, membershipPatch)
+        ? !areContainerMembershipPatchesEqual(
+            currentMembership,
+            membershipPatch,
+          )
         : false;
 
       if (
@@ -2724,7 +2960,7 @@ export default function RealtimeBoardCanvas({
           y: nextGeometry.y,
           width: nextGeometry.width,
           height: nextGeometry.height,
-          rotationDeg: nextGeometry.rotationDeg
+          rotationDeg: nextGeometry.rotationDeg,
         };
         if (membershipPatch && (hasMembershipChange || force)) {
           payload.containerId = membershipPatch.containerId;
@@ -2736,26 +2972,36 @@ export default function RealtimeBoardCanvas({
           payload.updatedAt = serverTimestamp();
         }
 
-        await updateDoc(doc(db, `boards/${boardId}/objects/${objectId}`), payload);
+        await updateDoc(
+          doc(db, `boards/${boardId}/objects/${objectId}`),
+          payload,
+        );
         lastGeometryWriteByIdRef.current.set(objectId, nextGeometry);
         lastPositionWriteByIdRef.current.set(objectId, {
           x: nextGeometry.x,
-          y: nextGeometry.y
+          y: nextGeometry.y,
         });
         writeMetrics.markCommitted("object-geometry");
       } catch (error) {
         console.error("Failed to update object transform", error);
-        setBoardError(toBoardErrorMessage(error, "Failed to update object transform."));
+        setBoardError(
+          toBoardErrorMessage(error, "Failed to update object transform."),
+        );
       }
     },
-    [boardId, db, getContainerSectionsInfoById, resolveContainerMembershipForGeometry]
+    [
+      boardId,
+      db,
+      getContainerSectionsInfoById,
+      resolveContainerMembershipForGeometry,
+    ],
   );
 
   const updateConnectorDraft = useCallback(
     async (
       objectId: string,
       draft: ConnectorDraft,
-      options: ObjectWriteOptions = {}
+      options: ObjectWriteOptions = {},
     ) => {
       if (!canEditRef.current) {
         return;
@@ -2766,14 +3012,17 @@ export default function RealtimeBoardCanvas({
       const resolvedFrom = resolveConnectorEndpoint(
         draft.fromObjectId,
         draft.fromAnchor,
-        { x: draft.fromX, y: draft.fromY }
+        { x: draft.fromX, y: draft.fromY },
       );
       const resolvedTo = resolveConnectorEndpoint(
         draft.toObjectId,
         draft.toAnchor,
-        { x: draft.toX, y: draft.toY }
+        { x: draft.toX, y: draft.toY },
       );
-      const geometry = toConnectorGeometryFromEndpoints(resolvedFrom, resolvedTo);
+      const geometry = toConnectorGeometryFromEndpoints(
+        resolvedFrom,
+        resolvedTo,
+      );
 
       const payload: Record<string, unknown> = {
         x: geometry.x,
@@ -2788,7 +3037,7 @@ export default function RealtimeBoardCanvas({
         fromX: resolvedFrom.x,
         fromY: resolvedFrom.y,
         toX: resolvedTo.x,
-        toY: resolvedTo.y
+        toY: resolvedTo.y,
       };
 
       if (includeUpdatedAt) {
@@ -2796,19 +3045,24 @@ export default function RealtimeBoardCanvas({
       }
 
       try {
-        await updateDoc(doc(db, `boards/${boardId}/objects/${objectId}`), payload);
+        await updateDoc(
+          doc(db, `boards/${boardId}/objects/${objectId}`),
+          payload,
+        );
       } catch (error) {
         console.error("Failed to update connector", error);
-        setBoardError(toBoardErrorMessage(error, "Failed to update connector."));
+        setBoardError(
+          toBoardErrorMessage(error, "Failed to update connector."),
+        );
       }
     },
-    [boardId, db, resolveConnectorEndpoint]
+    [boardId, db, resolveConnectorEndpoint],
   );
 
   const updateObjectPositionsBatch = useCallback(
     async (
       nextPositionsById: Record<string, BoardPoint>,
-      options: ObjectWriteOptions = {}
+      options: ObjectWriteOptions = {},
     ) => {
       const entries = Object.entries(nextPositionsById);
       if (entries.length === 0) {
@@ -2840,7 +3094,7 @@ export default function RealtimeBoardCanvas({
             (objectItem
               ? {
                   x: objectItem.x,
-                  y: objectItem.y
+                  y: objectItem.y,
                 }
               : null);
           const currentMembership = objectItem
@@ -2849,17 +3103,24 @@ export default function RealtimeBoardCanvas({
                 containerId: null,
                 containerSectionIndex: null,
                 containerRelX: null,
-                containerRelY: null
+                containerRelY: null,
               };
           const nextMembershipPatch = membershipPatches[objectId];
           const hasMembershipChange = nextMembershipPatch
-            ? !areContainerMembershipPatchesEqual(currentMembership, nextMembershipPatch)
+            ? !areContainerMembershipPatchesEqual(
+                currentMembership,
+                nextMembershipPatch,
+              )
             : false;
 
           if (
             !force &&
             previousPosition &&
-            arePointsClose(previousPosition, nextPosition, POSITION_WRITE_EPSILON) &&
+            arePointsClose(
+              previousPosition,
+              nextPosition,
+              POSITION_WRITE_EPSILON,
+            ) &&
             !hasMembershipChange
           ) {
             skippedCount += 1;
@@ -2868,11 +3129,12 @@ export default function RealtimeBoardCanvas({
 
           const updatePayload: Record<string, unknown> = {
             x: nextPosition.x,
-            y: nextPosition.y
+            y: nextPosition.y,
           };
           if (nextMembershipPatch && (hasMembershipChange || force)) {
             updatePayload.containerId = nextMembershipPatch.containerId;
-            updatePayload.containerSectionIndex = nextMembershipPatch.containerSectionIndex;
+            updatePayload.containerSectionIndex =
+              nextMembershipPatch.containerSectionIndex;
             updatePayload.containerRelX = nextMembershipPatch.containerRelX;
             updatePayload.containerRelY = nextMembershipPatch.containerRelY;
           }
@@ -2880,7 +3142,10 @@ export default function RealtimeBoardCanvas({
             updatePayload.updatedAt = serverTimestamp();
           }
 
-          batch.update(doc(db, `boards/${boardId}/objects/${objectId}`), updatePayload);
+          batch.update(
+            doc(db, `boards/${boardId}/objects/${objectId}`),
+            updatePayload,
+          );
           writeEntries.push([objectId, nextPosition]);
         });
 
@@ -2896,79 +3161,24 @@ export default function RealtimeBoardCanvas({
         writeMetrics.markCommitted("object-position", writeEntries.length);
         writeEntries.forEach(([objectId, position]) => {
           lastPositionWriteByIdRef.current.set(objectId, position);
-          const previousGeometry = lastGeometryWriteByIdRef.current.get(objectId);
+          const previousGeometry =
+            lastGeometryWriteByIdRef.current.get(objectId);
           if (previousGeometry) {
             lastGeometryWriteByIdRef.current.set(objectId, {
               ...previousGeometry,
               x: position.x,
-              y: position.y
+              y: position.y,
             });
           }
         });
       } catch (error) {
         console.error("Failed to update object positions", error);
-        setBoardError(toBoardErrorMessage(error, "Failed to update object positions."));
+        setBoardError(
+          toBoardErrorMessage(error, "Failed to update object positions."),
+        );
       }
     },
-    [boardId, db]
-  );
-
-  const buildContainerMembershipPatchesForPositions = useCallback(
-    (
-      nextPositionsById: Record<string, BoardPoint>,
-      seedPatches: Record<string, ContainerMembershipPatch> = {}
-    ): Record<string, ContainerMembershipPatch> => {
-      const geometryOverrides: Record<string, ObjectGeometry> = {};
-      Object.entries(nextPositionsById).forEach(([objectId, nextPosition]) => {
-        const geometry =
-          getCurrentObjectGeometry(objectId) ?? {
-            x: nextPosition.x,
-            y: nextPosition.y,
-            width: 0,
-            height: 0,
-            rotationDeg: 0
-          };
-        geometryOverrides[objectId] = {
-          ...geometry,
-          x: nextPosition.x,
-          y: nextPosition.y
-        };
-      });
-
-      const containerSectionsById = getContainerSectionsInfoById(geometryOverrides);
-      const nextPatches: Record<string, ContainerMembershipPatch> = { ...seedPatches };
-
-      Object.entries(nextPositionsById).forEach(([objectId, nextPosition]) => {
-        const objectItem = objectsByIdRef.current.get(objectId);
-        if (!objectItem || !isContainerChildEligible(objectItem.type)) {
-          return;
-        }
-
-        const geometry = geometryOverrides[objectId] ?? {
-          x: nextPosition.x,
-          y: nextPosition.y,
-          width: objectItem.width,
-          height: objectItem.height,
-          rotationDeg: objectItem.rotationDeg
-        };
-        const nextMembership = resolveContainerMembershipForGeometry(
-          objectId,
-          geometry,
-          containerSectionsById
-        );
-        const currentMembership = getMembershipPatchFromObject(objectItem);
-        const seedMembership = nextPatches[objectId];
-        if (seedMembership && areContainerMembershipPatchesEqual(seedMembership, nextMembership)) {
-          return;
-        }
-        if (!areContainerMembershipPatchesEqual(currentMembership, nextMembership)) {
-          nextPatches[objectId] = nextMembership;
-        }
-      });
-
-      return nextPatches;
-    },
-    [getContainerSectionsInfoById, getCurrentObjectGeometry, resolveContainerMembershipForGeometry]
+    [boardId, db],
   );
 
   const getObjectSelectionBounds = useCallback(
@@ -2976,7 +3186,11 @@ export default function RealtimeBoardCanvas({
       if (isConnectorKind(objectItem.type)) {
         const resolved = getResolvedConnectorEndpoints(objectItem);
         if (resolved) {
-          return getConnectorBoundsFromEndpoints(resolved.from, resolved.to, CONNECTOR_HIT_PADDING);
+          return getConnectorBoundsFromEndpoints(
+            resolved.from,
+            resolved.to,
+            CONNECTOR_HIT_PADDING,
+          );
         }
       }
 
@@ -2986,17 +3200,22 @@ export default function RealtimeBoardCanvas({
           left: objectItem.x,
           right: objectItem.x + objectItem.width,
           top: objectItem.y,
-          bottom: objectItem.y + objectItem.height
+          bottom: objectItem.y + objectItem.height,
         };
       }
 
       return getObjectVisualBounds(objectItem.type, geometry);
     },
-    [getCurrentObjectGeometry, getResolvedConnectorEndpoints]
+    [getCurrentObjectGeometry, getResolvedConnectorEndpoints],
   );
 
   const getObjectsIntersectingRect = useCallback(
-    (rect: { left: number; right: number; top: number; bottom: number }): string[] => {
+    (rect: {
+      left: number;
+      right: number;
+      top: number;
+      bottom: number;
+    }): string[] => {
       const intersectingObjectIds: string[] = [];
 
       objectsByIdRef.current.forEach((objectItem) => {
@@ -3014,7 +3233,7 @@ export default function RealtimeBoardCanvas({
 
       return intersectingObjectIds;
     },
-    [getObjectSelectionBounds]
+    [getObjectSelectionBounds],
   );
 
   const getConnectableAnchorPoints = useCallback(() => {
@@ -3037,12 +3256,16 @@ export default function RealtimeBoardCanvas({
       }
 
       CONNECTOR_ANCHORS.forEach((anchor) => {
-        const point = getAnchorPointForGeometry(geometry, anchor, connectableType);
+        const point = getAnchorPointForGeometry(
+          geometry,
+          anchor,
+          connectableType,
+        );
         anchors.push({
           objectId: objectItem.id,
           anchor,
           x: point.x,
-          y: point.y
+          y: point.y,
         });
       });
     });
@@ -3055,7 +3278,7 @@ export default function RealtimeBoardCanvas({
       state: CornerResizeState,
       clientX: number,
       clientY: number,
-      scale: number
+      scale: number,
     ): ObjectGeometry => {
       const deltaX = (clientX - state.startClientX) / scale;
       const deltaY = (clientY - state.startClientY) / scale;
@@ -3101,7 +3324,10 @@ export default function RealtimeBoardCanvas({
       }
 
       if (state.objectType === "circle") {
-        const size = Math.max(minimumSize.width, Math.max(nextWidth, nextHeight));
+        const size = Math.max(
+          minimumSize.width,
+          Math.max(nextWidth, nextHeight),
+        );
         if (state.corner === "nw") {
           nextX = state.initialGeometry.x + state.initialGeometry.width - size;
           nextY = state.initialGeometry.y + state.initialGeometry.height - size;
@@ -3120,14 +3346,17 @@ export default function RealtimeBoardCanvas({
         y: nextY,
         width: nextWidth,
         height: nextHeight,
-        rotationDeg: state.initialGeometry.rotationDeg
+        rotationDeg: state.initialGeometry.rotationDeg,
       };
     },
-    []
+    [],
   );
 
   const getLineGeometryFromEndpointDrag = useCallback(
-    (state: LineEndpointResizeState, movingPoint: BoardPoint): ObjectGeometry => {
+    (
+      state: LineEndpointResizeState,
+      movingPoint: BoardPoint,
+    ): ObjectGeometry => {
       const dx = movingPoint.x - state.fixedPoint.x;
       const dy = movingPoint.y - state.fixedPoint.y;
       const distance = Math.hypot(dx, dy);
@@ -3138,12 +3367,13 @@ export default function RealtimeBoardCanvas({
       const normalizedY = distance < 0.001 ? 0 : dy / distance;
       const adjustedMovingPoint = {
         x: state.fixedPoint.x + normalizedX * length,
-        y: state.fixedPoint.y + normalizedY * length
+        y: state.fixedPoint.y + normalizedY * length,
       };
 
       const startPoint =
         state.endpoint === "start" ? adjustedMovingPoint : state.fixedPoint;
-      const endPoint = state.endpoint === "end" ? adjustedMovingPoint : state.fixedPoint;
+      const endPoint =
+        state.endpoint === "end" ? adjustedMovingPoint : state.fixedPoint;
       const centerX = (startPoint.x + endPoint.x) / 2;
       const centerY = (startPoint.y + endPoint.y) / 2;
 
@@ -3152,18 +3382,23 @@ export default function RealtimeBoardCanvas({
         y: centerY - state.handleHeight / 2,
         width: length,
         height: state.handleHeight,
-        rotationDeg: angle
+        rotationDeg: angle,
       };
     },
-    []
+    [],
   );
 
   useEffect(() => {
+    /**
+     * Handles handle window pointer move.
+     */
     const handleWindowPointerMove = (event: PointerEvent) => {
       const aiFooterResizeState = aiFooterResizeStateRef.current;
       if (aiFooterResizeState) {
         const deltaY = aiFooterResizeState.startClientY - event.clientY;
-        const nextHeight = clampAiFooterHeight(aiFooterResizeState.initialHeight + deltaY);
+        const nextHeight = clampAiFooterHeight(
+          aiFooterResizeState.initialHeight + deltaY,
+        );
         setAiFooterHeight(nextHeight);
         return;
       }
@@ -3175,16 +3410,19 @@ export default function RealtimeBoardCanvas({
           cornerResizeState,
           event.clientX,
           event.clientY,
-          scale
+          scale,
         );
 
         setDraftGeometry(cornerResizeState.objectId, nextGeometry);
 
         const now = Date.now();
-        if (canEditRef.current && now - cornerResizeState.lastSentAt >= RESIZE_THROTTLE_MS) {
+        if (
+          canEditRef.current &&
+          now - cornerResizeState.lastSentAt >= RESIZE_THROTTLE_MS
+        ) {
           cornerResizeState.lastSentAt = now;
           void updateObjectGeometry(cornerResizeState.objectId, nextGeometry, {
-            includeUpdatedAt: false
+            includeUpdatedAt: false,
           });
         }
         return;
@@ -3200,10 +3438,12 @@ export default function RealtimeBoardCanvas({
         const rect = stageElement.getBoundingClientRect();
         const movingPoint = {
           x: (event.clientX - rect.left - viewportRef.current.x) / scale,
-          y: (event.clientY - rect.top - viewportRef.current.y) / scale
+          y: (event.clientY - rect.top - viewportRef.current.y) / scale,
         };
 
-        const connectorObject = objectsByIdRef.current.get(connectorEndpointDragState.objectId);
+        const connectorObject = objectsByIdRef.current.get(
+          connectorEndpointDragState.objectId,
+        );
         if (!connectorObject || !isConnectorKind(connectorObject.type)) {
           return;
         }
@@ -3215,7 +3455,8 @@ export default function RealtimeBoardCanvas({
           return;
         }
 
-        const snapThreshold = CONNECTOR_SNAP_DISTANCE_PX / Math.max(viewportRef.current.scale, 0.1);
+        const snapThreshold =
+          CONNECTOR_SNAP_DISTANCE_PX / Math.max(viewportRef.current.scale, 0.1);
         const anchorCandidates = getConnectableAnchorPoints();
         const nearestAnchor = anchorCandidates.reduce<{
           objectId: string;
@@ -3224,7 +3465,10 @@ export default function RealtimeBoardCanvas({
           y: number;
           distance: number;
         } | null>((closest, candidate) => {
-          const distance = Math.hypot(candidate.x - movingPoint.x, candidate.y - movingPoint.y);
+          const distance = Math.hypot(
+            candidate.x - movingPoint.x,
+            candidate.y - movingPoint.y,
+          );
           if (distance > snapThreshold) {
             return closest;
           }
@@ -3232,7 +3476,7 @@ export default function RealtimeBoardCanvas({
           if (!closest || distance < closest.distance) {
             return {
               ...candidate,
-              distance
+              distance,
             };
           }
 
@@ -3244,13 +3488,13 @@ export default function RealtimeBoardCanvas({
               objectId: nearestAnchor.objectId,
               anchor: nearestAnchor.anchor,
               x: nearestAnchor.x,
-              y: nearestAnchor.y
+              y: nearestAnchor.y,
             }
           : {
               objectId: null,
               anchor: null,
               x: movingPoint.x,
-              y: movingPoint.y
+              y: movingPoint.y,
             };
 
         const nextDraft: ConnectorDraft =
@@ -3260,23 +3504,26 @@ export default function RealtimeBoardCanvas({
                 fromObjectId: endpointPatch.objectId,
                 fromAnchor: endpointPatch.anchor,
                 fromX: endpointPatch.x,
-                fromY: endpointPatch.y
+                fromY: endpointPatch.y,
               }
             : {
                 ...currentDraft,
                 toObjectId: endpointPatch.objectId,
                 toAnchor: endpointPatch.anchor,
                 toX: endpointPatch.x,
-                toY: endpointPatch.y
+                toY: endpointPatch.y,
               };
 
         setDraftConnector(connectorObject.id, nextDraft);
 
         const now = Date.now();
-        if (canEditRef.current && now - connectorEndpointDragState.lastSentAt >= RESIZE_THROTTLE_MS) {
+        if (
+          canEditRef.current &&
+          now - connectorEndpointDragState.lastSentAt >= RESIZE_THROTTLE_MS
+        ) {
           connectorEndpointDragState.lastSentAt = now;
           void updateConnectorDraft(connectorObject.id, nextDraft, {
-            includeUpdatedAt: false
+            includeUpdatedAt: false,
           });
         }
         return;
@@ -3292,12 +3539,12 @@ export default function RealtimeBoardCanvas({
         const rect = stageElement.getBoundingClientRect();
         const movingPoint = {
           x: (event.clientX - rect.left - viewportRef.current.x) / scale,
-          y: (event.clientY - rect.top - viewportRef.current.y) / scale
+          y: (event.clientY - rect.top - viewportRef.current.y) / scale,
         };
 
         const nextGeometry = getLineGeometryFromEndpointDrag(
           lineEndpointResizeState,
-          movingPoint
+          movingPoint,
         );
 
         setDraftGeometry(lineEndpointResizeState.objectId, nextGeometry);
@@ -3308,9 +3555,13 @@ export default function RealtimeBoardCanvas({
           now - lineEndpointResizeState.lastSentAt >= RESIZE_THROTTLE_MS
         ) {
           lineEndpointResizeState.lastSentAt = now;
-          void updateObjectGeometry(lineEndpointResizeState.objectId, nextGeometry, {
-            includeUpdatedAt: false
-          });
+          void updateObjectGeometry(
+            lineEndpointResizeState.objectId,
+            nextGeometry,
+            {
+              includeUpdatedAt: false,
+            },
+          );
         }
         return;
       }
@@ -3325,14 +3576,14 @@ export default function RealtimeBoardCanvas({
         const rect = stageElement.getBoundingClientRect();
         const pointer = {
           x: (event.clientX - rect.left - viewportRef.current.x) / scale,
-          y: (event.clientY - rect.top - viewportRef.current.y) / scale
+          y: (event.clientY - rect.top - viewportRef.current.y) / scale,
         };
 
         const pointerAngleDeg = toDegrees(
           Math.atan2(
             pointer.y - rotateState.centerPoint.y,
-            pointer.x - rotateState.centerPoint.x
-          )
+            pointer.x - rotateState.centerPoint.x,
+          ),
         );
         const deltaAngle = pointerAngleDeg - rotateState.initialPointerAngleDeg;
         let nextRotationDeg = rotateState.initialRotationDeg + deltaAngle;
@@ -3341,8 +3592,7 @@ export default function RealtimeBoardCanvas({
           nextRotationDeg = Math.round(nextRotationDeg / 15) * 15;
         }
 
-        const normalizedRotationDeg =
-          ((nextRotationDeg % 360) + 360) % 360;
+        const normalizedRotationDeg = ((nextRotationDeg % 360) + 360) % 360;
 
         const geometry = getCurrentObjectGeometry(rotateState.objectId);
         if (!geometry) {
@@ -3351,15 +3601,18 @@ export default function RealtimeBoardCanvas({
 
         const nextGeometry: ObjectGeometry = {
           ...geometry,
-          rotationDeg: normalizedRotationDeg
+          rotationDeg: normalizedRotationDeg,
         };
         setDraftGeometry(rotateState.objectId, nextGeometry);
 
         const now = Date.now();
-        if (canEditRef.current && now - rotateState.lastSentAt >= ROTATE_THROTTLE_MS) {
+        if (
+          canEditRef.current &&
+          now - rotateState.lastSentAt >= ROTATE_THROTTLE_MS
+        ) {
           rotateState.lastSentAt = now;
           void updateObjectGeometry(rotateState.objectId, nextGeometry, {
-            includeUpdatedAt: false
+            includeUpdatedAt: false,
           });
         }
         return;
@@ -3375,12 +3628,12 @@ export default function RealtimeBoardCanvas({
         const rect = stageElement.getBoundingClientRect();
         const nextPoint = {
           x: (event.clientX - rect.left - viewportRef.current.x) / scale,
-          y: (event.clientY - rect.top - viewportRef.current.y) / scale
+          y: (event.clientY - rect.top - viewportRef.current.y) / scale,
         };
 
         const nextMarqueeState: MarqueeSelectionState = {
           ...marqueeSelectionState,
-          currentPoint: nextPoint
+          currentPoint: nextPoint,
         };
 
         marqueeSelectionStateRef.current = nextMarqueeState;
@@ -3390,12 +3643,14 @@ export default function RealtimeBoardCanvas({
 
       const panState = panStateRef.current;
       if (panState) {
-        const nextX = panState.initialX + (event.clientX - panState.startClientX);
-        const nextY = panState.initialY + (event.clientY - panState.startClientY);
+        const nextX =
+          panState.initialX + (event.clientX - panState.startClientX);
+        const nextY =
+          panState.initialY + (event.clientY - panState.startClientY);
         setViewport((previous) => ({
           x: nextX,
           y: nextY,
-          scale: previous.scale
+          scale: previous.scale,
         }));
       }
 
@@ -3429,26 +3684,32 @@ export default function RealtimeBoardCanvas({
 
           nextPositionsById[objectId] = {
             x: nextX,
-            y: nextY
+            y: nextY,
           };
 
           setDraftGeometry(objectId, {
             ...currentGeometry,
             x: nextX,
-            y: nextY
+            y: nextY,
           });
         });
 
         const now = Date.now();
-        if (canEditRef.current && now - dragState.lastSentAt >= DRAG_THROTTLE_MS) {
+        if (
+          canEditRef.current &&
+          now - dragState.lastSentAt >= DRAG_THROTTLE_MS
+        ) {
           dragState.lastSentAt = now;
           void updateObjectPositionsBatch(nextPositionsById, {
-            includeUpdatedAt: false
+            includeUpdatedAt: false,
           });
         }
       }
     };
 
+    /**
+     * Handles handle window pointer up.
+     */
     const handleWindowPointerUp = (event: PointerEvent) => {
       if (aiFooterResizeStateRef.current) {
         aiFooterResizeStateRef.current = null;
@@ -3458,39 +3719,53 @@ export default function RealtimeBoardCanvas({
       const cornerResizeState = cornerResizeStateRef.current;
       if (cornerResizeState) {
         cornerResizeStateRef.current = null;
-        const finalGeometry = draftGeometryByIdRef.current[cornerResizeState.objectId];
-        const resizedObject = objectsByIdRef.current.get(cornerResizeState.objectId);
+        const finalGeometry =
+          draftGeometryByIdRef.current[cornerResizeState.objectId];
+        const resizedObject = objectsByIdRef.current.get(
+          cornerResizeState.objectId,
+        );
         clearDraftGeometry(cornerResizeState.objectId);
 
         if (finalGeometry && canEditRef.current) {
           void (async () => {
-            await updateObjectGeometry(cornerResizeState.objectId, finalGeometry, {
-              includeUpdatedAt: true,
-              force: true
-            });
+            await updateObjectGeometry(
+              cornerResizeState.objectId,
+              finalGeometry,
+              {
+                includeUpdatedAt: true,
+                force: true,
+              },
+            );
 
             if (resizedObject?.type === "gridContainer") {
               const rows = Math.max(1, resizedObject.gridRows ?? 2);
               const cols = Math.max(1, resizedObject.gridCols ?? 2);
-              const gap = Math.max(0, resizedObject.gridGap ?? GRID_CONTAINER_DEFAULT_GAP);
+              const gap = Math.max(
+                0,
+                resizedObject.gridGap ?? GRID_CONTAINER_DEFAULT_GAP,
+              );
               const childUpdates = getSectionAnchoredObjectUpdatesForContainer(
                 resizedObject.id,
                 finalGeometry,
                 rows,
                 cols,
-                gap
+                gap,
               );
               const childIds = Object.keys(childUpdates.positionByObjectId);
               if (childIds.length > 0) {
-                const membershipByObjectId = buildContainerMembershipPatchesForPositions(
+                const membershipByObjectId =
+                  buildContainerMembershipPatchesForPositions(
+                    childUpdates.positionByObjectId,
+                    childUpdates.membershipByObjectId,
+                  );
+                await updateObjectPositionsBatch(
                   childUpdates.positionByObjectId,
-                  childUpdates.membershipByObjectId
+                  {
+                    includeUpdatedAt: true,
+                    force: true,
+                    containerMembershipById: membershipByObjectId,
+                  },
                 );
-                await updateObjectPositionsBatch(childUpdates.positionByObjectId, {
-                  includeUpdatedAt: true,
-                  force: true,
-                  containerMembershipById: membershipByObjectId
-                });
               }
             }
           })();
@@ -3501,14 +3776,19 @@ export default function RealtimeBoardCanvas({
       const lineEndpointResizeState = lineEndpointResizeStateRef.current;
       if (lineEndpointResizeState) {
         lineEndpointResizeStateRef.current = null;
-        const finalGeometry = draftGeometryByIdRef.current[lineEndpointResizeState.objectId];
+        const finalGeometry =
+          draftGeometryByIdRef.current[lineEndpointResizeState.objectId];
         clearDraftGeometry(lineEndpointResizeState.objectId);
 
         if (finalGeometry && canEditRef.current) {
-          void updateObjectGeometry(lineEndpointResizeState.objectId, finalGeometry, {
-            includeUpdatedAt: true,
-            force: true
-          });
+          void updateObjectGeometry(
+            lineEndpointResizeState.objectId,
+            finalGeometry,
+            {
+              includeUpdatedAt: true,
+              force: true,
+            },
+          );
         }
         return;
       }
@@ -3516,13 +3796,18 @@ export default function RealtimeBoardCanvas({
       const connectorEndpointDragState = connectorEndpointDragStateRef.current;
       if (connectorEndpointDragState) {
         connectorEndpointDragStateRef.current = null;
-        const finalDraft = draftConnectorByIdRef.current[connectorEndpointDragState.objectId];
+        const finalDraft =
+          draftConnectorByIdRef.current[connectorEndpointDragState.objectId];
         clearDraftConnector(connectorEndpointDragState.objectId);
 
         if (finalDraft && canEditRef.current) {
-          void updateConnectorDraft(connectorEndpointDragState.objectId, finalDraft, {
-            includeUpdatedAt: true
-          });
+          void updateConnectorDraft(
+            connectorEndpointDragState.objectId,
+            finalDraft,
+            {
+              includeUpdatedAt: true,
+            },
+          );
         }
         return;
       }
@@ -3530,13 +3815,14 @@ export default function RealtimeBoardCanvas({
       const rotateState = rotateStateRef.current;
       if (rotateState) {
         rotateStateRef.current = null;
-        const finalGeometry = draftGeometryByIdRef.current[rotateState.objectId];
+        const finalGeometry =
+          draftGeometryByIdRef.current[rotateState.objectId];
         clearDraftGeometry(rotateState.objectId);
 
         if (finalGeometry && canEditRef.current) {
           void updateObjectGeometry(rotateState.objectId, finalGeometry, {
             includeUpdatedAt: true,
-            force: true
+            force: true,
           });
         }
         return;
@@ -3549,7 +3835,7 @@ export default function RealtimeBoardCanvas({
 
         const rect = toNormalizedRect(
           marqueeSelectionState.startPoint,
-          marqueeSelectionState.currentPoint
+          marqueeSelectionState.currentPoint,
         );
         const intersectingObjectIds = getObjectsIntersectingRect(rect);
 
@@ -3562,7 +3848,7 @@ export default function RealtimeBoardCanvas({
         } else {
           const removeSet = new Set(intersectingObjectIds);
           setSelectedObjectIds((previous) =>
-            previous.filter((objectId) => !removeSet.has(objectId))
+            previous.filter((objectId) => !removeSet.has(objectId)),
           );
         }
         return;
@@ -3596,7 +3882,10 @@ export default function RealtimeBoardCanvas({
 
       if (canEditRef.current) {
         const nextPositionsById: Record<string, BoardPoint> = {};
-        const seedMembershipByObjectId: Record<string, ContainerMembershipPatch> = {};
+        const seedMembershipByObjectId: Record<
+          string,
+          ContainerMembershipPatch
+        > = {};
         dragState.objectIds.forEach((objectId) => {
           const initialGeometry = dragState.initialGeometries[objectId];
           if (!initialGeometry) {
@@ -3606,7 +3895,7 @@ export default function RealtimeBoardCanvas({
           clearDraftGeometry(objectId);
           nextPositionsById[objectId] = {
             x: initialGeometry.x + deltaX,
-            y: initialGeometry.y + deltaY
+            y: initialGeometry.y + deltaY,
           };
         });
 
@@ -3626,40 +3915,48 @@ export default function RealtimeBoardCanvas({
             y: nextPosition.y,
             width: objectItem.width,
             height: objectItem.height,
-            rotationDeg: objectItem.rotationDeg
+            rotationDeg: objectItem.rotationDeg,
           };
           const rows = Math.max(1, objectItem.gridRows ?? 2);
           const cols = Math.max(1, objectItem.gridCols ?? 2);
-          const gap = Math.max(0, objectItem.gridGap ?? GRID_CONTAINER_DEFAULT_GAP);
+          const gap = Math.max(
+            0,
+            objectItem.gridGap ?? GRID_CONTAINER_DEFAULT_GAP,
+          );
           const childUpdates = getSectionAnchoredObjectUpdatesForContainer(
             objectId,
             nextContainerGeometry,
             rows,
             cols,
-            gap
+            gap,
           );
 
-          Object.entries(childUpdates.positionByObjectId).forEach(([childId, childPosition]) => {
-            if (!(childId in nextPositionsById)) {
-              nextPositionsById[childId] = childPosition;
-            }
-          });
-          Object.entries(childUpdates.membershipByObjectId).forEach(([childId, patch]) => {
-            if (!(childId in seedMembershipByObjectId)) {
-              seedMembershipByObjectId[childId] = patch;
-            }
-          });
+          Object.entries(childUpdates.positionByObjectId).forEach(
+            ([childId, childPosition]) => {
+              if (!(childId in nextPositionsById)) {
+                nextPositionsById[childId] = childPosition;
+              }
+            },
+          );
+          Object.entries(childUpdates.membershipByObjectId).forEach(
+            ([childId, patch]) => {
+              if (!(childId in seedMembershipByObjectId)) {
+                seedMembershipByObjectId[childId] = patch;
+              }
+            },
+          );
         });
 
-        const membershipByObjectId = buildContainerMembershipPatchesForPositions(
-          nextPositionsById,
-          seedMembershipByObjectId
-        );
+        const membershipByObjectId =
+          buildContainerMembershipPatchesForPositions(
+            nextPositionsById,
+            seedMembershipByObjectId,
+          );
 
         void updateObjectPositionsBatch(nextPositionsById, {
           includeUpdatedAt: true,
           force: true,
-          containerMembershipById: membershipByObjectId
+          containerMembershipById: membershipByObjectId,
         });
       } else {
         dragState.objectIds.forEach((objectId) => {
@@ -3690,7 +3987,7 @@ export default function RealtimeBoardCanvas({
     getSectionAnchoredObjectUpdatesForContainer,
     updateConnectorDraft,
     updateObjectGeometry,
-    updateObjectPositionsBatch
+    updateObjectPositionsBatch,
   ]);
 
   const toBoardCoordinates = useCallback(
@@ -3701,12 +3998,16 @@ export default function RealtimeBoardCanvas({
       }
 
       const rect = stageElement.getBoundingClientRect();
-      const x = (clientX - rect.left - viewportRef.current.x) / viewportRef.current.scale;
-      const y = (clientY - rect.top - viewportRef.current.y) / viewportRef.current.scale;
+      const x =
+        (clientX - rect.left - viewportRef.current.x) /
+        viewportRef.current.scale;
+      const y =
+        (clientY - rect.top - viewportRef.current.y) /
+        viewportRef.current.scale;
 
       return { x, y };
     },
-    []
+    [],
   );
 
   const updateCursor = useCallback(
@@ -3742,9 +4043,9 @@ export default function RealtimeBoardCanvas({
             cursorY: nextCursor?.y ?? null,
             active: true,
             lastSeenAtMs: Date.now(),
-            lastSeenAt: serverTimestamp()
+            lastSeenAt: serverTimestamp(),
           },
-          { merge: true }
+          { merge: true },
         );
         lastCursorWriteRef.current = nextCursor;
         writeMetrics.markCommitted("cursor");
@@ -3752,7 +4053,7 @@ export default function RealtimeBoardCanvas({
         // Ignore cursor write failures to avoid interrupting interactions.
       }
     },
-    [selfPresenceRef]
+    [selfPresenceRef],
   );
 
   const createObject = useCallback(
@@ -3767,15 +4068,18 @@ export default function RealtimeBoardCanvas({
       }
 
       const rect = stageElement.getBoundingClientRect();
-      const centerX = (rect.width / 2 - viewportRef.current.x) / viewportRef.current.scale;
-      const centerY = (rect.height / 2 - viewportRef.current.y) / viewportRef.current.scale;
+      const centerX =
+        (rect.width / 2 - viewportRef.current.x) / viewportRef.current.scale;
+      const centerY =
+        (rect.height / 2 - viewportRef.current.y) / viewportRef.current.scale;
       const { width, height } = getDefaultObjectSize(kind);
-      const spawnIndex = objectsByIdRef.current.size + objectSpawnSequenceRef.current;
+      const spawnIndex =
+        objectsByIdRef.current.size + objectSpawnSequenceRef.current;
       objectSpawnSequenceRef.current += 1;
       const spawnOffset = getSpawnOffset(spawnIndex, OBJECT_SPAWN_STEP_PX);
       const highestZIndex = Array.from(objectsByIdRef.current.values()).reduce(
         (maxValue, objectItem) => Math.max(maxValue, objectItem.zIndex),
-        0
+        0,
       );
       const nextZIndex = highestZIndex + 1;
       const startX = centerX - width / 2 + spawnOffset.x;
@@ -3786,13 +4090,13 @@ export default function RealtimeBoardCanvas({
         const connectorFrom = isConnector
           ? {
               x: startX,
-              y: startY + height / 2
+              y: startY + height / 2,
             }
           : null;
         const connectorTo = isConnector
           ? {
               x: startX + width,
-              y: startY + height / 2
+              y: startY + height / 2,
             }
           : null;
         const connectorGeometry =
@@ -3812,7 +4116,7 @@ export default function RealtimeBoardCanvas({
           text: kind === "sticky" ? "New sticky note" : "",
           createdBy: user.uid,
           createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
+          updatedAt: serverTimestamp(),
         };
         if (kind === "gridContainer") {
           const defaultSectionTitles = getDefaultSectionTitles(2, 2);
@@ -3822,7 +4126,10 @@ export default function RealtimeBoardCanvas({
           payload.gridCellColors = ["#d1fae5", "#fee2e2", "#dbeafe", "#fef3c7"];
           payload.containerTitle = "Grid container";
           payload.gridSectionTitles = defaultSectionTitles;
-          payload.gridSectionNotes = Array.from({ length: defaultSectionTitles.length }, () => "");
+          payload.gridSectionNotes = Array.from(
+            { length: defaultSectionTitles.length },
+            () => "",
+          );
         }
 
         if (connectorFrom && connectorTo) {
@@ -3842,7 +4149,7 @@ export default function RealtimeBoardCanvas({
         setBoardError(toBoardErrorMessage(error, "Failed to create object."));
       }
     },
-    [canEdit, objectsCollectionRef, user.uid]
+    [canEdit, objectsCollectionRef, user.uid],
   );
 
   const deleteObject = useCallback(
@@ -3884,14 +4191,16 @@ export default function RealtimeBoardCanvas({
           delete next[objectId];
           return next;
         });
-        setSelectedObjectIds((previous) => previous.filter((id) => id !== objectId));
+        setSelectedObjectIds((previous) =>
+          previous.filter((id) => id !== objectId),
+        );
         clearDraftConnector(objectId);
       } catch (error) {
         console.error("Failed to delete object", error);
         setBoardError(toBoardErrorMessage(error, "Failed to delete object."));
       }
     },
-    [boardId, canEdit, clearDraftConnector, db]
+    [boardId, canEdit, clearDraftConnector, db],
   );
 
   const saveStickyText = useCallback(
@@ -3921,7 +4230,7 @@ export default function RealtimeBoardCanvas({
 
         await updateDoc(doc(db, `boards/${boardId}/objects/${objectId}`), {
           text: normalizedText,
-          updatedAt: serverTimestamp()
+          updatedAt: serverTimestamp(),
         });
         lastStickyWriteByIdRef.current.set(objectId, normalizedText);
         const syncState = stickyTextSyncStateRef.current.get(objectId);
@@ -3931,10 +4240,12 @@ export default function RealtimeBoardCanvas({
         writeMetrics.markCommitted("sticky-text");
       } catch (error) {
         console.error("Failed to update sticky text", error);
-        setBoardError(toBoardErrorMessage(error, "Failed to update sticky text."));
+        setBoardError(
+          toBoardErrorMessage(error, "Failed to update sticky text."),
+        );
       }
     },
-    [boardId, db]
+    [boardId, db],
   );
 
   const flushStickyTextSync = useCallback(
@@ -3958,7 +4269,7 @@ export default function RealtimeBoardCanvas({
       syncState.lastSentAt = Date.now();
       void saveStickyText(objectId, pendingText);
     },
-    [saveStickyText]
+    [saveStickyText],
   );
 
   const queueStickyTextSync = useCallback(
@@ -3977,16 +4288,23 @@ export default function RealtimeBoardCanvas({
           pendingText: null,
           lastSentAt: 0,
           lastSentText:
-            lastStickyWriteByIdRef.current.get(objectId) ?? objectItem?.text ?? null,
-          timerId: null
+            lastStickyWriteByIdRef.current.get(objectId) ??
+            objectItem?.text ??
+            null,
+          timerId: null,
         };
         syncStates.set(objectId, syncState);
       }
 
       const objectItem = objectsByIdRef.current.get(objectId);
       const lastSavedText =
-        syncState.lastSentText ?? lastStickyWriteByIdRef.current.get(objectId) ?? null;
-      if (normalizedText === lastSavedText || (objectItem && objectItem.text === normalizedText)) {
+        syncState.lastSentText ??
+        lastStickyWriteByIdRef.current.get(objectId) ??
+        null;
+      if (
+        normalizedText === lastSavedText ||
+        (objectItem && objectItem.text === normalizedText)
+      ) {
         syncState.pendingText = null;
         if (syncState.timerId !== null) {
           window.clearTimeout(syncState.timerId);
@@ -4038,30 +4356,36 @@ export default function RealtimeBoardCanvas({
         void saveStickyText(objectId, pendingText);
       }, delay);
     },
-    [saveStickyText]
+    [saveStickyText],
   );
 
-  const buildGridDraft = useCallback((objectItem: BoardObject): GridContainerContentDraft => {
-    const rows = Math.max(1, objectItem.gridRows ?? 2);
-    const cols = Math.max(1, objectItem.gridCols ?? 2);
-    const sectionCount = rows * cols;
-    const defaultSectionTitles = getDefaultSectionTitles(rows, cols);
-    return {
-      containerTitle: (objectItem.containerTitle ?? "Grid container").slice(0, 120),
-      sectionTitles: normalizeSectionValues(
-        objectItem.gridSectionTitles,
-        sectionCount,
-        (index) => defaultSectionTitles[index] ?? `Section ${index + 1}`,
-        80
-      ),
-      sectionNotes: normalizeSectionValues(
-        objectItem.gridSectionNotes,
-        sectionCount,
-        () => "",
-        600
-      )
-    };
-  }, []);
+  const buildGridDraft = useCallback(
+    (objectItem: BoardObject): GridContainerContentDraft => {
+      const rows = Math.max(1, objectItem.gridRows ?? 2);
+      const cols = Math.max(1, objectItem.gridCols ?? 2);
+      const sectionCount = rows * cols;
+      const defaultSectionTitles = getDefaultSectionTitles(rows, cols);
+      return {
+        containerTitle: (objectItem.containerTitle ?? "Grid container").slice(
+          0,
+          120,
+        ),
+        sectionTitles: normalizeSectionValues(
+          objectItem.gridSectionTitles,
+          sectionCount,
+          (index) => defaultSectionTitles[index] ?? `Section ${index + 1}`,
+          80,
+        ),
+        sectionNotes: normalizeSectionValues(
+          objectItem.gridSectionNotes,
+          sectionCount,
+          () => "",
+          600,
+        ),
+      };
+    },
+    [],
+  );
 
   const getGridDraftForObject = useCallback(
     (objectItem: BoardObject): GridContainerContentDraft => {
@@ -4072,7 +4396,7 @@ export default function RealtimeBoardCanvas({
 
       return buildGridDraft(objectItem);
     },
-    [buildGridDraft]
+    [buildGridDraft],
   );
 
   const flushGridContentSync = useCallback(
@@ -4092,12 +4416,16 @@ export default function RealtimeBoardCanvas({
       }
 
       const normalizedDraft: GridContainerContentDraft = {
-        containerTitle: draft.containerTitle.trim().slice(0, 120) || "Grid container",
+        containerTitle:
+          draft.containerTitle.trim().slice(0, 120) || "Grid container",
         sectionTitles: draft.sectionTitles.map((value, index) => {
           const trimmed = value.trim();
-          return (trimmed.length > 0 ? trimmed : `Section ${index + 1}`).slice(0, 80);
+          return (trimmed.length > 0 ? trimmed : `Section ${index + 1}`).slice(
+            0,
+            80,
+          );
         }),
-        sectionNotes: draft.sectionNotes.map((value) => value.slice(0, 600))
+        sectionNotes: draft.sectionNotes.map((value) => value.slice(0, 600)),
       };
 
       const latestObject = objectsByIdRef.current.get(objectId);
@@ -4120,7 +4448,7 @@ export default function RealtimeBoardCanvas({
           containerTitle: normalizedDraft.containerTitle,
           gridSectionTitles: normalizedDraft.sectionTitles,
           gridSectionNotes: normalizedDraft.sectionNotes,
-          updatedAt: serverTimestamp()
+          updatedAt: serverTimestamp(),
         });
         setGridContentDraftById((previous) => {
           if (!(objectId in previous)) {
@@ -4133,17 +4461,26 @@ export default function RealtimeBoardCanvas({
         });
       } catch (error) {
         console.error("Failed to update grid container content", error);
-        setBoardError(toBoardErrorMessage(error, "Failed to update grid container content."));
+        setBoardError(
+          toBoardErrorMessage(
+            error,
+            "Failed to update grid container content.",
+          ),
+        );
       }
     },
-    [boardId, buildGridDraft, db]
+    [boardId, buildGridDraft, db],
   );
 
   const queueGridContentSync = useCallback(
-    (objectId: string, nextDraft: GridContainerContentDraft, options?: { immediate?: boolean }) => {
+    (
+      objectId: string,
+      nextDraft: GridContainerContentDraft,
+      options?: { immediate?: boolean },
+    ) => {
       setGridContentDraftById((previous) => ({
         ...previous,
-        [objectId]: nextDraft
+        [objectId]: nextDraft,
       }));
 
       const existingTimer = gridContentSyncTimerByIdRef.current.get(objectId);
@@ -4163,7 +4500,7 @@ export default function RealtimeBoardCanvas({
       }, STICKY_TEXT_SYNC_THROTTLE_MS);
       gridContentSyncTimerByIdRef.current.set(objectId, nextTimerId);
     },
-    [flushGridContentSync]
+    [flushGridContentSync],
   );
 
   const updateGridContainerDimensions = useCallback(
@@ -4177,8 +4514,14 @@ export default function RealtimeBoardCanvas({
         return;
       }
 
-      const nextRows = Math.max(1, Math.min(GRID_CONTAINER_MAX_ROWS, Math.floor(nextRowsRaw)));
-      const nextCols = Math.max(1, Math.min(GRID_CONTAINER_MAX_COLS, Math.floor(nextColsRaw)));
+      const nextRows = Math.max(
+        1,
+        Math.min(GRID_CONTAINER_MAX_ROWS, Math.floor(nextRowsRaw)),
+      );
+      const nextCols = Math.max(
+        1,
+        Math.min(GRID_CONTAINER_MAX_COLS, Math.floor(nextColsRaw)),
+      );
       const currentRows = Math.max(1, objectItem.gridRows ?? 2);
       const currentCols = Math.max(1, objectItem.gridCols ?? 2);
       if (nextRows === currentRows && nextCols === currentCols) {
@@ -4192,13 +4535,13 @@ export default function RealtimeBoardCanvas({
         currentDraft.sectionTitles,
         sectionCount,
         (index) => fallbackTitles[index] ?? `Section ${index + 1}`,
-        80
+        80,
       );
       const nextSectionNotes = normalizeSectionValues(
         currentDraft.sectionNotes,
         sectionCount,
         () => "",
-        600
+        600,
       );
 
       const palette =
@@ -4207,27 +4550,29 @@ export default function RealtimeBoardCanvas({
           : ["#d1fae5", "#fee2e2", "#dbeafe", "#fef3c7"];
       const nextCellColors = Array.from(
         { length: sectionCount },
-        (_, index) => palette[index % palette.length] ?? "#e2e8f0"
+        (_, index) => palette[index % palette.length] ?? "#e2e8f0",
       );
-      const geometry =
-        getCurrentObjectGeometry(objectId) ?? {
-          x: objectItem.x,
-          y: objectItem.y,
-          width: objectItem.width,
-          height: objectItem.height,
-          rotationDeg: objectItem.rotationDeg
-        };
-      const nextGap = Math.max(0, objectItem.gridGap ?? GRID_CONTAINER_DEFAULT_GAP);
+      const geometry = getCurrentObjectGeometry(objectId) ?? {
+        x: objectItem.x,
+        y: objectItem.y,
+        width: objectItem.width,
+        height: objectItem.height,
+        rotationDeg: objectItem.rotationDeg,
+      };
+      const nextGap = Math.max(
+        0,
+        objectItem.gridGap ?? GRID_CONTAINER_DEFAULT_GAP,
+      );
       const childUpdates = getSectionAnchoredObjectUpdatesForContainer(
         objectId,
         geometry,
         nextRows,
         nextCols,
-        nextGap
+        nextGap,
       );
       const membershipByObjectId = buildContainerMembershipPatchesForPositions(
         childUpdates.positionByObjectId,
-        childUpdates.membershipByObjectId
+        childUpdates.membershipByObjectId,
       );
 
       try {
@@ -4237,7 +4582,7 @@ export default function RealtimeBoardCanvas({
           gridSectionTitles: nextSectionTitles,
           gridSectionNotes: nextSectionNotes,
           gridCellColors: nextCellColors,
-          updatedAt: serverTimestamp()
+          updatedAt: serverTimestamp(),
         });
         setGridContentDraftById((previous) => {
           if (!(objectId in previous)) {
@@ -4254,12 +4599,17 @@ export default function RealtimeBoardCanvas({
           await updateObjectPositionsBatch(childUpdates.positionByObjectId, {
             includeUpdatedAt: true,
             force: true,
-            containerMembershipById: membershipByObjectId
+            containerMembershipById: membershipByObjectId,
           });
         }
       } catch (error) {
         console.error("Failed to update grid container dimensions", error);
-        setBoardError(toBoardErrorMessage(error, "Failed to update grid container dimensions."));
+        setBoardError(
+          toBoardErrorMessage(
+            error,
+            "Failed to update grid container dimensions.",
+          ),
+        );
       }
     },
     [
@@ -4269,8 +4619,8 @@ export default function RealtimeBoardCanvas({
       getCurrentObjectGeometry,
       getGridDraftForObject,
       getSectionAnchoredObjectUpdatesForContainer,
-      updateObjectPositionsBatch
-    ]
+      updateObjectPositionsBatch,
+    ],
   );
 
   const saveSelectedObjectsColor = useCallback(
@@ -4279,8 +4629,8 @@ export default function RealtimeBoardCanvas({
         return;
       }
 
-      const objectIdsToUpdate = Array.from(selectedObjectIdsRef.current).filter((objectId) =>
-        objectsByIdRef.current.has(objectId)
+      const objectIdsToUpdate = Array.from(selectedObjectIdsRef.current).filter(
+        (objectId) => objectsByIdRef.current.has(objectId),
       );
       if (objectIdsToUpdate.length === 0) {
         return;
@@ -4293,17 +4643,22 @@ export default function RealtimeBoardCanvas({
         objectIdsToUpdate.forEach((objectId) => {
           batch.update(doc(db, `boards/${boardId}/objects/${objectId}`), {
             color,
-            updatedAt
+            updatedAt,
           });
         });
 
         await batch.commit();
       } catch (error) {
         console.error("Failed to update selected object colors", error);
-        setBoardError(toBoardErrorMessage(error, "Failed to update selected object colors."));
+        setBoardError(
+          toBoardErrorMessage(
+            error,
+            "Failed to update selected object colors.",
+          ),
+        );
       }
     },
-    [boardId, db]
+    [boardId, db],
   );
 
   const resetSelectedObjectsRotation = useCallback(async () => {
@@ -4322,11 +4677,11 @@ export default function RealtimeBoardCanvas({
       })
       .filter(
         (
-          item
+          item,
         ): item is {
           objectId: string;
           geometry: ObjectGeometry;
-        } => item !== null
+        } => item !== null,
       )
       .filter((item) => hasMeaningfulRotation(item.geometry.rotationDeg));
 
@@ -4339,7 +4694,7 @@ export default function RealtimeBoardCanvas({
     targets.forEach((target) => {
       setDraftGeometry(target.objectId, {
         ...target.geometry,
-        rotationDeg: 0
+        rotationDeg: 0,
       });
     });
 
@@ -4354,14 +4709,16 @@ export default function RealtimeBoardCanvas({
           width: target.geometry.width,
           height: target.geometry.height,
           rotationDeg: 0,
-          updatedAt
+          updatedAt,
         });
       });
 
       await batch.commit();
     } catch (error) {
       console.error("Failed to reset selected object rotation", error);
-      setBoardError(toBoardErrorMessage(error, "Failed to reset selected object rotation."));
+      setBoardError(
+        toBoardErrorMessage(error, "Failed to reset selected object rotation."),
+      );
     } finally {
       targets.forEach((target) => {
         window.setTimeout(() => {
@@ -4369,11 +4726,17 @@ export default function RealtimeBoardCanvas({
         }, 180);
       });
     }
-  }, [boardId, clearDraftGeometry, db, getCurrentObjectGeometry, setDraftGeometry]);
+  }, [
+    boardId,
+    clearDraftGeometry,
+    db,
+    getCurrentObjectGeometry,
+    setDraftGeometry,
+  ]);
 
   const selectSingleObject = useCallback((objectId: string) => {
     setSelectedObjectIds((previous) =>
-      previous.length === 1 && previous[0] === objectId ? previous : [objectId]
+      previous.length === 1 && previous[0] === objectId ? previous : [objectId],
     );
   }, []);
 
@@ -4393,14 +4756,16 @@ export default function RealtimeBoardCanvas({
     }
 
     const objectIdsToDelete = [...selectedObjectIds];
-    void Promise.all(objectIdsToDelete.map((objectId) => deleteObject(objectId)));
+    void Promise.all(
+      objectIdsToDelete.map((objectId) => deleteObject(objectId)),
+    );
   }, [canEdit, deleteObject, selectedObjectIds]);
 
   const handleToolButtonClick = useCallback(
     (toolKind: BoardObjectKind) => {
       void createObject(toolKind);
     },
-    [createObject]
+    [createObject],
   );
 
   const handleDeleteButtonClick = useCallback(() => {
@@ -4418,14 +4783,17 @@ export default function RealtimeBoardCanvas({
 
       aiFooterResizeStateRef.current = {
         startClientY: event.clientY,
-        initialHeight: aiFooterHeight
+        initialHeight: aiFooterHeight,
       };
     },
-    [aiFooterHeight, isAiFooterCollapsed]
+    [aiFooterHeight, isAiFooterCollapsed],
   );
 
   const submitAiCommandMessage = useCallback(
-    async (nextMessage: string, options?: { appendUserMessage?: boolean; clearInput?: boolean }) => {
+    async (
+      nextMessage: string,
+      options?: { appendUserMessage?: boolean; clearInput?: boolean },
+    ) => {
       const appendUserMessage = options?.appendUserMessage ?? true;
       const clearInput = options?.clearInput ?? false;
       if (nextMessage.trim().length === 0 || isAiSubmitting) {
@@ -4438,8 +4806,8 @@ export default function RealtimeBoardCanvas({
           {
             id: createChatMessageId("u"),
             role: "user",
-            text: nextMessage
-          }
+            text: nextMessage,
+          },
         ]);
       }
       if (clearInput) {
@@ -4460,27 +4828,27 @@ export default function RealtimeBoardCanvas({
           method: "POST",
           headers: {
             Authorization: `Bearer ${idToken}`,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
           },
           signal: requestController.signal,
           body: JSON.stringify({
             boardId,
             message: nextMessage,
-            selectedObjectIds: Array.from(selectedObjectIdsRef.current)
-          })
+            selectedObjectIds: Array.from(selectedObjectIdsRef.current),
+          }),
         });
 
         if (!response.ok) {
           const assistantMessage = getBoardCommandErrorMessage({
-            status: response.status
+            status: response.status,
           });
           setChatMessages((previous) => [
             ...previous,
             {
               id: createChatMessageId("a"),
               role: "assistant",
-              text: assistantMessage
-            }
+              text: assistantMessage,
+            },
           ]);
           return;
         }
@@ -4489,7 +4857,8 @@ export default function RealtimeBoardCanvas({
           assistantMessage?: unknown;
         };
         const assistantMessage =
-          typeof payload.assistantMessage === "string" && payload.assistantMessage.trim()
+          typeof payload.assistantMessage === "string" &&
+          payload.assistantMessage.trim()
             ? payload.assistantMessage
             : "AI agent coming soon!";
 
@@ -4498,14 +4867,15 @@ export default function RealtimeBoardCanvas({
           {
             id: createChatMessageId("a"),
             role: "assistant",
-            text: assistantMessage
-          }
+            text: assistantMessage,
+          },
         ]);
       } catch (error) {
-        const timedOut = error instanceof DOMException && error.name === "AbortError";
+        const timedOut =
+          error instanceof DOMException && error.name === "AbortError";
         const assistantMessage = getBoardCommandErrorMessage({
           status: null,
-          timedOut
+          timedOut,
         });
 
         setChatMessages((previous) => [
@@ -4513,15 +4883,15 @@ export default function RealtimeBoardCanvas({
           {
             id: createChatMessageId("a"),
             role: "assistant",
-            text: assistantMessage
-          }
+            text: assistantMessage,
+          },
         ]);
       } finally {
         window.clearTimeout(timeoutId);
         setIsAiSubmitting(false);
       }
     },
-    [boardId, isAiSubmitting, user]
+    [boardId, isAiSubmitting, user],
   );
 
   const handleAiChatSubmit = useCallback(
@@ -4533,10 +4903,10 @@ export default function RealtimeBoardCanvas({
       }
       void submitAiCommandMessage(nextMessage, {
         appendUserMessage: true,
-        clearInput: true
+        clearInput: true,
       });
     },
-    [chatInput, isAiSubmitting, submitAiCommandMessage]
+    [chatInput, isAiSubmitting, submitAiCommandMessage],
   );
 
   const handleCreateSwotButtonClick = useCallback(() => {
@@ -4545,57 +4915,60 @@ export default function RealtimeBoardCanvas({
     }
 
     void submitAiCommandMessage("Create a SWOT analysis", {
-      appendUserMessage: false
+      appendUserMessage: false,
     });
   }, [canEdit, isAiSubmitting, submitAiCommandMessage]);
 
-  const handleStagePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) {
-      return;
-    }
-
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) {
-      return;
-    }
-
-    if (target.closest("[data-selection-hud='true']")) {
-      return;
-    }
-
-    if (target.closest("[data-board-object='true']")) {
-      return;
-    }
-
-    const isRemoveMarquee = event.ctrlKey || event.metaKey;
-    const isAddMarquee = event.shiftKey;
-
-    if (isAddMarquee || isRemoveMarquee) {
-      const startPoint = toBoardCoordinates(event.clientX, event.clientY);
-      if (!startPoint) {
+  const handleStagePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) {
         return;
       }
 
-      const nextMarqueeState: MarqueeSelectionState = {
-        startPoint,
-        currentPoint: startPoint,
-        mode: isRemoveMarquee ? "remove" : "add"
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+
+      if (target.closest("[data-selection-hud='true']")) {
+        return;
+      }
+
+      if (target.closest("[data-board-object='true']")) {
+        return;
+      }
+
+      const isRemoveMarquee = event.ctrlKey || event.metaKey;
+      const isAddMarquee = event.shiftKey;
+
+      if (isAddMarquee || isRemoveMarquee) {
+        const startPoint = toBoardCoordinates(event.clientX, event.clientY);
+        if (!startPoint) {
+          return;
+        }
+
+        const nextMarqueeState: MarqueeSelectionState = {
+          startPoint,
+          currentPoint: startPoint,
+          mode: isRemoveMarquee ? "remove" : "add",
+        };
+
+        marqueeSelectionStateRef.current = nextMarqueeState;
+        setMarqueeSelectionState(nextMarqueeState);
+        return;
+      }
+
+      setSelectedObjectIds([]);
+
+      panStateRef.current = {
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        initialX: viewportRef.current.x,
+        initialY: viewportRef.current.y,
       };
-
-      marqueeSelectionStateRef.current = nextMarqueeState;
-      setMarqueeSelectionState(nextMarqueeState);
-      return;
-    }
-
-    setSelectedObjectIds([]);
-
-    panStateRef.current = {
-      startClientX: event.clientX,
-      startClientY: event.clientY,
-      initialX: viewportRef.current.x,
-      initialY: viewportRef.current.y
-    };
-  }, [toBoardCoordinates]);
+    },
+    [toBoardCoordinates],
+  );
 
   const handleStagePointerMove = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -4612,7 +4985,7 @@ export default function RealtimeBoardCanvas({
 
       void updateCursor(nextPoint);
     },
-    [toBoardCoordinates, updateCursor]
+    [toBoardCoordinates, updateCursor],
   );
 
   const handleStagePointerLeave = useCallback(() => {
@@ -4645,44 +5018,57 @@ export default function RealtimeBoardCanvas({
       setViewport({
         x: nextX,
         y: nextY,
-        scale: nextScale
+        scale: nextScale,
       });
     },
-    []
+    [],
   );
 
-  const zoomAtPointer = useCallback((clientX: number, clientY: number, deltaY: number) => {
-    const effectiveDeltaY = getAcceleratedWheelZoomDelta(deltaY);
-    const zoomFactor = Math.exp(-effectiveDeltaY * ZOOM_WHEEL_INTENSITY);
-    const nextScale = clampScale(viewportRef.current.scale * zoomFactor);
-    setScaleAtClientPoint(clientX, clientY, nextScale);
-  }, [setScaleAtClientPoint]);
+  const zoomAtPointer = useCallback(
+    (clientX: number, clientY: number, deltaY: number) => {
+      const effectiveDeltaY = getAcceleratedWheelZoomDelta(deltaY);
+      const zoomFactor = Math.exp(-effectiveDeltaY * ZOOM_WHEEL_INTENSITY);
+      const nextScale = clampScale(viewportRef.current.scale * zoomFactor);
+      setScaleAtClientPoint(clientX, clientY, nextScale);
+    },
+    [setScaleAtClientPoint],
+  );
 
-  const zoomAtStageCenter = useCallback((targetScale: number) => {
-    const stageElement = stageRef.current;
-    if (!stageElement) {
-      return;
-    }
+  const zoomAtStageCenter = useCallback(
+    (targetScale: number) => {
+      const stageElement = stageRef.current;
+      if (!stageElement) {
+        return;
+      }
 
-    const rect = stageElement.getBoundingClientRect();
-    setScaleAtClientPoint(
-      rect.left + rect.width / 2,
-      rect.top + rect.height / 2,
-      targetScale
-    );
-  }, [setScaleAtClientPoint]);
+      const rect = stageElement.getBoundingClientRect();
+      setScaleAtClientPoint(
+        rect.left + rect.width / 2,
+        rect.top + rect.height / 2,
+        targetScale,
+      );
+    },
+    [setScaleAtClientPoint],
+  );
 
-  const nudgeZoom = useCallback((direction: "in" | "out") => {
-    const deltaPercent = direction === "in" ? ZOOM_BUTTON_STEP_PERCENT : -ZOOM_BUTTON_STEP_PERCENT;
-    const nextPercent = Math.round(viewportRef.current.scale * 100) + deltaPercent;
-    zoomAtStageCenter(nextPercent / 100);
-  }, [zoomAtStageCenter]);
+  const nudgeZoom = useCallback(
+    (direction: "in" | "out") => {
+      const deltaPercent =
+        direction === "in"
+          ? ZOOM_BUTTON_STEP_PERCENT
+          : -ZOOM_BUTTON_STEP_PERCENT;
+      const nextPercent =
+        Math.round(viewportRef.current.scale * 100) + deltaPercent;
+      zoomAtStageCenter(nextPercent / 100);
+    },
+    [zoomAtStageCenter],
+  );
 
   const panByWheel = useCallback((deltaX: number, deltaY: number) => {
     setViewport((previous) => ({
       x: previous.x - deltaX,
       y: previous.y - deltaY,
-      scale: previous.scale
+      scale: previous.scale,
     }));
   }, []);
 
@@ -4692,6 +5078,9 @@ export default function RealtimeBoardCanvas({
       return;
     }
 
+    /**
+     * Handles handle native wheel.
+     */
     const handleNativeWheel = (event: WheelEvent) => {
       event.preventDefault();
       event.stopPropagation();
@@ -4704,7 +5093,9 @@ export default function RealtimeBoardCanvas({
       panByWheel(event.deltaX, event.deltaY);
     };
 
-    stageElement.addEventListener("wheel", handleNativeWheel, { passive: false });
+    stageElement.addEventListener("wheel", handleNativeWheel, {
+      passive: false,
+    });
 
     return () => {
       stageElement.removeEventListener("wheel", handleNativeWheel);
@@ -4738,12 +5129,12 @@ export default function RealtimeBoardCanvas({
       const currentSelectedIds = selectedObjectIdsRef.current;
       const shouldPrepareGroupDrag =
         currentSelectedIds.has(objectId) && currentSelectedIds.size > 1;
-      const dragObjectIds = (shouldPrepareGroupDrag ? Array.from(currentSelectedIds) : [objectId]).filter(
-        (candidateId) => {
-          const candidateObject = objectsByIdRef.current.get(candidateId);
-          return candidateObject ? !isConnectorKind(candidateObject.type) : false;
-        }
-      );
+      const dragObjectIds = (
+        shouldPrepareGroupDrag ? Array.from(currentSelectedIds) : [objectId]
+      ).filter((candidateId) => {
+        const candidateObject = objectsByIdRef.current.get(candidateId);
+        return candidateObject ? !isConnectorKind(candidateObject.type) : false;
+      });
 
       if (!shouldPrepareGroupDrag) {
         selectSingleObject(objectId);
@@ -4769,10 +5160,15 @@ export default function RealtimeBoardCanvas({
         startClientY: event.clientY,
         lastSentAt: 0,
         hasMoved: false,
-        collapseToObjectIdOnClick: shouldPrepareGroupDrag ? objectId : null
+        collapseToObjectIdOnClick: shouldPrepareGroupDrag ? objectId : null,
       };
     },
-    [canEdit, getCurrentObjectGeometry, selectSingleObject, toggleObjectSelection]
+    [
+      canEdit,
+      getCurrentObjectGeometry,
+      selectSingleObject,
+      toggleObjectSelection,
+    ],
   );
 
   const startShapeRotate = useCallback(
@@ -4809,10 +5205,10 @@ export default function RealtimeBoardCanvas({
 
       const centerPoint = {
         x: geometry.x + geometry.width / 2,
-        y: geometry.y + geometry.height / 2
+        y: geometry.y + geometry.height / 2,
       };
       const initialPointerAngleDeg = toDegrees(
-        Math.atan2(pointer.y - centerPoint.y, pointer.x - centerPoint.x)
+        Math.atan2(pointer.y - centerPoint.y, pointer.x - centerPoint.x),
       );
 
       selectSingleObject(objectId);
@@ -4821,14 +5217,18 @@ export default function RealtimeBoardCanvas({
         centerPoint,
         initialPointerAngleDeg,
         initialRotationDeg: geometry.rotationDeg,
-        lastSentAt: 0
+        lastSentAt: 0,
       };
     },
-    [canEdit, getCurrentObjectGeometry, selectSingleObject, toBoardCoordinates]
+    [canEdit, getCurrentObjectGeometry, selectSingleObject, toBoardCoordinates],
   );
 
   const startCornerResize = useCallback(
-    (objectId: string, corner: ResizeCorner, event: ReactPointerEvent<HTMLButtonElement>) => {
+    (
+      objectId: string,
+      corner: ResizeCorner,
+      event: ReactPointerEvent<HTMLButtonElement>,
+    ) => {
       if (!canEdit) {
         return;
       }
@@ -4858,17 +5258,17 @@ export default function RealtimeBoardCanvas({
         startClientX: event.clientX,
         startClientY: event.clientY,
         initialGeometry: geometry,
-        lastSentAt: 0
+        lastSentAt: 0,
       };
     },
-    [canEdit, getCurrentObjectGeometry, selectSingleObject]
+    [canEdit, getCurrentObjectGeometry, selectSingleObject],
   );
 
   const startLineEndpointResize = useCallback(
     (
       objectId: string,
       endpoint: LineEndpoint,
-      event: ReactPointerEvent<HTMLButtonElement>
+      event: ReactPointerEvent<HTMLButtonElement>,
     ) => {
       if (!canEdit) {
         return;
@@ -4900,17 +5300,17 @@ export default function RealtimeBoardCanvas({
         endpoint,
         fixedPoint,
         handleHeight: geometry.height,
-        lastSentAt: 0
+        lastSentAt: 0,
       };
     },
-    [canEdit, getCurrentObjectGeometry, selectSingleObject]
+    [canEdit, getCurrentObjectGeometry, selectSingleObject],
   );
 
   const startConnectorEndpointDrag = useCallback(
     (
       objectId: string,
       endpoint: ConnectorEndpoint,
-      event: ReactPointerEvent<HTMLButtonElement>
+      event: ReactPointerEvent<HTMLButtonElement>,
     ) => {
       if (!canEdit) {
         return;
@@ -4938,22 +5338,32 @@ export default function RealtimeBoardCanvas({
       connectorEndpointDragStateRef.current = {
         objectId,
         endpoint,
-        lastSentAt: 0
+        lastSentAt: 0,
       };
     },
-    [canEdit, getConnectorDraftForObject, selectSingleObject, setDraftConnector]
+    [
+      canEdit,
+      getConnectorDraftForObject,
+      selectSingleObject,
+      setDraftConnector,
+    ],
   );
 
   const onlineUsers = useMemo(
     () =>
-      getActivePresenceUsers(presenceUsers, presenceClock, PRESENCE_TTL_MS)
-        .sort((left, right) => getPresenceLabel(left).localeCompare(getPresenceLabel(right))),
-    [presenceClock, presenceUsers]
+      getActivePresenceUsers(
+        presenceUsers,
+        presenceClock,
+        PRESENCE_TTL_MS,
+      ).sort((left, right) =>
+        getPresenceLabel(left).localeCompare(getPresenceLabel(right)),
+      ),
+    [presenceClock, presenceUsers],
   );
 
   const remoteCursors = useMemo(
     () => getRemoteCursors(onlineUsers, user.uid),
-    [onlineUsers, user.uid]
+    [onlineUsers, user.uid],
   );
 
   const selectedObjectCount = selectedObjectIds.length;
@@ -4961,7 +5371,9 @@ export default function RealtimeBoardCanvas({
     () =>
       selectedObjectIds
         .map((objectId) => {
-          const objectItem = objects.find((candidate) => candidate.id === objectId);
+          const objectItem = objects.find(
+            (candidate) => candidate.id === objectId,
+          );
           if (!objectItem) {
             return null;
           }
@@ -4972,23 +5384,23 @@ export default function RealtimeBoardCanvas({
             y: objectItem.y,
             width: objectItem.width,
             height: objectItem.height,
-            rotationDeg: objectItem.rotationDeg
+            rotationDeg: objectItem.rotationDeg,
           };
 
           return {
             object: objectItem,
-            geometry
+            geometry,
           };
         })
         .filter(
           (
-            item
+            item,
           ): item is {
             object: BoardObject;
             geometry: ObjectGeometry;
-          } => item !== null
+          } => item !== null,
         ),
-    [draftGeometryById, objects, selectedObjectIds]
+    [draftGeometryById, objects, selectedObjectIds],
   );
   const connectableGeometryById = useMemo(() => {
     const geometries = new Map<string, ObjectGeometry>();
@@ -5005,14 +5417,23 @@ export default function RealtimeBoardCanvas({
           y: objectItem.y,
           width: objectItem.width,
           height: objectItem.height,
-          rotationDeg: objectItem.rotationDeg
-        }
+          rotationDeg: objectItem.rotationDeg,
+        },
       );
     });
     return geometries;
   }, [draftGeometryById, objects]);
   const connectableTypeById = useMemo(() => {
-    const types = new Map<string, Exclude<BoardObjectKind, "line" | "connectorUndirected" | "connectorArrow" | "connectorBidirectional">>();
+    const types = new Map<
+      string,
+      Exclude<
+        BoardObjectKind,
+        | "line"
+        | "connectorUndirected"
+        | "connectorArrow"
+        | "connectorBidirectional"
+      >
+    >();
     objects.forEach((objectItem) => {
       if (isConnectableShapeKind(objectItem.type)) {
         types.set(objectItem.id, objectItem.type);
@@ -5022,18 +5443,23 @@ export default function RealtimeBoardCanvas({
   }, [objects]);
   const connectorRoutingObstacles = useMemo(
     () =>
-      Array.from(connectableGeometryById.entries()).map(([objectId, geometry]) => {
-        const objectType = connectableTypeById.get(objectId);
-        if (!objectType) {
-          return null;
-        }
+      Array.from(connectableGeometryById.entries())
+        .map(([objectId, geometry]) => {
+          const objectType = connectableTypeById.get(objectId);
+          if (!objectType) {
+            return null;
+          }
 
-        return {
-          objectId,
-          bounds: inflateObjectBounds(getObjectVisualBounds(objectType, geometry), 14)
-        };
-      }).filter((item): item is ConnectorRoutingObstacle => item !== null),
-    [connectableGeometryById, connectableTypeById]
+          return {
+            objectId,
+            bounds: inflateObjectBounds(
+              getObjectVisualBounds(objectType, geometry),
+              14,
+            ),
+          };
+        })
+        .filter((item): item is ConnectorRoutingObstacle => item !== null),
+    [connectableGeometryById, connectableTypeById],
   );
   const connectorRoutesById = useMemo(() => {
     const routes = new Map<
@@ -5054,30 +5480,33 @@ export default function RealtimeBoardCanvas({
       }
 
       const localDraft = draftConnectorById[objectItem.id] ?? null;
-      const connectorGeometryDraft =
-        draftGeometryById[objectItem.id] ?? {
-          x: objectItem.x,
-          y: objectItem.y,
-          width: objectItem.width,
-          height: objectItem.height,
-          rotationDeg: objectItem.rotationDeg
-        };
+      const connectorGeometryDraft = draftGeometryById[objectItem.id] ?? {
+        x: objectItem.x,
+        y: objectItem.y,
+        width: objectItem.width,
+        height: objectItem.height,
+        rotationDeg: objectItem.rotationDeg,
+      };
       const defaultFromX =
         objectItem.fromX ??
         connectorGeometryDraft.x +
-          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, connectorGeometryDraft.width) * 0.1;
+          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, connectorGeometryDraft.width) *
+            0.1;
       const defaultFromY =
         objectItem.fromY ??
         connectorGeometryDraft.y +
-          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, connectorGeometryDraft.height) * 0.5;
+          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, connectorGeometryDraft.height) *
+            0.5;
       const defaultToX =
         objectItem.toX ??
         connectorGeometryDraft.x +
-          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, connectorGeometryDraft.width) * 0.9;
+          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, connectorGeometryDraft.width) *
+            0.9;
       const defaultToY =
         objectItem.toY ??
         connectorGeometryDraft.y +
-          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, connectorGeometryDraft.height) * 0.5;
+          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, connectorGeometryDraft.height) *
+            0.5;
       const connectorDraft: ConnectorDraft = localDraft ?? {
         fromObjectId: objectItem.fromObjectId ?? null,
         toObjectId: objectItem.toObjectId ?? null,
@@ -5086,21 +5515,28 @@ export default function RealtimeBoardCanvas({
         fromX: defaultFromX,
         fromY: defaultFromY,
         toX: defaultToX,
-        toY: defaultToY
+        toY: defaultToY,
       };
       const activeEndpointDrag = connectorEndpointDragStateRef.current;
 
+      /**
+       * Builds endpoint candidates.
+       */
       const buildEndpointCandidates = (
-        endpoint: "from" | "to"
+        endpoint: "from" | "to",
       ): ResolvedConnectorEndpoint[] => {
         const objectId =
-          endpoint === "from" ? connectorDraft.fromObjectId : connectorDraft.toObjectId;
+          endpoint === "from"
+            ? connectorDraft.fromObjectId
+            : connectorDraft.toObjectId;
         const fallbackPoint =
           endpoint === "from"
             ? { x: connectorDraft.fromX, y: connectorDraft.fromY }
             : { x: connectorDraft.toX, y: connectorDraft.toY };
         const selectedAnchor =
-          endpoint === "from" ? connectorDraft.fromAnchor : connectorDraft.toAnchor;
+          endpoint === "from"
+            ? connectorDraft.fromAnchor
+            : connectorDraft.toAnchor;
 
         if (!objectId) {
           return [
@@ -5110,8 +5546,8 @@ export default function RealtimeBoardCanvas({
               objectId: null,
               anchor: null,
               direction: null,
-              connected: false
-            }
+              connected: false,
+            },
           ];
         }
 
@@ -5124,8 +5560,8 @@ export default function RealtimeBoardCanvas({
               objectId: null,
               anchor: null,
               direction: null,
-              connected: false
-            }
+              connected: false,
+            },
           ];
         }
         const endpointType = connectableTypeById.get(objectId) ?? "rect";
@@ -5133,21 +5569,31 @@ export default function RealtimeBoardCanvas({
         const isDraggingThisEndpoint =
           activeEndpointDrag?.objectId === objectItem.id &&
           activeEndpointDrag.endpoint === endpoint;
-        const anchors = isDraggingThisEndpoint && selectedAnchor
-          ? [selectedAnchor]
-          : selectedAnchor
-            ? [selectedAnchor, ...CONNECTOR_ANCHORS.filter((anchor) => anchor !== selectedAnchor)]
-            : [...CONNECTOR_ANCHORS];
+        const anchors =
+          isDraggingThisEndpoint && selectedAnchor
+            ? [selectedAnchor]
+            : selectedAnchor
+              ? [
+                  selectedAnchor,
+                  ...CONNECTOR_ANCHORS.filter(
+                    (anchor) => anchor !== selectedAnchor,
+                  ),
+                ]
+              : [...CONNECTOR_ANCHORS];
 
         return anchors.map((anchor) => {
-          const point = getAnchorPointForGeometry(endpointGeometry, anchor, endpointType);
+          const point = getAnchorPointForGeometry(
+            endpointGeometry,
+            anchor,
+            endpointType,
+          );
           return {
             x: point.x,
             y: point.y,
             objectId,
             anchor,
             direction: getAnchorDirectionForGeometry(anchor, endpointGeometry),
-            connected: true
+            connected: true,
           };
         });
       };
@@ -5175,13 +5621,13 @@ export default function RealtimeBoardCanvas({
           const obstacles = connectorRoutingObstacles.filter(
             (obstacle) =>
               obstacle.objectId !== fromCandidate.objectId &&
-              obstacle.objectId !== toCandidate.objectId
+              obstacle.objectId !== toCandidate.objectId,
           );
           const geometry = buildConnectorRouteGeometry({
             from: fromCandidate,
             to: toCandidate,
             obstacles,
-            padding: CONNECTOR_HIT_PADDING
+            padding: CONNECTOR_HIT_PADDING,
           });
 
           let score = scoreConnectorRoute(geometry.points, obstacles);
@@ -5189,7 +5635,7 @@ export default function RealtimeBoardCanvas({
             fromCandidate,
             toCandidate,
             fromCandidate.direction,
-            toCandidate.direction
+            toCandidate.direction,
           );
           if (
             fromCandidate.connected &&
@@ -5218,7 +5664,7 @@ export default function RealtimeBoardCanvas({
             bestScore = score;
             bestResolved = {
               from: fromCandidate,
-              to: toCandidate
+              to: toCandidate,
             };
             bestGeometry = geometry;
           }
@@ -5233,9 +5679,9 @@ export default function RealtimeBoardCanvas({
         resolved: {
           from: bestResolved.from,
           to: bestResolved.to,
-          draft: connectorDraft
+          draft: connectorDraft,
         },
-        geometry: bestGeometry
+        geometry: bestGeometry,
       });
     });
 
@@ -5246,7 +5692,7 @@ export default function RealtimeBoardCanvas({
     connectorRoutingObstacles,
     draftConnectorById,
     draftGeometryById,
-    objects
+    objects,
   ]);
   const selectedObjectBounds = useMemo(
     () =>
@@ -5259,10 +5705,13 @@ export default function RealtimeBoardCanvas({
             }
           }
 
-          return getObjectVisualBounds(selectedObject.object.type, selectedObject.geometry);
-        })
+          return getObjectVisualBounds(
+            selectedObject.object.type,
+            selectedObject.geometry,
+          );
+        }),
       ),
-    [connectorRoutesById, selectedObjects]
+    [connectorRoutesById, selectedObjects],
   );
   const selectedConnectorMidpoint = useMemo(() => {
     if (selectedObjects.length !== 1) {
@@ -5288,7 +5737,8 @@ export default function RealtimeBoardCanvas({
 
     const firstColor = selectedObjects[0].object.color.toLowerCase();
     const hasMixedColors = selectedObjects.some(
-      (selectedObject) => selectedObject.object.color.toLowerCase() !== firstColor
+      (selectedObject) =>
+        selectedObject.object.color.toLowerCase() !== firstColor,
     );
 
     return hasMixedColors ? null : selectedObjects[0].object.color;
@@ -5297,11 +5747,11 @@ export default function RealtimeBoardCanvas({
   const canResetSelectionRotation =
     canEdit &&
     selectedObjects.some((selectedObject) =>
-      hasMeaningfulRotation(selectedObject.geometry.rotationDeg)
+      hasMeaningfulRotation(selectedObject.geometry.rotationDeg),
     );
   const canShowSelectionHud = canColorSelection;
   const singleSelectedObject =
-    selectedObjects.length === 1 ? selectedObjects[0]?.object ?? null : null;
+    selectedObjects.length === 1 ? (selectedObjects[0]?.object ?? null) : null;
   const preferSidePlacement =
     singleSelectedObject !== null &&
     singleSelectedObject.type !== "line" &&
@@ -5314,7 +5764,7 @@ export default function RealtimeBoardCanvas({
       viewport,
       selectionHudSize,
       selectedConnectorMidpoint,
-      preferSidePlacement
+      preferSidePlacement,
     });
   }, [
     canShowSelectionHud,
@@ -5323,14 +5773,14 @@ export default function RealtimeBoardCanvas({
     selectedObjectBounds,
     selectionHudSize,
     stageSize,
-    viewport
+    viewport,
   ]);
   const hasDeletableSelection = useMemo(
     () =>
       canEdit &&
       selectedObjectIds.length > 0 &&
       objects.some((item) => selectedObjectIds.includes(item.id)),
-    [canEdit, objects, selectedObjectIds]
+    [canEdit, objects, selectedObjectIds],
   );
   const hasSelectedConnector = useMemo(
     () =>
@@ -5338,19 +5788,22 @@ export default function RealtimeBoardCanvas({
         const item = objects.find((candidate) => candidate.id === objectId);
         return item ? isConnectorKind(item.type) : false;
       }),
-    [objects, selectedObjectIds]
+    [objects, selectedObjectIds],
   );
-  const isConnectorEndpointDragging = connectorEndpointDragStateRef.current !== null;
+  const isConnectorEndpointDragging =
+    connectorEndpointDragStateRef.current !== null;
   const shouldShowConnectorAnchors =
     canEdit && (hasSelectedConnector || isConnectorEndpointDragging);
-  const connectorAnchorPoints = shouldShowConnectorAnchors ? getConnectableAnchorPoints() : [];
+  const connectorAnchorPoints = shouldShowConnectorAnchors
+    ? getConnectableAnchorPoints()
+    : [];
 
   useEffect(() => {
     if (!canShowSelectionHud) {
       setSelectionHudSize((previous) =>
         previous.width === 0 && previous.height === 0
           ? previous
-          : { width: 0, height: 0 }
+          : { width: 0, height: 0 },
       );
       return;
     }
@@ -5360,13 +5813,16 @@ export default function RealtimeBoardCanvas({
       return;
     }
 
+    /**
+     * Handles sync hud size.
+     */
     const syncHudSize = () => {
       const nextWidth = hudElement.offsetWidth;
       const nextHeight = hudElement.offsetHeight;
       setSelectionHudSize((previous) =>
         previous.width === nextWidth && previous.height === nextHeight
           ? previous
-          : { width: nextWidth, height: nextHeight }
+          : { width: nextWidth, height: nextHeight },
       );
     };
 
@@ -5389,12 +5845,12 @@ export default function RealtimeBoardCanvas({
   const zoomPercent = Math.round(viewport.scale * 100);
   const zoomSliderValue = Math.min(
     ZOOM_SLIDER_MAX_PERCENT,
-    Math.max(ZOOM_SLIDER_MIN_PERCENT, zoomPercent)
+    Math.max(ZOOM_SLIDER_MIN_PERCENT, zoomPercent),
   );
   const marqueeRect = marqueeSelectionState
     ? toNormalizedRect(
         marqueeSelectionState.startPoint,
-        marqueeSelectionState.currentPoint
+        marqueeSelectionState.currentPoint,
       )
     : null;
 
@@ -5406,7 +5862,7 @@ export default function RealtimeBoardCanvas({
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
-        background: "white"
+        background: "white",
       }}
     >
       <div
@@ -5415,7 +5871,7 @@ export default function RealtimeBoardCanvas({
           minHeight: 0,
           minWidth: 0,
           display: "grid",
-          gridTemplateColumns: `${isLeftPanelCollapsed ? COLLAPSED_PANEL_WIDTH : LEFT_PANEL_WIDTH}px ${PANEL_SEPARATOR_WIDTH}px minmax(0, 1fr) ${PANEL_SEPARATOR_WIDTH}px ${isRightPanelCollapsed ? COLLAPSED_PANEL_WIDTH : RIGHT_PANEL_WIDTH}px`
+          gridTemplateColumns: `${isLeftPanelCollapsed ? COLLAPSED_PANEL_WIDTH : LEFT_PANEL_WIDTH}px ${PANEL_SEPARATOR_WIDTH}px minmax(0, 1fr) ${PANEL_SEPARATOR_WIDTH}px ${isRightPanelCollapsed ? COLLAPSED_PANEL_WIDTH : RIGHT_PANEL_WIDTH}px`,
         }}
       >
         <aside
@@ -5425,7 +5881,7 @@ export default function RealtimeBoardCanvas({
             background: "#f8fafc",
             display: "flex",
             flexDirection: "column",
-            overflow: "hidden"
+            overflow: "hidden",
           }}
         >
           {isLeftPanelCollapsed ? (
@@ -5437,7 +5893,7 @@ export default function RealtimeBoardCanvas({
                 alignItems: "center",
                 justifyContent: "flex-start",
                 padding: "0.45rem 0.2rem",
-                gap: "0.55rem"
+                gap: "0.55rem",
               }}
             >
               <button
@@ -5453,7 +5909,7 @@ export default function RealtimeBoardCanvas({
                   background: "#e2e8f0",
                   color: "#0f172a",
                   fontWeight: 700,
-                  cursor: "pointer"
+                  cursor: "pointer",
                 }}
               >
                 {">"}
@@ -5465,7 +5921,7 @@ export default function RealtimeBoardCanvas({
                   color: "#334155",
                   fontSize: 11,
                   fontWeight: 600,
-                  letterSpacing: "0.04em"
+                  letterSpacing: "0.04em",
                 }}
               >
                 TOOLS
@@ -5480,10 +5936,12 @@ export default function RealtimeBoardCanvas({
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "flex-end",
-                  gap: "0.45rem"
+                  gap: "0.45rem",
                 }}
               >
-                <strong style={{ fontSize: 13, color: "#111827", lineHeight: 1.2 }}>
+                <strong
+                  style={{ fontSize: 13, color: "#111827", lineHeight: 1.2 }}
+                >
                   Tools
                 </strong>
                 <button
@@ -5500,7 +5958,7 @@ export default function RealtimeBoardCanvas({
                     color: "#0f172a",
                     fontWeight: 700,
                     alignSelf: "flex-end",
-                    cursor: "pointer"
+                    cursor: "pointer",
                   }}
                 >
                   {"<"}
@@ -5515,7 +5973,7 @@ export default function RealtimeBoardCanvas({
                   padding: "0.65rem",
                   display: "grid",
                   gap: "0.7rem",
-                  alignContent: "start"
+                  alignContent: "start",
                 }}
               >
                 <div
@@ -5524,7 +5982,7 @@ export default function RealtimeBoardCanvas({
                     gridTemplateColumns: "repeat(2, 42px)",
                     justifyContent: "center",
                     gap: "0.45rem",
-                    overflow: "visible"
+                    overflow: "visible",
                   }}
                 >
                   {BOARD_TOOLS.map((toolKind) => (
@@ -5548,7 +6006,7 @@ export default function RealtimeBoardCanvas({
                         height: 42,
                         padding: 0,
                         lineHeight: 0,
-                        overflow: "visible"
+                        overflow: "visible",
                       }}
                     >
                       <ToolIcon kind={toolKind} />
@@ -5569,12 +6027,14 @@ export default function RealtimeBoardCanvas({
                     gap: "0.45rem",
                     border: "1px solid #c7d2fe",
                     borderRadius: 8,
-                    background: !canEdit || isAiSubmitting ? "#eef2ff" : "#e0e7ff",
+                    background:
+                      !canEdit || isAiSubmitting ? "#eef2ff" : "#e0e7ff",
                     color: "#312e81",
                     height: 34,
                     fontSize: 12,
                     fontWeight: 600,
-                    cursor: !canEdit || isAiSubmitting ? "not-allowed" : "pointer"
+                    cursor:
+                      !canEdit || isAiSubmitting ? "not-allowed" : "pointer",
                   }}
                 >
                   <BriefcaseIcon />
@@ -5597,7 +6057,7 @@ export default function RealtimeBoardCanvas({
                       background: "#fef2f2",
                       color: "#7f1d1d",
                       height: 34,
-                      fontSize: 12
+                      fontSize: 12,
                     }}
                   >
                     <TrashIcon />
@@ -5614,7 +6074,7 @@ export default function RealtimeBoardCanvas({
                     borderRadius: 8,
                     border: "1px solid #cbd5e1",
                     background: "white",
-                    fontSize: 12
+                    fontSize: 12,
                   }}
                 >
                   Reset view
@@ -5630,7 +6090,7 @@ export default function RealtimeBoardCanvas({
                     padding: "0.2rem 0.35rem",
                     border: "1px solid #d1d5db",
                     borderRadius: 10,
-                    background: "white"
+                    background: "white",
                   }}
                 >
                   <button
@@ -5645,7 +6105,7 @@ export default function RealtimeBoardCanvas({
                       border: "1px solid #d1d5db",
                       background: "#f8fafc",
                       lineHeight: 1,
-                      padding: 0
+                      padding: 0,
                     }}
                   >
                     −
@@ -5664,7 +6124,7 @@ export default function RealtimeBoardCanvas({
                     style={{
                       width: "100%",
                       minWidth: 0,
-                      accentColor: "#2563eb"
+                      accentColor: "#2563eb",
                     }}
                   />
                   <button
@@ -5679,7 +6139,7 @@ export default function RealtimeBoardCanvas({
                       border: "1px solid #d1d5db",
                       background: "#f8fafc",
                       lineHeight: 1,
-                      padding: 0
+                      padding: 0,
                     }}
                   >
                     +
@@ -5690,7 +6150,7 @@ export default function RealtimeBoardCanvas({
                       fontSize: 11,
                       minWidth: 34,
                       textAlign: "right",
-                      fontVariantNumeric: "tabular-nums"
+                      fontVariantNumeric: "tabular-nums",
                     }}
                   >
                     {zoomPercent}%
@@ -5702,7 +6162,7 @@ export default function RealtimeBoardCanvas({
                     color: selectedObjectCount > 0 ? "#111827" : "#6b7280",
                     fontSize: 12,
                     lineHeight: 1.25,
-                    wordBreak: "break-word"
+                    wordBreak: "break-word",
                   }}
                 >
                   Selected:{" "}
@@ -5712,7 +6172,9 @@ export default function RealtimeBoardCanvas({
                 </span>
 
                 {boardError ? (
-                  <p style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>{boardError}</p>
+                  <p style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
+                    {boardError}
+                  </p>
                 ) : null}
               </div>
             </>
@@ -5722,7 +6184,7 @@ export default function RealtimeBoardCanvas({
         <div
           style={{
             background: PANEL_SEPARATOR_COLOR,
-            boxShadow: "inset 0 0 0 1px rgba(15, 23, 42, 0.14)"
+            boxShadow: "inset 0 0 0 1px rgba(15, 23, 42, 0.14)",
           }}
         />
 
@@ -5730,7 +6192,7 @@ export default function RealtimeBoardCanvas({
           style={{
             minWidth: 0,
             minHeight: 0,
-            position: "relative"
+            position: "relative",
           }}
         >
           <div
@@ -5751,225 +6213,236 @@ export default function RealtimeBoardCanvas({
               backgroundSize: `${40 * viewport.scale}px ${40 * viewport.scale}px`,
               backgroundPosition: `${viewport.x}px ${viewport.y}px`,
               touchAction: "none",
-              overscrollBehavior: "contain"
+              overscrollBehavior: "contain",
             }}
           >
-
-          {canShowSelectionHud && selectionHudPosition ? (
-            <div
-              ref={selectionHudRef}
-              data-selection-hud="true"
-              onPointerDown={(event) => {
-                event.stopPropagation();
-              }}
-              onClick={(event) => {
-                event.stopPropagation();
-              }}
-              style={{
-                position: "absolute",
-                left: selectionHudPosition.x,
-                top: selectionHudPosition.y,
-                zIndex: 45,
-                display: "flex",
-                alignItems: "center",
-                gap: "0.45rem",
-                padding: "0.4rem 0.45rem",
-                borderRadius: 10,
-                border: "1px solid #d1d5db",
-                background: "rgba(255,255,255,0.98)",
-                boxShadow: "0 8px 20px rgba(0,0,0,0.14)",
-                backdropFilter: "blur(2px)"
-              }}
-            >
-              <ColorSwatchPicker
-                currentColor={selectedColor}
-                onSelectColor={(nextColor) => {
-                  void saveSelectedObjectsColor(nextColor);
+            {canShowSelectionHud && selectionHudPosition ? (
+              <div
+                ref={selectionHudRef}
+                data-selection-hud="true"
+                onPointerDown={(event) => {
+                  event.stopPropagation();
                 }}
-              />
-              {canResetSelectionRotation ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    void resetSelectedObjectsRotation();
+                onClick={(event) => {
+                  event.stopPropagation();
+                }}
+                style={{
+                  position: "absolute",
+                  left: selectionHudPosition.x,
+                  top: selectionHudPosition.y,
+                  zIndex: 45,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.45rem",
+                  padding: "0.4rem 0.45rem",
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  background: "rgba(255,255,255,0.98)",
+                  boxShadow: "0 8px 20px rgba(0,0,0,0.14)",
+                  backdropFilter: "blur(2px)",
+                }}
+              >
+                <ColorSwatchPicker
+                  currentColor={selectedColor}
+                  onSelectColor={(nextColor) => {
+                    void saveSelectedObjectsColor(nextColor);
                   }}
-                  style={{
-                    border: "1px solid #cbd5e1",
-                    borderRadius: 8,
-                    background: "white",
-                    padding: "0.35rem 0.55rem",
-                    color: "#1f2937",
-                    fontSize: 12,
-                    whiteSpace: "nowrap"
-                  }}
-                >
-                  Reset rotation
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`,
-              transformOrigin: "0 0"
-            }}
-          >
-            {objects.map((objectItem) => {
-              const draftGeometry = draftGeometryById[objectItem.id];
-              const hasDraftGeometry = Boolean(draftGeometry);
-              const objectX = draftGeometry?.x ?? objectItem.x;
-              const objectY = draftGeometry?.y ?? objectItem.y;
-              const objectWidth = draftGeometry?.width ?? objectItem.width;
-              const objectHeight = draftGeometry?.height ?? objectItem.height;
-              const objectRotationDeg =
-                draftGeometry?.rotationDeg ?? objectItem.rotationDeg;
-              const objectText = textDrafts[objectItem.id] ?? objectItem.text;
-              const isSelected = selectedObjectIds.includes(objectItem.id);
-              const isSingleSelected = selectedObjectIds.length === 1 && isSelected;
-              const isConnector = isConnectorKind(objectItem.type);
-              const objectGeometry: ObjectGeometry = {
-                x: objectX,
-                y: objectY,
-                width: objectWidth,
-                height: objectHeight,
-                rotationDeg: objectRotationDeg
-              };
-              const connectorRoute = isConnector
-                ? connectorRoutesById.get(objectItem.id) ?? null
-                : null;
-              const connectorFrame = connectorRoute
-                ? {
-                    left: connectorRoute.geometry.bounds.left,
-                    top: connectorRoute.geometry.bounds.top,
-                    width: Math.max(
-                      1,
-                      connectorRoute.geometry.bounds.right - connectorRoute.geometry.bounds.left
-                    ),
-                    height: Math.max(
-                      1,
-                      connectorRoute.geometry.bounds.bottom - connectorRoute.geometry.bounds.top
-                    )
-                  }
-                : null;
-              const lineEndpointOffsets =
-                objectItem.type === "line" ? getLineEndpointOffsets(objectGeometry) : null;
-              const isPolygonShape =
-                objectItem.type === "triangle" || objectItem.type === "star";
-              const isGridContainer = objectItem.type === "gridContainer";
-              const gridRows = isGridContainer ? Math.max(1, objectItem.gridRows ?? 2) : 0;
-              const gridCols = isGridContainer ? Math.max(1, objectItem.gridCols ?? 2) : 0;
-              const gridGap = isGridContainer
-                ? Math.max(0, objectItem.gridGap ?? GRID_CONTAINER_DEFAULT_GAP)
-                : 0;
-              const gridTotalCells = isGridContainer ? gridRows * gridCols : 0;
-              const gridCellColors =
-                isGridContainer && objectItem.gridCellColors && objectItem.gridCellColors.length > 0
-                  ? objectItem.gridCellColors
-                  : ["#d1fae5", "#fee2e2", "#dbeafe", "#fef3c7"];
-              const gridFallbackTitles = isGridContainer
-                ? getDefaultSectionTitles(gridRows, gridCols)
-                : [];
-              const gridDraft = isGridContainer ? getGridDraftForObject(objectItem) : null;
-              const gridContainerTitle =
-                gridDraft?.containerTitle ?? objectItem.containerTitle ?? "Grid container";
-              const gridSectionTitles =
-                gridDraft?.sectionTitles ??
-                normalizeSectionValues(
-                  objectItem.gridSectionTitles,
-                  gridTotalCells,
-                  (index) => gridFallbackTitles[index] ?? `Section ${index + 1}`,
-                  80
-                );
-
-              if (isConnector && connectorRoute && connectorFrame) {
-                const strokeWidth = 3;
-                const resolvedConnector = connectorRoute.resolved;
-                const relativeRoutePoints = connectorRoute.geometry.points.map((point) => ({
-                  x: point.x - connectorFrame.left,
-                  y: point.y - connectorFrame.top
-                }));
-                const connectorPath = toRoundedConnectorPath(relativeRoutePoints, 16);
-                const fromOffset = relativeRoutePoints[0] ?? {
-                  x: resolvedConnector.from.x - connectorFrame.left,
-                  y: resolvedConnector.from.y - connectorFrame.top
-                };
-                const toOffset = relativeRoutePoints[relativeRoutePoints.length - 1] ?? {
-                  x: resolvedConnector.to.x - connectorFrame.left,
-                  y: resolvedConnector.to.y - connectorFrame.top
-                };
-                const startDirection = connectorRoute.geometry.startDirection;
-                const endDirection = connectorRoute.geometry.endDirection;
-                const isEndpointDragActive =
-                  connectorEndpointDragStateRef.current?.objectId === objectItem.id;
-
-                const buildArrowHeadPoints = (
-                  tip: BoardPoint,
-                  direction: BoardPoint
-                ): string => {
-                  const directionMagnitude = Math.hypot(direction.x, direction.y);
-                  const normalizedDirection =
-                    directionMagnitude > 0.0001
-                      ? {
-                          x: direction.x / directionMagnitude,
-                          y: direction.y / directionMagnitude
-                        }
-                      : { x: 1, y: 0 };
-                  const perpendicular = {
-                    x: -normalizedDirection.y,
-                    y: normalizedDirection.x
-                  };
-                  const arrowLength = 12;
-                  const arrowWidth = 6;
-                  const backPoint = {
-                    x: tip.x - normalizedDirection.x * arrowLength,
-                    y: tip.y - normalizedDirection.y * arrowLength
-                  };
-                  const leftPoint = {
-                    x: backPoint.x + perpendicular.x * arrowWidth,
-                    y: backPoint.y + perpendicular.y * arrowWidth
-                  };
-                  const rightPoint = {
-                    x: backPoint.x - perpendicular.x * arrowWidth,
-                    y: backPoint.y - perpendicular.y * arrowWidth
-                  };
-                  return `${tip.x},${tip.y} ${leftPoint.x},${leftPoint.y} ${rightPoint.x},${rightPoint.y}`;
-                };
-
-                const showFromArrow = objectItem.type === "connectorBidirectional";
-                const showToArrow =
-                  objectItem.type === "connectorArrow" ||
-                  objectItem.type === "connectorBidirectional";
-
-                return (
-                  <article
-                    key={objectItem.id}
-                    data-board-object="true"
-                    onPointerDown={(event) => {
-                      event.stopPropagation();
-                      if (event.shiftKey) {
-                        toggleObjectSelection(objectItem.id);
-                        return;
-                      }
-
-                      selectSingleObject(objectItem.id);
+                />
+                {canResetSelectionRotation ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void resetSelectedObjectsRotation();
                     }}
                     style={{
-                      position: "absolute",
-                      left: connectorFrame.left,
-                      top: connectorFrame.top,
-                      width: connectorFrame.width,
-                      height: connectorFrame.height,
-                      overflow: "visible",
-                      boxShadow: "none",
-                      transition: isEndpointDragActive
-                        ? "none"
-                        : "left 95ms cubic-bezier(0.22, 1, 0.36, 1), top 95ms cubic-bezier(0.22, 1, 0.36, 1), width 95ms cubic-bezier(0.22, 1, 0.36, 1), height 95ms cubic-bezier(0.22, 1, 0.36, 1)"
+                      border: "1px solid #cbd5e1",
+                      borderRadius: 8,
+                      background: "white",
+                      padding: "0.35rem 0.55rem",
+                      color: "#1f2937",
+                      fontSize: 12,
+                      whiteSpace: "nowrap",
                     }}
                   >
-                    <svg
+                    Reset rotation
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`,
+                transformOrigin: "0 0",
+              }}
+            >
+              {objects.map((objectItem) => {
+                const draftGeometry = draftGeometryById[objectItem.id];
+                const hasDraftGeometry = Boolean(draftGeometry);
+                const objectX = draftGeometry?.x ?? objectItem.x;
+                const objectY = draftGeometry?.y ?? objectItem.y;
+                const objectWidth = draftGeometry?.width ?? objectItem.width;
+                const objectHeight = draftGeometry?.height ?? objectItem.height;
+                const objectRotationDeg =
+                  draftGeometry?.rotationDeg ?? objectItem.rotationDeg;
+                const objectText = textDrafts[objectItem.id] ?? objectItem.text;
+                const isSelected = selectedObjectIds.includes(objectItem.id);
+                const isSingleSelected =
+                  selectedObjectIds.length === 1 && isSelected;
+                const isConnector = isConnectorKind(objectItem.type);
+                const objectGeometry: ObjectGeometry = {
+                  x: objectX,
+                  y: objectY,
+                  width: objectWidth,
+                  height: objectHeight,
+                  rotationDeg: objectRotationDeg,
+                };
+                const connectorRoute = isConnector
+                  ? (connectorRoutesById.get(objectItem.id) ?? null)
+                  : null;
+                const connectorFrame = connectorRoute
+                  ? {
+                      left: connectorRoute.geometry.bounds.left,
+                      top: connectorRoute.geometry.bounds.top,
+                      width: Math.max(
+                        1,
+                        connectorRoute.geometry.bounds.right -
+                          connectorRoute.geometry.bounds.left,
+                      ),
+                      height: Math.max(
+                        1,
+                        connectorRoute.geometry.bounds.bottom -
+                          connectorRoute.geometry.bounds.top,
+                      ),
+                    }
+                  : null;
+                const lineEndpointOffsets =
+                  objectItem.type === "line"
+                    ? getLineEndpointOffsets(objectGeometry)
+                    : null;
+                const isPolygonShape =
+                  objectItem.type === "triangle" || objectItem.type === "star";
+                const isGridContainer = objectItem.type === "gridContainer";
+                const gridRows = isGridContainer
+                  ? Math.max(1, objectItem.gridRows ?? 2)
+                  : 0;
+                const gridCols = isGridContainer
+                  ? Math.max(1, objectItem.gridCols ?? 2)
+                  : 0;
+                const gridGap = isGridContainer
+                  ? Math.max(
+                      0,
+                      objectItem.gridGap ?? GRID_CONTAINER_DEFAULT_GAP,
+                    )
+                  : 0;
+                const gridTotalCells = isGridContainer
+                  ? gridRows * gridCols
+                  : 0;
+                const gridCellColors =
+                  isGridContainer &&
+                  objectItem.gridCellColors &&
+                  objectItem.gridCellColors.length > 0
+                    ? objectItem.gridCellColors
+                    : ["#d1fae5", "#fee2e2", "#dbeafe", "#fef3c7"];
+                const gridFallbackTitles = isGridContainer
+                  ? getDefaultSectionTitles(gridRows, gridCols)
+                  : [];
+                const gridDraft = isGridContainer
+                  ? getGridDraftForObject(objectItem)
+                  : null;
+                const gridContainerTitle =
+                  gridDraft?.containerTitle ??
+                  objectItem.containerTitle ??
+                  "Grid container";
+                const gridSectionTitles =
+                  gridDraft?.sectionTitles ??
+                  normalizeSectionValues(
+                    objectItem.gridSectionTitles,
+                    gridTotalCells,
+                    (index) =>
+                      gridFallbackTitles[index] ?? `Section ${index + 1}`,
+                    80,
+                  );
+
+                if (isConnector && connectorRoute && connectorFrame) {
+                  const strokeWidth = 3;
+                  const resolvedConnector = connectorRoute.resolved;
+                  const relativeRoutePoints =
+                    connectorRoute.geometry.points.map((point) => ({
+                      x: point.x - connectorFrame.left,
+                      y: point.y - connectorFrame.top,
+                    }));
+                  const connectorPath = toRoundedConnectorPath(
+                    relativeRoutePoints,
+                    16,
+                  );
+                  const fromOffset = relativeRoutePoints[0] ?? {
+                    x: resolvedConnector.from.x - connectorFrame.left,
+                    y: resolvedConnector.from.y - connectorFrame.top,
+                  };
+                  const toOffset = relativeRoutePoints[
+                    relativeRoutePoints.length - 1
+                  ] ?? {
+                    x: resolvedConnector.to.x - connectorFrame.left,
+                    y: resolvedConnector.to.y - connectorFrame.top,
+                  };
+                  const startDirection = connectorRoute.geometry.startDirection;
+                  const endDirection = connectorRoute.geometry.endDirection;
+                  const isEndpointDragActive =
+                    connectorEndpointDragStateRef.current?.objectId ===
+                    objectItem.id;
+
+                  /**
+                   * Builds arrow head points.
+                   */
+                  const buildArrowHeadPoints = (
+                    tip: BoardPoint,
+                    direction: BoardPoint,
+                  ): string => {
+                    const directionMagnitude = Math.hypot(
+                      direction.x,
+                      direction.y,
+                    );
+                    const normalizedDirection =
+                      directionMagnitude > 0.0001
+                        ? {
+                            x: direction.x / directionMagnitude,
+                            y: direction.y / directionMagnitude,
+                          }
+                        : { x: 1, y: 0 };
+                    const perpendicular = {
+                      x: -normalizedDirection.y,
+                      y: normalizedDirection.x,
+                    };
+                    const arrowLength = 12;
+                    const arrowWidth = 6;
+                    const backPoint = {
+                      x: tip.x - normalizedDirection.x * arrowLength,
+                      y: tip.y - normalizedDirection.y * arrowLength,
+                    };
+                    const leftPoint = {
+                      x: backPoint.x + perpendicular.x * arrowWidth,
+                      y: backPoint.y + perpendicular.y * arrowWidth,
+                    };
+                    const rightPoint = {
+                      x: backPoint.x - perpendicular.x * arrowWidth,
+                      y: backPoint.y - perpendicular.y * arrowWidth,
+                    };
+                    return `${tip.x},${tip.y} ${leftPoint.x},${leftPoint.y} ${rightPoint.x},${rightPoint.y}`;
+                  };
+
+                  const showFromArrow =
+                    objectItem.type === "connectorBidirectional";
+                  const showToArrow =
+                    objectItem.type === "connectorArrow" ||
+                    objectItem.type === "connectorBidirectional";
+
+                  return (
+                    <article
+                      key={objectItem.id}
+                      data-board-object="true"
                       onPointerDown={(event) => {
                         event.stopPropagation();
                         if (event.shiftKey) {
@@ -5979,168 +6452,370 @@ export default function RealtimeBoardCanvas({
 
                         selectSingleObject(objectItem.id);
                       }}
-                      viewBox={`0 0 ${connectorFrame.width} ${connectorFrame.height}`}
-                      width={connectorFrame.width}
-                      height={connectorFrame.height}
                       style={{
-                        display: "block",
+                        position: "absolute",
+                        left: connectorFrame.left,
+                        top: connectorFrame.top,
+                        width: connectorFrame.width,
+                        height: connectorFrame.height,
                         overflow: "visible",
-                        cursor: canEdit ? "pointer" : "default",
-                        filter: isSelected ? "drop-shadow(0 0 5px rgba(37, 99, 235, 0.45))" : "none"
+                        boxShadow: "none",
+                        transition: isEndpointDragActive
+                          ? "none"
+                          : "left 95ms cubic-bezier(0.22, 1, 0.36, 1), top 95ms cubic-bezier(0.22, 1, 0.36, 1), width 95ms cubic-bezier(0.22, 1, 0.36, 1), height 95ms cubic-bezier(0.22, 1, 0.36, 1)",
                       }}
                     >
-                      <path
-                        d={connectorPath}
-                        stroke={objectItem.color}
-                        strokeWidth={strokeWidth}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        fill="none"
-                        style={{
-                          transition: isEndpointDragActive
-                            ? "none"
-                            : "d 95ms cubic-bezier(0.22, 1, 0.36, 1)"
+                      <svg
+                        onPointerDown={(event) => {
+                          event.stopPropagation();
+                          if (event.shiftKey) {
+                            toggleObjectSelection(objectItem.id);
+                            return;
+                          }
+
+                          selectSingleObject(objectItem.id);
                         }}
-                      />
-                      {showFromArrow ? (
-                        <polygon
-                          points={buildArrowHeadPoints(fromOffset, {
-                            x: -startDirection.x,
-                            y: -startDirection.y
-                          })}
-                          fill={objectItem.color}
-                        />
-                      ) : null}
-                      {showToArrow ? (
-                        <polygon
-                          points={buildArrowHeadPoints(toOffset, endDirection)}
-                          fill={objectItem.color}
-                        />
-                      ) : null}
-                    </svg>
-
-                    {isSingleSelected && canEdit ? (
-                      <>
-                        <button
-                          type="button"
-                          onPointerDown={(event) =>
-                            startConnectorEndpointDrag(objectItem.id, "from", event)
-                          }
-                          aria-label="Adjust connector start"
+                        viewBox={`0 0 ${connectorFrame.width} ${connectorFrame.height}`}
+                        width={connectorFrame.width}
+                        height={connectorFrame.height}
+                        style={{
+                          display: "block",
+                          overflow: "visible",
+                          cursor: canEdit ? "pointer" : "default",
+                          filter: isSelected
+                            ? "drop-shadow(0 0 5px rgba(37, 99, 235, 0.45))"
+                            : "none",
+                        }}
+                      >
+                        <path
+                          d={connectorPath}
+                          stroke={objectItem.color}
+                          strokeWidth={strokeWidth}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
                           style={{
-                            position: "absolute",
-                            left:
-                              fromOffset.x -
-                              (resolvedConnector.from.connected
-                                ? CONNECTOR_HANDLE_SIZE
-                                : CONNECTOR_DISCONNECTED_HANDLE_SIZE) /
-                                2,
-                            top:
-                              fromOffset.y -
-                              (resolvedConnector.from.connected
-                                ? CONNECTOR_HANDLE_SIZE
-                                : CONNECTOR_DISCONNECTED_HANDLE_SIZE) /
-                                2,
-                            width: resolvedConnector.from.connected
-                              ? CONNECTOR_HANDLE_SIZE
-                              : CONNECTOR_DISCONNECTED_HANDLE_SIZE,
-                            height: resolvedConnector.from.connected
-                              ? CONNECTOR_HANDLE_SIZE
-                              : CONNECTOR_DISCONNECTED_HANDLE_SIZE,
-                            borderRadius: "50%",
-                            border: resolvedConnector.from.connected
-                              ? "1.5px solid #1d4ed8"
-                              : "2px solid #b45309",
-                            background: resolvedConnector.from.connected
-                              ? "#dbeafe"
-                              : "#fff7ed",
-                            boxShadow: resolvedConnector.from.connected
-                              ? "0 0 0 2px rgba(59, 130, 246, 0.2)"
-                              : "0 0 0 3px rgba(245, 158, 11, 0.28)",
-                            cursor: "move"
+                            transition: isEndpointDragActive
+                              ? "none"
+                              : "d 95ms cubic-bezier(0.22, 1, 0.36, 1)",
                           }}
                         />
-                        <button
-                          type="button"
+                        {showFromArrow ? (
+                          <polygon
+                            points={buildArrowHeadPoints(fromOffset, {
+                              x: -startDirection.x,
+                              y: -startDirection.y,
+                            })}
+                            fill={objectItem.color}
+                          />
+                        ) : null}
+                        {showToArrow ? (
+                          <polygon
+                            points={buildArrowHeadPoints(
+                              toOffset,
+                              endDirection,
+                            )}
+                            fill={objectItem.color}
+                          />
+                        ) : null}
+                      </svg>
+
+                      {isSingleSelected && canEdit ? (
+                        <>
+                          <button
+                            type="button"
+                            onPointerDown={(event) =>
+                              startConnectorEndpointDrag(
+                                objectItem.id,
+                                "from",
+                                event,
+                              )
+                            }
+                            aria-label="Adjust connector start"
+                            style={{
+                              position: "absolute",
+                              left:
+                                fromOffset.x -
+                                (resolvedConnector.from.connected
+                                  ? CONNECTOR_HANDLE_SIZE
+                                  : CONNECTOR_DISCONNECTED_HANDLE_SIZE) /
+                                  2,
+                              top:
+                                fromOffset.y -
+                                (resolvedConnector.from.connected
+                                  ? CONNECTOR_HANDLE_SIZE
+                                  : CONNECTOR_DISCONNECTED_HANDLE_SIZE) /
+                                  2,
+                              width: resolvedConnector.from.connected
+                                ? CONNECTOR_HANDLE_SIZE
+                                : CONNECTOR_DISCONNECTED_HANDLE_SIZE,
+                              height: resolvedConnector.from.connected
+                                ? CONNECTOR_HANDLE_SIZE
+                                : CONNECTOR_DISCONNECTED_HANDLE_SIZE,
+                              borderRadius: "50%",
+                              border: resolvedConnector.from.connected
+                                ? "1.5px solid #1d4ed8"
+                                : "2px solid #b45309",
+                              background: resolvedConnector.from.connected
+                                ? "#dbeafe"
+                                : "#fff7ed",
+                              boxShadow: resolvedConnector.from.connected
+                                ? "0 0 0 2px rgba(59, 130, 246, 0.2)"
+                                : "0 0 0 3px rgba(245, 158, 11, 0.28)",
+                              cursor: "move",
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onPointerDown={(event) =>
+                              startConnectorEndpointDrag(
+                                objectItem.id,
+                                "to",
+                                event,
+                              )
+                            }
+                            aria-label="Adjust connector end"
+                            style={{
+                              position: "absolute",
+                              left:
+                                toOffset.x -
+                                (resolvedConnector.to.connected
+                                  ? CONNECTOR_HANDLE_SIZE
+                                  : CONNECTOR_DISCONNECTED_HANDLE_SIZE) /
+                                  2,
+                              top:
+                                toOffset.y -
+                                (resolvedConnector.to.connected
+                                  ? CONNECTOR_HANDLE_SIZE
+                                  : CONNECTOR_DISCONNECTED_HANDLE_SIZE) /
+                                  2,
+                              width: resolvedConnector.to.connected
+                                ? CONNECTOR_HANDLE_SIZE
+                                : CONNECTOR_DISCONNECTED_HANDLE_SIZE,
+                              height: resolvedConnector.to.connected
+                                ? CONNECTOR_HANDLE_SIZE
+                                : CONNECTOR_DISCONNECTED_HANDLE_SIZE,
+                              borderRadius: "50%",
+                              border: resolvedConnector.to.connected
+                                ? "1.5px solid #1d4ed8"
+                                : "2px solid #b45309",
+                              background: resolvedConnector.to.connected
+                                ? "#dbeafe"
+                                : "#fff7ed",
+                              boxShadow: resolvedConnector.to.connected
+                                ? "0 0 0 2px rgba(59, 130, 246, 0.2)"
+                                : "0 0 0 3px rgba(245, 158, 11, 0.28)",
+                              cursor: "move",
+                            }}
+                          />
+                        </>
+                      ) : (
+                        <>
+                          {!resolvedConnector.from.connected ? (
+                            <span
+                              style={{
+                                position: "absolute",
+                                left: fromOffset.x - 6,
+                                top: fromOffset.y - 6,
+                                width: 12,
+                                height: 12,
+                                borderRadius: "50%",
+                                border: "2px solid #b45309",
+                                background: "#fff7ed",
+                                boxShadow: "0 0 0 2px rgba(245, 158, 11, 0.2)",
+                                pointerEvents: "none",
+                              }}
+                            />
+                          ) : null}
+                          {!resolvedConnector.to.connected ? (
+                            <span
+                              style={{
+                                position: "absolute",
+                                left: toOffset.x - 6,
+                                top: toOffset.y - 6,
+                                width: 12,
+                                height: 12,
+                                borderRadius: "50%",
+                                border: "2px solid #b45309",
+                                background: "#fff7ed",
+                                boxShadow: "0 0 0 2px rgba(245, 158, 11, 0.2)",
+                                pointerEvents: "none",
+                              }}
+                            />
+                          ) : null}
+                        </>
+                      )}
+                    </article>
+                  );
+                }
+
+                if (objectItem.type === "sticky") {
+                  return (
+                    <article
+                      key={objectItem.id}
+                      data-board-object="true"
+                      onPointerDown={(event) => {
+                        event.stopPropagation();
+                        if (event.shiftKey) {
+                          toggleObjectSelection(objectItem.id);
+                          return;
+                        }
+
+                        selectSingleObject(objectItem.id);
+                      }}
+                      style={{
+                        position: "absolute",
+                        left: objectX,
+                        top: objectY,
+                        width: objectWidth,
+                        height: objectHeight,
+                        borderRadius: 10,
+                        border: isSelected
+                          ? "2px solid #2563eb"
+                          : "1px solid rgba(15, 23, 42, 0.28)",
+                        background: objectItem.color,
+                        boxShadow: isSelected
+                          ? SELECTED_OBJECT_HALO
+                          : "0 4px 12px rgba(0,0,0,0.08)",
+                        overflow: "visible",
+                        transform: `rotate(${objectRotationDeg}deg)`,
+                        transformOrigin: "center center",
+                        transition: hasDraftGeometry
+                          ? "none"
+                          : "left 55ms linear, top 55ms linear, width 55ms linear, height 55ms linear, transform 55ms linear",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          borderRadius: 8,
+                          overflow: "hidden",
+                        }}
+                      >
+                        <header
                           onPointerDown={(event) =>
-                            startConnectorEndpointDrag(objectItem.id, "to", event)
+                            startObjectDrag(objectItem.id, event)
                           }
-                          aria-label="Adjust connector end"
                           style={{
-                            position: "absolute",
-                            left:
-                              toOffset.x -
-                              (resolvedConnector.to.connected
-                                ? CONNECTOR_HANDLE_SIZE
-                                : CONNECTOR_DISCONNECTED_HANDLE_SIZE) /
-                                2,
-                            top:
-                              toOffset.y -
-                              (resolvedConnector.to.connected
-                                ? CONNECTOR_HANDLE_SIZE
-                                : CONNECTOR_DISCONNECTED_HANDLE_SIZE) /
-                                2,
-                            width: resolvedConnector.to.connected
-                              ? CONNECTOR_HANDLE_SIZE
-                              : CONNECTOR_DISCONNECTED_HANDLE_SIZE,
-                            height: resolvedConnector.to.connected
-                              ? CONNECTOR_HANDLE_SIZE
-                              : CONNECTOR_DISCONNECTED_HANDLE_SIZE,
-                            borderRadius: "50%",
-                            border: resolvedConnector.to.connected
-                              ? "1.5px solid #1d4ed8"
-                              : "2px solid #b45309",
-                            background: resolvedConnector.to.connected
-                              ? "#dbeafe"
-                              : "#fff7ed",
-                            boxShadow: resolvedConnector.to.connected
-                              ? "0 0 0 2px rgba(59, 130, 246, 0.2)"
-                              : "0 0 0 3px rgba(245, 158, 11, 0.28)",
-                            cursor: "move"
+                            height: 28,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "flex-start",
+                            gap: "0.35rem",
+                            padding: "0 0.5rem",
+                            background: "rgba(0,0,0,0.08)",
+                            cursor: canEdit ? "grab" : "default",
                           }}
                         />
-                      </>
-                    ) : (
-                      <>
-                        {!resolvedConnector.from.connected ? (
-                          <span
-                            style={{
-                              position: "absolute",
-                              left: fromOffset.x - 6,
-                              top: fromOffset.y - 6,
-                              width: 12,
-                              height: 12,
-                              borderRadius: "50%",
-                              border: "2px solid #b45309",
-                              background: "#fff7ed",
-                              boxShadow: "0 0 0 2px rgba(245, 158, 11, 0.2)",
-                              pointerEvents: "none"
-                            }}
-                          />
-                        ) : null}
-                        {!resolvedConnector.to.connected ? (
-                          <span
-                            style={{
-                              position: "absolute",
-                              left: toOffset.x - 6,
-                              top: toOffset.y - 6,
-                              width: 12,
-                              height: 12,
-                              borderRadius: "50%",
-                              border: "2px solid #b45309",
-                              background: "#fff7ed",
-                              boxShadow: "0 0 0 2px rgba(245, 158, 11, 0.2)",
-                              pointerEvents: "none"
-                            }}
-                          />
-                        ) : null}
-                      </>
-                    )}
-                  </article>
-                );
-              }
 
-              if (objectItem.type === "sticky") {
+                        <textarea
+                          value={objectText}
+                          onPointerDown={(event) => {
+                            event.stopPropagation();
+                            selectSingleObject(objectItem.id);
+                          }}
+                          onFocus={() => selectSingleObject(objectItem.id)}
+                          onChange={(event) => {
+                            const nextText = event.target.value.slice(0, 1_000);
+                            setTextDrafts((previous) => ({
+                              ...previous,
+                              [objectItem.id]: nextText,
+                            }));
+                            queueStickyTextSync(objectItem.id, nextText);
+                          }}
+                          onBlur={(event) => {
+                            const nextText = event.target.value;
+                            setTextDrafts((previous) => {
+                              const next = { ...previous };
+                              delete next[objectItem.id];
+                              return next;
+                            });
+
+                            queueStickyTextSync(objectItem.id, nextText);
+                            flushStickyTextSync(objectItem.id);
+                          }}
+                          readOnly={!canEdit}
+                          style={{
+                            width: "100%",
+                            height: objectHeight - 28,
+                            border: "none",
+                            resize: "none",
+                            padding: "0.5rem",
+                            background: "transparent",
+                            color: "#111827",
+                            fontSize: 14,
+                            outline: "none",
+                          }}
+                        />
+                      </div>
+
+                      {isSingleSelected && canEdit ? (
+                        <div>
+                          {CORNER_HANDLES.map((corner) => (
+                            <button
+                              key={corner}
+                              type="button"
+                              onPointerDown={(event) =>
+                                startCornerResize(objectItem.id, corner, event)
+                              }
+                              style={{
+                                position: "absolute",
+                                ...getCornerPositionStyle(corner),
+                                width: RESIZE_HANDLE_SIZE,
+                                height: RESIZE_HANDLE_SIZE,
+                                border: "1px solid #1d4ed8",
+                                borderRadius: 2,
+                                background: "white",
+                                cursor: getCornerCursor(corner),
+                              }}
+                              aria-label={`Resize ${corner} corner`}
+                            />
+                          ))}
+                        </div>
+                      ) : null}
+
+                      {isSingleSelected && canEdit ? (
+                        <>
+                          <div
+                            style={{
+                              position: "absolute",
+                              left: "50%",
+                              top: 0,
+                              width: 2,
+                              height: 16,
+                              background: "#93c5fd",
+                              transform: "translate(-50%, -102%)",
+                              pointerEvents: "none",
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onPointerDown={(event) =>
+                              startShapeRotate(objectItem.id, event)
+                            }
+                            aria-label="Rotate note"
+                            title="Drag to rotate note (hold Shift to snap)"
+                            style={{
+                              position: "absolute",
+                              left: "50%",
+                              top: 0,
+                              transform: "translate(-50%, -168%)",
+                              width: 14,
+                              height: 14,
+                              borderRadius: "50%",
+                              border: "1px solid #1d4ed8",
+                              background: "white",
+                              boxShadow: "0 1px 4px rgba(15, 23, 42, 0.25)",
+                              cursor: "grab",
+                            }}
+                          />
+                        </>
+                      ) : null}
+                    </article>
+                  );
+                }
+
                 return (
                   <article
                     key={objectItem.id}
@@ -6160,86 +6835,270 @@ export default function RealtimeBoardCanvas({
                       top: objectY,
                       width: objectWidth,
                       height: objectHeight,
-                      borderRadius: 10,
-                      border: isSelected
-                        ? "2px solid #2563eb"
-                        : "1px solid rgba(15, 23, 42, 0.28)",
-                      background: objectItem.color,
-                      boxShadow: isSelected
-                        ? SELECTED_OBJECT_HALO
-                        : "0 4px 12px rgba(0,0,0,0.08)",
                       overflow: "visible",
-                      transform: `rotate(${objectRotationDeg}deg)`,
+                      boxShadow: isSelected
+                        ? objectItem.type === "line"
+                          ? "none"
+                          : SELECTED_OBJECT_HALO
+                        : "none",
+                      borderRadius:
+                        objectItem.type === "circle"
+                          ? "999px"
+                          : objectItem.type === "line" ||
+                              objectItem.type === "gridContainer" ||
+                              objectItem.type === "triangle" ||
+                              objectItem.type === "star"
+                            ? 0
+                            : 4,
+                      transform:
+                        objectItem.type === "line" ||
+                        objectItem.type === "gridContainer"
+                          ? "none"
+                          : `rotate(${objectRotationDeg}deg)`,
                       transformOrigin: "center center",
                       transition: hasDraftGeometry
                         ? "none"
-                        : "left 55ms linear, top 55ms linear, width 55ms linear, height 55ms linear, transform 55ms linear"
+                        : "left 55ms linear, top 55ms linear, width 55ms linear, height 55ms linear, transform 55ms linear",
                     }}
                   >
                     <div
+                      onPointerDown={(event) =>
+                        startObjectDrag(objectItem.id, event)
+                      }
                       style={{
                         width: "100%",
                         height: "100%",
-                        borderRadius: 8,
-                        overflow: "hidden"
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: canEdit ? "grab" : "default",
+                        border:
+                          objectItem.type === "line" ||
+                          isPolygonShape ||
+                          isGridContainer
+                            ? "none"
+                            : "2px solid rgba(15, 23, 42, 0.55)",
+                        borderRadius:
+                          objectItem.type === "rect"
+                            ? 3
+                            : objectItem.type === "circle"
+                              ? "999px"
+                              : 0,
+                        background:
+                          objectItem.type === "line" ||
+                          isPolygonShape ||
+                          isGridContainer
+                            ? "transparent"
+                            : objectItem.color,
+                        boxShadow:
+                          objectItem.type === "line" ||
+                          isPolygonShape ||
+                          isGridContainer
+                            ? "none"
+                            : "0 3px 10px rgba(0,0,0,0.08)",
                       }}
                     >
-                      <header
-                        onPointerDown={(event) => startObjectDrag(objectItem.id, event)}
-                        style={{
-                          height: 28,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "flex-start",
-                          gap: "0.35rem",
-                          padding: "0 0.5rem",
-                          background: "rgba(0,0,0,0.08)",
-                          cursor: canEdit ? "grab" : "default"
-                        }}
-                      />
-
-                      <textarea
-                        value={objectText}
-                        onPointerDown={(event) => {
-                          event.stopPropagation();
-                          selectSingleObject(objectItem.id);
-                        }}
-                        onFocus={() => selectSingleObject(objectItem.id)}
-                        onChange={(event) => {
-                          const nextText = event.target.value.slice(0, 1_000);
-                          setTextDrafts((previous) => ({
-                            ...previous,
-                            [objectItem.id]: nextText
-                          }));
-                          queueStickyTextSync(objectItem.id, nextText);
-                        }}
-                        onBlur={(event) => {
-                          const nextText = event.target.value;
-                          setTextDrafts((previous) => {
-                            const next = { ...previous };
-                            delete next[objectItem.id];
-                            return next;
-                          });
-
-                          queueStickyTextSync(objectItem.id, nextText);
-                          flushStickyTextSync(objectItem.id);
-                        }}
-                        readOnly={!canEdit}
-                        style={{
-                          width: "100%",
-                          height: objectHeight - 28,
-                          border: "none",
-                          resize: "none",
-                          padding: "0.5rem",
-                          background: "transparent",
-                          color: "#111827",
-                          fontSize: 14,
-                          outline: "none"
-                        }}
-                      />
+                      {objectItem.type === "line" ? (
+                        <div
+                          style={{
+                            width: "100%",
+                            height: 4,
+                            borderRadius: 999,
+                            background: objectItem.color,
+                            transform: `rotate(${objectRotationDeg}deg)`,
+                            transformOrigin: "center center",
+                          }}
+                        />
+                      ) : objectItem.type === "triangle" ? (
+                        <svg
+                          viewBox="0 0 100 100"
+                          width="100%"
+                          height="100%"
+                          aria-hidden="true"
+                          style={{ display: "block" }}
+                        >
+                          <polygon
+                            points="50,6 94,92 6,92"
+                            fill={objectItem.color}
+                            stroke="rgba(15, 23, 42, 0.62)"
+                            strokeWidth="5"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      ) : objectItem.type === "star" ? (
+                        <svg
+                          viewBox="0 0 100 100"
+                          width="100%"
+                          height="100%"
+                          aria-hidden="true"
+                          style={{ display: "block" }}
+                        >
+                          <polygon
+                            points="50,7 61,38 95,38 67,57 78,90 50,70 22,90 33,57 5,38 39,38"
+                            fill={objectItem.color}
+                            stroke="rgba(15, 23, 42, 0.62)"
+                            strokeWidth="5"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      ) : objectItem.type === "gridContainer" ? (
+                        <GridContainer
+                          rows={gridRows}
+                          cols={gridCols}
+                          gap={gridGap}
+                          minCellHeight={0}
+                          className="h-full w-full rounded-[10px] border-2 border-slate-600/55 bg-transparent p-2 shadow-none"
+                          cellClassName="rounded-lg border border-slate-500/30 p-2"
+                          containerTitle={gridContainerTitle}
+                          cellColors={Array.from(
+                            { length: gridTotalCells },
+                            (_, index) => {
+                              return (
+                                gridCellColors[index % gridCellColors.length] ??
+                                "#e2e8f0"
+                              );
+                            },
+                          )}
+                          sectionTitles={gridSectionTitles}
+                          showGridControls={isSingleSelected && canEdit}
+                          minRows={1}
+                          maxRows={GRID_CONTAINER_MAX_ROWS}
+                          minCols={1}
+                          maxCols={GRID_CONTAINER_MAX_COLS}
+                          onGridDimensionsChange={
+                            canEdit
+                              ? (nextRows, nextCols) => {
+                                  void updateGridContainerDimensions(
+                                    objectItem.id,
+                                    nextRows,
+                                    nextCols,
+                                  );
+                                }
+                              : undefined
+                          }
+                          onContainerTitleChange={
+                            canEdit
+                              ? (nextTitle) => {
+                                  const currentDraft =
+                                    getGridDraftForObject(objectItem);
+                                  queueGridContentSync(
+                                    objectItem.id,
+                                    {
+                                      ...currentDraft,
+                                      containerTitle: nextTitle.slice(0, 120),
+                                    },
+                                    { immediate: true },
+                                  );
+                                }
+                              : undefined
+                          }
+                          onSectionTitleChange={
+                            canEdit
+                              ? (sectionIndex, nextTitle) => {
+                                  const currentDraft =
+                                    getGridDraftForObject(objectItem);
+                                  const nextTitles = [
+                                    ...currentDraft.sectionTitles,
+                                  ];
+                                  nextTitles[sectionIndex] = nextTitle.slice(
+                                    0,
+                                    80,
+                                  );
+                                  queueGridContentSync(
+                                    objectItem.id,
+                                    {
+                                      ...currentDraft,
+                                      sectionTitles: nextTitles,
+                                    },
+                                    { immediate: true },
+                                  );
+                                }
+                              : undefined
+                          }
+                          onCellColorChange={
+                            canEdit
+                              ? (cellIndex, color) => {
+                                  const nextColors = Array.from(
+                                    { length: gridTotalCells },
+                                    (_, index) =>
+                                      gridCellColors[
+                                        index % gridCellColors.length
+                                      ] ?? "#e2e8f0",
+                                  );
+                                  nextColors[cellIndex] = color;
+                                  void updateDoc(
+                                    doc(
+                                      db,
+                                      `boards/${boardId}/objects/${objectItem.id}`,
+                                    ),
+                                    {
+                                      gridCellColors: nextColors,
+                                      updatedAt: serverTimestamp(),
+                                    },
+                                  ).catch((error) => {
+                                    console.error(
+                                      "Failed to update grid container colors",
+                                      error,
+                                    );
+                                    setBoardError(
+                                      toBoardErrorMessage(
+                                        error,
+                                        "Failed to update grid container colors.",
+                                      ),
+                                    );
+                                  });
+                                }
+                              : undefined
+                          }
+                          showCellColorPickers={isSingleSelected && canEdit}
+                        />
+                      ) : null}
                     </div>
 
-                    {isSingleSelected && canEdit ? (
+                    {isSingleSelected &&
+                    canEdit &&
+                    objectItem.type !== "line" &&
+                    objectItem.type !== "gridContainer" ? (
+                      <>
+                        <div
+                          style={{
+                            position: "absolute",
+                            left: "50%",
+                            top: 0,
+                            width: 2,
+                            height: 16,
+                            background: "#93c5fd",
+                            transform: "translate(-50%, -102%)",
+                            pointerEvents: "none",
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onPointerDown={(event) =>
+                            startShapeRotate(objectItem.id, event)
+                          }
+                          aria-label="Rotate shape"
+                          title="Drag to rotate shape (hold Shift to snap)"
+                          style={{
+                            position: "absolute",
+                            left: "50%",
+                            top: 0,
+                            transform: "translate(-50%, -168%)",
+                            width: 14,
+                            height: 14,
+                            borderRadius: "50%",
+                            border: "1px solid #1d4ed8",
+                            background: "white",
+                            boxShadow: "0 1px 4px rgba(15, 23, 42, 0.25)",
+                            cursor: "grab",
+                          }}
+                        />
+                      </>
+                    ) : null}
+
+                    {isSingleSelected &&
+                    canEdit &&
+                    objectItem.type !== "line" ? (
                       <div>
                         {CORNER_HANDLES.map((corner) => (
                           <button
@@ -6256,7 +7115,7 @@ export default function RealtimeBoardCanvas({
                               border: "1px solid #1d4ed8",
                               borderRadius: 2,
                               background: "white",
-                              cursor: getCornerCursor(corner)
+                              cursor: getCornerCursor(corner),
                             }}
                             aria-label={`Resize ${corner} corner`}
                           />
@@ -6264,399 +7123,119 @@ export default function RealtimeBoardCanvas({
                       </div>
                     ) : null}
 
-                    {isSingleSelected && canEdit ? (
+                    {isSingleSelected &&
+                    canEdit &&
+                    objectItem.type === "line" &&
+                    lineEndpointOffsets ? (
                       <>
-                        <div
+                        <button
+                          type="button"
+                          onPointerDown={(event) =>
+                            startLineEndpointResize(
+                              objectItem.id,
+                              "start",
+                              event,
+                            )
+                          }
+                          aria-label="Adjust line start"
                           style={{
                             position: "absolute",
-                            left: "50%",
-                            top: 0,
-                            width: 2,
-                            height: 16,
-                            background: "#93c5fd",
-                            transform: "translate(-50%, -102%)",
-                            pointerEvents: "none"
+                            left:
+                              lineEndpointOffsets.start.x -
+                              RESIZE_HANDLE_SIZE / 2,
+                            top:
+                              lineEndpointOffsets.start.y -
+                              RESIZE_HANDLE_SIZE / 2,
+                            width: RESIZE_HANDLE_SIZE,
+                            height: RESIZE_HANDLE_SIZE,
+                            borderRadius: "50%",
+                            border: "1px solid #1d4ed8",
+                            background: "white",
+                            cursor: "move",
                           }}
                         />
                         <button
                           type="button"
-                          onPointerDown={(event) => startShapeRotate(objectItem.id, event)}
-                          aria-label="Rotate note"
-                          title="Drag to rotate note (hold Shift to snap)"
+                          onPointerDown={(event) =>
+                            startLineEndpointResize(objectItem.id, "end", event)
+                          }
+                          aria-label="Adjust line end"
                           style={{
                             position: "absolute",
-                            left: "50%",
-                            top: 0,
-                            transform: "translate(-50%, -168%)",
-                            width: 14,
-                            height: 14,
+                            left:
+                              lineEndpointOffsets.end.x -
+                              RESIZE_HANDLE_SIZE / 2,
+                            top:
+                              lineEndpointOffsets.end.y -
+                              RESIZE_HANDLE_SIZE / 2,
+                            width: RESIZE_HANDLE_SIZE,
+                            height: RESIZE_HANDLE_SIZE,
                             borderRadius: "50%",
                             border: "1px solid #1d4ed8",
                             background: "white",
-                            boxShadow: "0 1px 4px rgba(15, 23, 42, 0.25)",
-                            cursor: "grab"
+                            cursor: "move",
                           }}
                         />
                       </>
                     ) : null}
                   </article>
                 );
-              }
+              })}
+            </div>
 
-              return (
-                <article
-                  key={objectItem.id}
-                  data-board-object="true"
-                  onPointerDown={(event) => {
-                    event.stopPropagation();
-                    if (event.shiftKey) {
-                      toggleObjectSelection(objectItem.id);
-                      return;
-                    }
-
-                    selectSingleObject(objectItem.id);
-                  }}
-                  style={{
-                    position: "absolute",
-                    left: objectX,
-                    top: objectY,
-                    width: objectWidth,
-                    height: objectHeight,
-                    overflow: "visible",
-                    boxShadow: isSelected
-                      ? objectItem.type === "line"
-                        ? "none"
-                        : SELECTED_OBJECT_HALO
-                      : "none",
-                    borderRadius:
-                      objectItem.type === "circle"
-                        ? "999px"
-                        : objectItem.type === "line" ||
-                            objectItem.type === "gridContainer" ||
-                            objectItem.type === "triangle" ||
-                            objectItem.type === "star"
-                          ? 0
-                          : 4,
-                    transform:
-                      objectItem.type === "line" || objectItem.type === "gridContainer"
-                        ? "none"
-                        : `rotate(${objectRotationDeg}deg)`,
-                    transformOrigin: "center center",
-                    transition: hasDraftGeometry
-                      ? "none"
-                      : "left 55ms linear, top 55ms linear, width 55ms linear, height 55ms linear, transform 55ms linear"
-                  }}
-                >
-                  <div
-                    onPointerDown={(event) => startObjectDrag(objectItem.id, event)}
+            {shouldShowConnectorAnchors
+              ? connectorAnchorPoints.map((anchorPoint) => (
+                  <span
+                    key={`${anchorPoint.objectId}-${anchorPoint.anchor}`}
                     style={{
-                      width: "100%",
-                      height: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      cursor: canEdit ? "grab" : "default",
-                      border:
-                        objectItem.type === "line" || isPolygonShape || isGridContainer
-                          ? "none"
-                          : "2px solid rgba(15, 23, 42, 0.55)",
-                      borderRadius:
-                        objectItem.type === "rect"
-                          ? 3
-                          : objectItem.type === "circle"
-                            ? "999px"
-                            : 0,
-                      background:
-                        objectItem.type === "line" || isPolygonShape || isGridContainer
-                          ? "transparent"
-                          : objectItem.color,
-                      boxShadow:
-                        objectItem.type === "line" || isPolygonShape || isGridContainer
-                          ? "none"
-                          : "0 3px 10px rgba(0,0,0,0.08)"
+                      position: "absolute",
+                      left: viewport.x + anchorPoint.x * viewport.scale - 4,
+                      top: viewport.y + anchorPoint.y * viewport.scale - 4,
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      border: "1px solid #0f172a",
+                      background: "#ffffff",
+                      pointerEvents: "none",
+                      zIndex: 38,
                     }}
-                  >
-                    {objectItem.type === "line" ? (
-                      <div
-                        style={{
-                          width: "100%",
-                          height: 4,
-                          borderRadius: 999,
-                          background: objectItem.color,
-                          transform: `rotate(${objectRotationDeg}deg)`,
-                          transformOrigin: "center center"
-                        }}
-                      />
-                    ) : objectItem.type === "triangle" ? (
-                      <svg
-                        viewBox="0 0 100 100"
-                        width="100%"
-                        height="100%"
-                        aria-hidden="true"
-                        style={{ display: "block" }}
-                      >
-                        <polygon
-                          points="50,6 94,92 6,92"
-                          fill={objectItem.color}
-                          stroke="rgba(15, 23, 42, 0.62)"
-                          strokeWidth="5"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    ) : objectItem.type === "star" ? (
-                      <svg
-                        viewBox="0 0 100 100"
-                        width="100%"
-                        height="100%"
-                        aria-hidden="true"
-                        style={{ display: "block" }}
-                      >
-                        <polygon
-                          points="50,7 61,38 95,38 67,57 78,90 50,70 22,90 33,57 5,38 39,38"
-                          fill={objectItem.color}
-                          stroke="rgba(15, 23, 42, 0.62)"
-                          strokeWidth="5"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    ) : objectItem.type === "gridContainer" ? (
-                      <GridContainer
-                        rows={gridRows}
-                        cols={gridCols}
-                        gap={gridGap}
-                        minCellHeight={0}
-                        className="h-full w-full rounded-[10px] border-2 border-slate-600/55 bg-transparent p-2 shadow-none"
-                        cellClassName="rounded-lg border border-slate-500/30 p-2"
-                        containerTitle={gridContainerTitle}
-                        cellColors={Array.from({ length: gridTotalCells }, (_, index) => {
-                          return gridCellColors[index % gridCellColors.length] ?? "#e2e8f0";
-                        })}
-                        sectionTitles={gridSectionTitles}
-                        showGridControls={isSingleSelected && canEdit}
-                        minRows={1}
-                        maxRows={GRID_CONTAINER_MAX_ROWS}
-                        minCols={1}
-                        maxCols={GRID_CONTAINER_MAX_COLS}
-                        onGridDimensionsChange={
-                          canEdit
-                            ? (nextRows, nextCols) => {
-                                void updateGridContainerDimensions(objectItem.id, nextRows, nextCols);
-                              }
-                            : undefined
-                        }
-                        onContainerTitleChange={
-                          canEdit
-                            ? (nextTitle) => {
-                              const currentDraft = getGridDraftForObject(objectItem);
-                              queueGridContentSync(
-                                  objectItem.id,
-                                  {
-                                    ...currentDraft,
-                                    containerTitle: nextTitle.slice(0, 120)
-                                  },
-                                  { immediate: true }
-                                );
-                              }
-                            : undefined
-                        }
-                        onSectionTitleChange={
-                          canEdit
-                            ? (sectionIndex, nextTitle) => {
-                                const currentDraft = getGridDraftForObject(objectItem);
-                                const nextTitles = [...currentDraft.sectionTitles];
-                                nextTitles[sectionIndex] = nextTitle.slice(0, 80);
-                                queueGridContentSync(
-                                  objectItem.id,
-                                  {
-                                    ...currentDraft,
-                                    sectionTitles: nextTitles
-                                  },
-                                  { immediate: true }
-                                );
-                              }
-                            : undefined
-                        }
-                        onCellColorChange={
-                          canEdit
-                            ? (cellIndex, color) => {
-                                const nextColors = Array.from(
-                                  { length: gridTotalCells },
-                                  (_, index) => gridCellColors[index % gridCellColors.length] ?? "#e2e8f0"
-                                );
-                                nextColors[cellIndex] = color;
-                                void updateDoc(doc(db, `boards/${boardId}/objects/${objectItem.id}`), {
-                                  gridCellColors: nextColors,
-                                  updatedAt: serverTimestamp()
-                                }).catch((error) => {
-                                  console.error("Failed to update grid container colors", error);
-                                  setBoardError(
-                                    toBoardErrorMessage(error, "Failed to update grid container colors.")
-                                  );
-                                });
-                              }
-                            : undefined
-                        }
-                        showCellColorPickers={isSingleSelected && canEdit}
-                      />
-                    ) : null}
-                  </div>
+                  />
+                ))
+              : null}
 
-                  {isSingleSelected &&
-                  canEdit &&
-                  objectItem.type !== "line" &&
-                  objectItem.type !== "gridContainer" ? (
-                    <>
-                      <div
-                        style={{
-                          position: "absolute",
-                          left: "50%",
-                          top: 0,
-                          width: 2,
-                          height: 16,
-                          background: "#93c5fd",
-                          transform: "translate(-50%, -102%)",
-                          pointerEvents: "none"
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onPointerDown={(event) => startShapeRotate(objectItem.id, event)}
-                        aria-label="Rotate shape"
-                        title="Drag to rotate shape (hold Shift to snap)"
-                        style={{
-                          position: "absolute",
-                          left: "50%",
-                          top: 0,
-                          transform: "translate(-50%, -168%)",
-                          width: 14,
-                          height: 14,
-                          borderRadius: "50%",
-                          border: "1px solid #1d4ed8",
-                          background: "white",
-                          boxShadow: "0 1px 4px rgba(15, 23, 42, 0.25)",
-                          cursor: "grab"
-                        }}
-                      />
-                    </>
-                  ) : null}
+            {marqueeRect ? (
+              <div
+                style={{
+                  position: "absolute",
+                  left: viewport.x + marqueeRect.left * viewport.scale,
+                  top: viewport.y + marqueeRect.top * viewport.scale,
+                  width: Math.max(
+                    1,
+                    (marqueeRect.right - marqueeRect.left) * viewport.scale,
+                  ),
+                  height: Math.max(
+                    1,
+                    (marqueeRect.bottom - marqueeRect.top) * viewport.scale,
+                  ),
+                  border: "1px solid rgba(37, 99, 235, 0.95)",
+                  background: "rgba(59, 130, 246, 0.16)",
+                  pointerEvents: "none",
+                  zIndex: 40,
+                }}
+              />
+            ) : null}
 
-                  {isSingleSelected &&
-                  canEdit &&
-                  objectItem.type !== "line" &&
-                  objectItem.type !== "gridContainer" ? (
-                    <div>
-                      {CORNER_HANDLES.map((corner) => (
-                        <button
-                          key={corner}
-                          type="button"
-                          onPointerDown={(event) =>
-                            startCornerResize(objectItem.id, corner, event)
-                          }
-                          style={{
-                            position: "absolute",
-                            ...getCornerPositionStyle(corner),
-                            width: RESIZE_HANDLE_SIZE,
-                            height: RESIZE_HANDLE_SIZE,
-                            border: "1px solid #1d4ed8",
-                            borderRadius: 2,
-                            background: "white",
-                            cursor: getCornerCursor(corner)
-                          }}
-                          aria-label={`Resize ${corner} corner`}
-                        />
-                      ))}
-                    </div>
-                  ) : null}
-
-                  {isSingleSelected && canEdit && objectItem.type === "line" && lineEndpointOffsets ? (
-                    <>
-                      <button
-                        type="button"
-                        onPointerDown={(event) =>
-                          startLineEndpointResize(objectItem.id, "start", event)
-                        }
-                        aria-label="Adjust line start"
-                        style={{
-                          position: "absolute",
-                          left: lineEndpointOffsets.start.x - RESIZE_HANDLE_SIZE / 2,
-                          top: lineEndpointOffsets.start.y - RESIZE_HANDLE_SIZE / 2,
-                          width: RESIZE_HANDLE_SIZE,
-                          height: RESIZE_HANDLE_SIZE,
-                          borderRadius: "50%",
-                          border: "1px solid #1d4ed8",
-                          background: "white",
-                          cursor: "move"
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onPointerDown={(event) =>
-                          startLineEndpointResize(objectItem.id, "end", event)
-                        }
-                        aria-label="Adjust line end"
-                        style={{
-                          position: "absolute",
-                          left: lineEndpointOffsets.end.x - RESIZE_HANDLE_SIZE / 2,
-                          top: lineEndpointOffsets.end.y - RESIZE_HANDLE_SIZE / 2,
-                          width: RESIZE_HANDLE_SIZE,
-                          height: RESIZE_HANDLE_SIZE,
-                          borderRadius: "50%",
-                          border: "1px solid #1d4ed8",
-                          background: "white",
-                          cursor: "move"
-                        }}
-                      />
-                    </>
-                  ) : null}
-                </article>
-              );
-            })}
-          </div>
-
-          {shouldShowConnectorAnchors
-            ? connectorAnchorPoints.map((anchorPoint) => (
-                <span
-                  key={`${anchorPoint.objectId}-${anchorPoint.anchor}`}
-                  style={{
-                    position: "absolute",
-                    left: viewport.x + anchorPoint.x * viewport.scale - 4,
-                    top: viewport.y + anchorPoint.y * viewport.scale - 4,
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    border: "1px solid #0f172a",
-                    background: "#ffffff",
-                    pointerEvents: "none",
-                    zIndex: 38
-                  }}
-                />
-              ))
-            : null}
-
-          {marqueeRect ? (
-            <div
-              style={{
-                position: "absolute",
-                left: viewport.x + marqueeRect.left * viewport.scale,
-                top: viewport.y + marqueeRect.top * viewport.scale,
-                width: Math.max(1, (marqueeRect.right - marqueeRect.left) * viewport.scale),
-                height: Math.max(1, (marqueeRect.bottom - marqueeRect.top) * viewport.scale),
-                border: "1px solid rgba(37, 99, 235, 0.95)",
-                background: "rgba(59, 130, 246, 0.16)",
-                pointerEvents: "none",
-                zIndex: 40
-              }}
+            <RemoteCursorLayer
+              remoteCursors={remoteCursors}
+              viewport={viewport}
             />
-          ) : null}
-
-          <RemoteCursorLayer remoteCursors={remoteCursors} viewport={viewport} />
+          </div>
         </div>
-      </div>
 
         <div
           style={{
             background: PANEL_SEPARATOR_COLOR,
-            boxShadow: "inset 0 0 0 1px rgba(15, 23, 42, 0.14)"
+            boxShadow: "inset 0 0 0 1px rgba(15, 23, 42, 0.14)",
           }}
         />
 
@@ -6667,7 +7246,7 @@ export default function RealtimeBoardCanvas({
             background: "#f8fafc",
             display: "flex",
             flexDirection: "column",
-            overflow: "hidden"
+            overflow: "hidden",
           }}
         >
           {isRightPanelCollapsed ? (
@@ -6679,7 +7258,7 @@ export default function RealtimeBoardCanvas({
                 alignItems: "center",
                 justifyContent: "flex-start",
                 padding: "0.45rem 0.2rem",
-                gap: "0.55rem"
+                gap: "0.55rem",
               }}
             >
               <button
@@ -6695,7 +7274,7 @@ export default function RealtimeBoardCanvas({
                   background: "#e2e8f0",
                   color: "#0f172a",
                   fontWeight: 700,
-                  cursor: "pointer"
+                  cursor: "pointer",
                 }}
               >
                 {"<"}
@@ -6707,7 +7286,7 @@ export default function RealtimeBoardCanvas({
                   color: "#334155",
                   fontSize: 11,
                   fontWeight: 600,
-                  letterSpacing: "0.04em"
+                  letterSpacing: "0.04em",
                 }}
               >
                 ONLINE USERS
@@ -6720,7 +7299,7 @@ export default function RealtimeBoardCanvas({
                   padding: "0.6rem 0.7rem",
                   borderBottom: "1px solid #dbe3eb",
                   display: "grid",
-                  gap: "0.45rem"
+                  gap: "0.45rem",
                 }}
               >
                 <div
@@ -6728,13 +7307,17 @@ export default function RealtimeBoardCanvas({
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    gap: "0.55rem"
+                    gap: "0.55rem",
                   }}
                 >
-                  <strong style={{ fontSize: 13, color: "#111827", lineHeight: 1.2 }}>
+                  <strong
+                    style={{ fontSize: 13, color: "#111827", lineHeight: 1.2 }}
+                  >
                     Online users
                   </strong>
-                  <span style={{ color: "#6b7280", fontSize: 13 }}>{onlineUsers.length}</span>
+                  <span style={{ color: "#6b7280", fontSize: 13 }}>
+                    {onlineUsers.length}
+                  </span>
                 </div>
                 <button
                   type="button"
@@ -6750,7 +7333,7 @@ export default function RealtimeBoardCanvas({
                     color: "#0f172a",
                     fontWeight: 700,
                     justifySelf: "start",
-                    cursor: "pointer"
+                    cursor: "pointer",
                   }}
                 >
                   {">"}
@@ -6766,7 +7349,7 @@ export default function RealtimeBoardCanvas({
                   flexDirection: "column",
                   gap: "0.45rem",
                   fontSize: 14,
-                  color: "#374151"
+                  color: "#374151",
                 }}
               >
                 <OnlineUsersList onlineUsers={onlineUsers} />
@@ -6778,23 +7361,37 @@ export default function RealtimeBoardCanvas({
 
       <footer
         style={{
-          height: isAiFooterCollapsed ? AI_FOOTER_COLLAPSED_HEIGHT : aiFooterHeight,
-          minHeight: isAiFooterCollapsed ? AI_FOOTER_COLLAPSED_HEIGHT : aiFooterHeight,
-          maxHeight: isAiFooterCollapsed ? AI_FOOTER_COLLAPSED_HEIGHT : aiFooterHeight,
+          height: isAiFooterCollapsed
+            ? AI_FOOTER_COLLAPSED_HEIGHT
+            : aiFooterHeight,
+          minHeight: isAiFooterCollapsed
+            ? AI_FOOTER_COLLAPSED_HEIGHT
+            : aiFooterHeight,
+          maxHeight: isAiFooterCollapsed
+            ? AI_FOOTER_COLLAPSED_HEIGHT
+            : aiFooterHeight,
           borderTop: `${PANEL_SEPARATOR_WIDTH}px solid ${PANEL_SEPARATOR_COLOR}`,
           background: "#ffffff",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
           flexShrink: 0,
-          position: "relative"
+          position: "relative",
         }}
       >
         <button
           type="button"
           onClick={() => setIsAiFooterCollapsed((previous) => !previous)}
-          aria-label={isAiFooterCollapsed ? "Expand AI assistant drawer" : "Collapse AI assistant drawer"}
-          title={isAiFooterCollapsed ? "Expand AI assistant drawer" : "Collapse AI assistant drawer"}
+          aria-label={
+            isAiFooterCollapsed
+              ? "Expand AI assistant drawer"
+              : "Collapse AI assistant drawer"
+          }
+          title={
+            isAiFooterCollapsed
+              ? "Expand AI assistant drawer"
+              : "Collapse AI assistant drawer"
+          }
           style={{
             position: "absolute",
             right: "clamp(0.8rem, 2vw, 1.5rem)",
@@ -6810,7 +7407,7 @@ export default function RealtimeBoardCanvas({
             fontSize: 15,
             lineHeight: 1,
             cursor: "pointer",
-            zIndex: 8
+            zIndex: 8,
           }}
         >
           {isAiFooterCollapsed ? "↑" : "↓"}
@@ -6822,7 +7419,7 @@ export default function RealtimeBoardCanvas({
               height: "100%",
               display: "grid",
               alignItems: "stretch",
-              padding: "0 clamp(0.8rem, 2vw, 1.5rem)"
+              padding: "0 clamp(0.8rem, 2vw, 1.5rem)",
             }}
           >
             <div
@@ -6832,10 +7429,12 @@ export default function RealtimeBoardCanvas({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "flex-start",
-                gap: "0.75rem"
+                gap: "0.75rem",
               }}
             >
-              <strong style={{ fontSize: 13, color: "#0f172a" }}>AI Assistant</strong>
+              <strong style={{ fontSize: 13, color: "#0f172a" }}>
+                AI Assistant
+              </strong>
             </div>
           </div>
         ) : (
@@ -6851,7 +7450,7 @@ export default function RealtimeBoardCanvas({
                 justifyContent: "center",
                 background: "#f8fafc",
                 touchAction: "none",
-                paddingRight: 128
+                paddingRight: 128,
               }}
             >
               <span
@@ -6859,7 +7458,7 @@ export default function RealtimeBoardCanvas({
                   width: 38,
                   height: 3,
                   borderRadius: 999,
-                  background: "#cbd5e1"
+                  background: "#cbd5e1",
                 }}
               />
             </div>
@@ -6869,20 +7468,22 @@ export default function RealtimeBoardCanvas({
                 display: "grid",
                 padding: "0.45rem clamp(0.8rem, 2vw, 1.5rem)",
                 borderBottom: "1px solid #e5e7eb",
-                gap: "0.5rem"
+                gap: "0.5rem",
               }}
             >
               <div
                 style={{
-                width: "min(100%, 800px)",
-                margin: "0 auto",
-                display: "flex",
-                alignItems: "center",
-                gap: "0.75rem"
-              }}
-            >
-              <strong style={{ fontSize: 13, color: "#0f172a" }}>AI Assistant</strong>
-            </div>
+                  width: "min(100%, 800px)",
+                  margin: "0 auto",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.75rem",
+                }}
+              >
+                <strong style={{ fontSize: 13, color: "#0f172a" }}>
+                  AI Assistant
+                </strong>
+              </div>
             </div>
 
             <div
@@ -6891,7 +7492,7 @@ export default function RealtimeBoardCanvas({
                 minHeight: 0,
                 padding: "0.6rem clamp(0.8rem, 2vw, 1.5rem)",
                 background: "#f8fafc",
-                overflow: "hidden"
+                overflow: "hidden",
               }}
             >
               <div
@@ -6903,31 +7504,71 @@ export default function RealtimeBoardCanvas({
                   overflowY: "auto",
                   display: "flex",
                   flexDirection: "column",
-                  gap: "0.5rem"
+                  gap: "0.5rem",
                 }}
               >
                 {chatMessages.length === 0 ? (
-                  <span style={{ color: "#64748b", fontSize: 13 }}>
-                    Ask the board assistant something. It will reply with a stub for now.
-                  </span>
-                ) : (
-                  chatMessages.map((message) => (
+                  isAiSubmitting ? (
                     <div
-                      key={message.id}
                       style={{
-                        alignSelf: message.role === "user" ? "flex-end" : "flex-start",
+                        alignSelf: "flex-start",
                         maxWidth: "min(520px, 92%)",
                         padding: "0.42rem 0.58rem",
                         borderRadius: 8,
-                        background: message.role === "user" ? "#dbeafe" : "#e2e8f0",
-                        color: "#0f172a",
+                        background: "#e2e8f0",
+                        color: "#334155",
                         fontSize: 13,
-                        lineHeight: 1.35
+                        fontStyle: "italic",
+                        lineHeight: 1.35,
                       }}
                     >
-                      {message.text}
+                      Thinking...
                     </div>
-                  ))
+                  ) : (
+                    <span style={{ color: "#64748b", fontSize: 13 }}>
+                      Ask the board assistant something. It will reply with a
+                      stub for now.
+                    </span>
+                  )
+                ) : (
+                  <>
+                    {chatMessages.map((message) => (
+                      <div
+                        key={message.id}
+                        style={{
+                          alignSelf:
+                            message.role === "user" ? "flex-end" : "flex-start",
+                          maxWidth: "min(520px, 92%)",
+                          padding: "0.42rem 0.58rem",
+                          borderRadius: 8,
+                          background:
+                            message.role === "user" ? "#dbeafe" : "#e2e8f0",
+                          color: "#0f172a",
+                          fontSize: 13,
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        {message.text}
+                      </div>
+                    ))}
+                    {isAiSubmitting ? (
+                      <div
+                        style={{
+                          alignSelf: "flex-start",
+                          maxWidth: "min(520px, 92%)",
+                          padding: "0.42rem 0.58rem",
+                          borderRadius: 8,
+                          background: "#e2e8f0",
+                          color: "#334155",
+                          fontSize: 13,
+                          fontStyle: "italic",
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        Thinking...
+                      </div>
+                    ) : null}
+                  </>
                 )}
               </div>
             </div>
@@ -6937,7 +7578,7 @@ export default function RealtimeBoardCanvas({
               style={{
                 display: "grid",
                 padding: "0.55rem clamp(0.8rem, 2vw, 1.5rem)",
-                borderTop: "1px solid #e5e7eb"
+                borderTop: "1px solid #e5e7eb",
               }}
             >
               <div
@@ -6946,7 +7587,7 @@ export default function RealtimeBoardCanvas({
                   margin: "0 auto",
                   display: "flex",
                   gap: "0.5rem",
-                  alignItems: "center"
+                  alignItems: "center",
                 }}
               >
                 <input
@@ -6957,14 +7598,14 @@ export default function RealtimeBoardCanvas({
                   style={{
                     flex: 1,
                     minWidth: 0,
-                    padding: "0.48rem 0.58rem"
+                    padding: "0.48rem 0.58rem",
                   }}
                 />
                 <button
                   type="submit"
                   disabled={isAiSubmitting || chatInput.trim().length === 0}
                 >
-                  {isAiSubmitting ? "Sending..." : "Send"}
+                  {isAiSubmitting ? "Thinking..." : "Send"}
                 </button>
               </div>
             </form>

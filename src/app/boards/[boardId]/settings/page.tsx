@@ -6,7 +6,12 @@ type BoardSettingsPageProps = {
   }>;
 };
 
-export default async function BoardSettingsPage({ params }: BoardSettingsPageProps) {
+/**
+ * Handles board settings page.
+ */
+export default async function BoardSettingsPage({
+  params,
+}: BoardSettingsPageProps) {
   const { boardId } = await params;
 
   return <BoardSettingsWorkspace boardId={boardId} />;

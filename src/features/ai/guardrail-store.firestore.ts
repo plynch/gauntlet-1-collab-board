@@ -4,20 +4,24 @@ import type {
   GuardrailLockOptions,
   GuardrailRateLimitOptions,
   GuardrailResult,
-  GuardrailStore
+  GuardrailStore,
 } from "@/features/ai/guardrail-store";
 import { getFirebaseAdminDb } from "@/lib/firebase/admin";
 
 const RATE_LIMIT_COLLECTION = "aiGuardrailRateLimits";
 const LOCK_COLLECTION = "aiGuardrailLocks";
 
+/**
+ * Handles to number array.
+ */
 function toNumberArray(value: unknown): number[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
   return value.filter(
-    (entry): entry is number => typeof entry === "number" && Number.isFinite(entry)
+    (entry): entry is number =>
+      typeof entry === "number" && Number.isFinite(entry),
   );
 }
 
@@ -25,13 +29,19 @@ type FirestoreGuardrailStoreOptions = {
   db?: Firestore;
 };
 
+/**
+ * Creates firestore guardrail store.
+ */
 export function createFirestoreGuardrailStore(
-  options?: FirestoreGuardrailStoreOptions
+  options?: FirestoreGuardrailStoreOptions,
 ): GuardrailStore {
   const db = options?.db ?? getFirebaseAdminDb();
 
+  /**
+   * Handles check user rate limit.
+   */
   async function checkUserRateLimit(
-    input: GuardrailRateLimitOptions
+    input: GuardrailRateLimitOptions,
   ): Promise<GuardrailResult> {
     const rateDoc = db.collection(RATE_LIMIT_COLLECTION).doc(input.userId);
     const windowStart = input.nowMs - input.windowMs;
@@ -40,7 +50,7 @@ export function createFirestoreGuardrailStore(
       const snapshot = await transaction.get(rateDoc);
       const rawTimestamps = toNumberArray(snapshot.data()?.timestamps);
       const nextTimestamps = rawTimestamps.filter(
-        (timestamp) => timestamp >= windowStart
+        (timestamp) => timestamp >= windowStart,
       );
 
       if (nextTimestamps.length >= input.maxCommandsPerWindow) {
@@ -48,14 +58,14 @@ export function createFirestoreGuardrailStore(
           rateDoc,
           {
             timestamps: nextTimestamps,
-            updatedAtMs: input.nowMs
+            updatedAtMs: input.nowMs,
           },
-          { merge: true }
+          { merge: true },
         );
         return {
           ok: false,
           status: 429,
-          error: "Too many AI commands. Please wait a minute and retry."
+          error: "Too many AI commands. Please wait a minute and retry.",
         };
       }
 
@@ -64,16 +74,19 @@ export function createFirestoreGuardrailStore(
         rateDoc,
         {
           timestamps: nextTimestamps,
-          updatedAtMs: input.nowMs
+          updatedAtMs: input.nowMs,
         },
-        { merge: true }
+        { merge: true },
       );
       return { ok: true };
     });
   }
 
+  /**
+   * Handles acquire board command lock.
+   */
   async function acquireBoardCommandLock(
-    input: GuardrailLockOptions
+    input: GuardrailLockOptions,
   ): Promise<GuardrailResult> {
     const lockDoc = db.collection(LOCK_COLLECTION).doc(input.boardId);
 
@@ -89,7 +102,7 @@ export function createFirestoreGuardrailStore(
         return {
           ok: false,
           status: 409,
-          error: "Another AI command is already running on this board."
+          error: "Another AI command is already running on this board.",
         };
       }
 
@@ -98,14 +111,17 @@ export function createFirestoreGuardrailStore(
         {
           boardId: input.boardId,
           expiresAtMs: input.nowMs + input.ttlMs,
-          updatedAtMs: input.nowMs
+          updatedAtMs: input.nowMs,
         },
-        { merge: true }
+        { merge: true },
       );
       return { ok: true };
     });
   }
 
+  /**
+   * Handles release board command lock.
+   */
   async function releaseBoardCommandLock(boardId: string): Promise<void> {
     await db.collection(LOCK_COLLECTION).doc(boardId).delete();
   }
@@ -113,6 +129,6 @@ export function createFirestoreGuardrailStore(
   return {
     checkUserRateLimit,
     acquireBoardCommandLock,
-    releaseBoardCommandLock
+    releaseBoardCommandLock,
   };
 }

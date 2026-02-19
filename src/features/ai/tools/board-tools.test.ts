@@ -20,12 +20,18 @@ class FakeFirestore {
   readonly deletedIds: string[] = [];
   batchCommitCount = 0;
 
+  /**
+   * Initializes this class instance.
+   */
   constructor(initialObjects: Array<{ id: string; data: ObjectDoc }>) {
     initialObjects.forEach((entry) => {
       this.objects.set(entry.id, { ...entry.data });
     });
   }
 
+  /**
+   * Handles collection.
+   */
   collection(name: string) {
     if (name !== "boards") {
       throw new Error(`Unsupported collection: ${name}`);
@@ -37,24 +43,29 @@ class FakeFirestore {
         return {
           collection: (subcollectionName: string) => {
             if (subcollectionName !== "objects") {
-              throw new Error(`Unsupported subcollection: ${subcollectionName}`);
+              throw new Error(
+                `Unsupported subcollection: ${subcollectionName}`,
+              );
             }
 
             return {
               get: async () => ({
                 docs: Array.from(this.objects.entries()).map(([id, data]) => ({
                   id,
-                  data: () => ({ ...data })
-                }))
+                  data: () => ({ ...data }),
+                })),
               }),
-              doc: (id: string) => ({ id })
+              doc: (id: string) => ({ id }),
             };
-          }
+          },
         };
-      }
+      },
     };
   }
 
+  /**
+   * Handles batch.
+   */
   batch() {
     const pending: string[] = [];
 
@@ -69,12 +80,18 @@ class FakeFirestore {
             this.deletedIds.push(id);
           }
         });
-      }
+      },
     };
   }
 }
 
-function createObject(id: string, zIndex: number): { id: string; data: ObjectDoc } {
+/**
+ * Creates object.
+ */
+function createObject(
+  id: string,
+  zIndex: number,
+): { id: string; data: ObjectDoc } {
   return {
     id,
     data: {
@@ -86,8 +103,8 @@ function createObject(id: string, zIndex: number): { id: string; data: ObjectDoc
       height: 90,
       rotationDeg: 0,
       color: "#93c5fd",
-      text: ""
-    }
+      text: "",
+    },
   };
 }
 
@@ -97,11 +114,11 @@ describe("BoardToolExecutor deleteObjects", () => {
     const executor = new BoardToolExecutor({
       boardId: "board-1",
       userId: "user-1",
-      db: fakeDb as unknown as Firestore
+      db: fakeDb as unknown as Firestore,
     });
 
     const result = await executor.deleteObjects({
-      objectIds: ["missing-1", "missing-2"]
+      objectIds: ["missing-1", "missing-2"],
     });
 
     expect(result.tool).toBe("deleteObjects");
@@ -110,15 +127,18 @@ describe("BoardToolExecutor deleteObjects", () => {
   });
 
   it("deduplicates object ids before deletion", async () => {
-    const fakeDb = new FakeFirestore([createObject("obj-1", 1), createObject("obj-2", 2)]);
+    const fakeDb = new FakeFirestore([
+      createObject("obj-1", 1),
+      createObject("obj-2", 2),
+    ]);
     const executor = new BoardToolExecutor({
       boardId: "board-1",
       userId: "user-1",
-      db: fakeDb as unknown as Firestore
+      db: fakeDb as unknown as Firestore,
     });
 
     const result = await executor.deleteObjects({
-      objectIds: ["obj-1", "obj-1", "obj-2", "", "missing"]
+      objectIds: ["obj-1", "obj-1", "obj-2", "", "missing"],
     });
 
     expect(result.deletedCount).toBe(2);
@@ -129,17 +149,17 @@ describe("BoardToolExecutor deleteObjects", () => {
   it("deletes objects in chunks larger than 400", async () => {
     const objectCount = 450;
     const objects = Array.from({ length: objectCount }, (_, index) =>
-      createObject(`obj-${index}`, index)
+      createObject(`obj-${index}`, index),
     );
     const fakeDb = new FakeFirestore(objects);
     const executor = new BoardToolExecutor({
       boardId: "board-1",
       userId: "user-1",
-      db: fakeDb as unknown as Firestore
+      db: fakeDb as unknown as Firestore,
     });
 
     const result = await executor.deleteObjects({
-      objectIds: objects.map((entry) => entry.id)
+      objectIds: objects.map((entry) => entry.id),
     });
 
     expect(result.deletedCount).toBe(objectCount);

@@ -29,7 +29,11 @@ import { planDeterministicCommand } from "@/features/ai/commands/deterministic-c
 import { instantiateLocalTemplate } from "@/features/ai/templates/local-template-provider";
 import { SWOT_TEMPLATE_ID } from "@/features/ai/templates/template-types";
 import { BoardToolExecutor } from "@/features/ai/tools/board-tools";
-import type { BoardBounds, BoardObjectSnapshot } from "@/features/ai/types";
+import type {
+  BoardBounds,
+  BoardObjectSnapshot,
+  BoardToolCall,
+} from "@/features/ai/types";
 import {
   assertFirestoreWritesAllowedInDev,
   getFirebaseAdminDb,
@@ -91,6 +95,85 @@ function createHttpError(
 }
 
 const DIRECT_DELETE_BATCH_CHUNK_SIZE = 400;
+
+/**
+ * Returns whether tool call creates object is true.
+ */
+function createsObject(toolCall: BoardToolCall): boolean {
+  return (
+    toolCall.tool === "createStickyNote" ||
+    toolCall.tool === "createShape" ||
+    toolCall.tool === "createGridContainer" ||
+    toolCall.tool === "createFrame" ||
+    toolCall.tool === "createConnector"
+  );
+}
+
+/**
+ * Handles execute plan with tracing.
+ */
+async function executePlanWithTracing(options: {
+  executor: BoardToolExecutor;
+  trace: ReturnType<typeof createAiTraceRun>;
+  operations: BoardToolCall[];
+}): Promise<{
+  results: Awaited<ReturnType<BoardToolExecutor["executeToolCall"]>>[];
+  createdObjectIds: string[];
+}> {
+  const results: Awaited<ReturnType<BoardToolExecutor["executeToolCall"]>>[] =
+    [];
+  const createdObjectIds: string[] = [];
+
+  const executeSpan = options.trace.startSpan("tool.execute", {
+    operationCount: options.operations.length,
+  });
+
+  try {
+    for (let index = 0; index < options.operations.length; index += 1) {
+      const operation = options.operations[index];
+      const toolSpan = options.trace.startSpan("tool.execute.call", {
+        operationIndex: index,
+        tool: operation.tool,
+      });
+
+      try {
+        const result = await options.executor.executeToolCall(operation);
+        results.push(result);
+
+        if (result.objectId && createsObject(operation)) {
+          createdObjectIds.push(result.objectId);
+        }
+
+        toolSpan.end({
+          objectId: result.objectId ?? null,
+          deletedCount: result.deletedCount ?? 0,
+        });
+      } catch (error) {
+        toolSpan.fail("Tool call failed.", {
+          reason: getDebugMessage(error) ?? "Unknown error",
+          tool: operation.tool,
+          operationIndex: index,
+        });
+        throw error;
+      }
+    }
+
+    executeSpan.end({
+      toolCalls: results.length,
+    });
+
+    return {
+      results,
+      createdObjectIds,
+    };
+  } catch (error) {
+    executeSpan.fail("Tool execution failed.", {
+      reason: getDebugMessage(error) ?? "Unknown error",
+      completedToolCalls: results.length,
+    });
+    throw error;
+  }
+}
 
 /**
  * Handles list all board object ids.
@@ -425,14 +508,10 @@ export async function POST(request: NextRequest) {
             throw createHttpError(validation.status, validation.error);
           }
 
-          const executeSpan = activeTrace.startSpan("tool.execute", {
-            operationCount: plannerResult.plan.operations.length,
-          });
-          const executionResult = await executor.executeTemplatePlan(
-            plannerResult.plan,
-          );
-          executeSpan.end({
-            toolCalls: executionResult.results.length,
+          const executionResult = await executePlanWithTracing({
+            executor,
+            trace: activeTrace,
+            operations: plannerResult.plan.operations,
           });
 
           const commitSpan = activeTrace.startSpan("board.write.commit", {
@@ -622,14 +701,10 @@ export async function POST(request: NextRequest) {
           throw createHttpError(validation.status, validation.error);
         }
 
-        const executeSpan = activeTrace.startSpan("tool.execute", {
-          operationCount: templateOutput.plan.operations.length,
-        });
-        const executionResult = await executor.executeTemplatePlan(
-          templateOutput.plan,
-        );
-        executeSpan.end({
-          toolCalls: executionResult.results.length,
+        const executionResult = await executePlanWithTracing({
+          executor,
+          trace: activeTrace,
+          operations: templateOutput.plan.operations,
         });
 
         const commitSpan = activeTrace.startSpan("board.write.commit", {

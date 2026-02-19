@@ -63,6 +63,31 @@ describe("validateTemplatePlan", () => {
       expect(result.status).toBe(400);
     }
   });
+
+  it("rejects oversized arrangeObjectsInGrid calls", () => {
+    const result = validateTemplatePlan({
+      templateId: SWOT_TEMPLATE_ID,
+      templateName: "Arrange grid",
+      operations: [
+        {
+          tool: "arrangeObjectsInGrid",
+          args: {
+            objectIds: Array.from(
+              { length: 51 },
+              (_, index) => `obj-${index}`,
+            ),
+            columns: 3,
+          },
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(400);
+      expect(result.error).toContain("Grid layout operation");
+    }
+  });
 });
 
 describe("checkUserRateLimit", () => {

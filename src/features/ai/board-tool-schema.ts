@@ -102,6 +102,27 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
     },
   },
   {
+    name: "arrangeObjectsInGrid",
+    description:
+      "Arrange selected objects into a grid using row-major placement.",
+    parameters: {
+      type: "object",
+      properties: {
+        objectIds: {
+          type: "array",
+          items: { type: "string" },
+        },
+        columns: { type: "number" },
+        gapX: { type: "number" },
+        gapY: { type: "number" },
+        originX: { type: "number" },
+        originY: { type: "number" },
+      },
+      required: ["objectIds", "columns"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "moveObject",
     description: "Move one object to a specific coordinate.",
     parameters: {

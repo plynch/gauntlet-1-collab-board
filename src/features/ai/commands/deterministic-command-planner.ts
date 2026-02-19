@@ -62,6 +62,10 @@ const DEFAULT_SIZES: Record<BoardObjectToolKind, Size> = {
   star: { width: 180, height: 180 },
 };
 
+const GRID_DEFAULT_COLUMNS = 3;
+const STICKY_GRID_SPACING_X = 240;
+const STICKY_GRID_SPACING_Y = 190;
+
 /**
  * Handles normalize message.
  */
@@ -128,6 +132,88 @@ function parseSize(message: string): Size | null {
   return {
     width: Math.max(1, Number(sizeMatch[1])),
     height: Math.max(1, Number(sizeMatch[2])),
+  };
+}
+
+/**
+ * Handles to positive integer.
+ */
+function toPositiveInteger(value: string): number {
+  return Math.max(1, Math.floor(Number(value)));
+}
+
+/**
+ * Parses grid dimensions.
+ */
+function parseGridDimensions(message: string): {
+  rows: number;
+  columns: number;
+} | null {
+  const dimsMatch = message.match(
+    /\b(\d+)\s*(?:x|by)\s*(\d+)\b/i,
+  );
+  if (!dimsMatch) {
+    return null;
+  }
+
+  return {
+    rows: toPositiveInteger(dimsMatch[1]),
+    columns: toPositiveInteger(dimsMatch[2]),
+  };
+}
+
+/**
+ * Parses grid columns.
+ */
+function parseGridColumns(message: string): number | null {
+  const dimensions = parseGridDimensions(message);
+  if (dimensions) {
+    return dimensions.columns;
+  }
+
+  const columnsMatch = message.match(/\b(\d+)\s+columns?\b/i);
+  if (!columnsMatch) {
+    return null;
+  }
+
+  return toPositiveInteger(columnsMatch[1]);
+}
+
+/**
+ * Parses grid gap.
+ */
+function parseGridGap(message: string): {
+  gapX?: number;
+  gapY?: number;
+} | null {
+  const explicitGapMatch = message.match(
+    /\bgap\s*x\s*(-?\d+(?:\.\d+)?)\s*y\s*(-?\d+(?:\.\d+)?)\b/i,
+  );
+  if (explicitGapMatch) {
+    return {
+      gapX: Number(explicitGapMatch[1]),
+      gapY: Number(explicitGapMatch[2]),
+    };
+  }
+
+  const gapXMatch = message.match(/\bgap\s*x\s*(-?\d+(?:\.\d+)?)\b/i);
+  const gapYMatch = message.match(/\bgap\s*y\s*(-?\d+(?:\.\d+)?)\b/i);
+  if (gapXMatch || gapYMatch) {
+    return {
+      gapX: gapXMatch ? Number(gapXMatch[1]) : undefined,
+      gapY: gapYMatch ? Number(gapYMatch[1]) : undefined,
+    };
+  }
+
+  const uniformGapMatch = message.match(/\bgap\s*(-?\d+(?:\.\d+)?)\b/i);
+  if (!uniformGapMatch) {
+    return null;
+  }
+
+  const value = Number(uniformGapMatch[1]);
+  return {
+    gapX: value,
+    gapY: value,
   };
 }
 
@@ -213,6 +299,19 @@ function parseStickyText(message: string): string {
 
   const value = textMatch[1].trim();
   return value.length > 0 ? value.slice(0, 1_000) : "New sticky note";
+}
+
+/**
+ * Parses sticky grid text seed.
+ */
+function parseStickyGridTextSeed(message: string): string | null {
+  const suffixMatch = message.match(/\bfor\b\s+["“']?(.+?)["”']?$/i);
+  if (!suffixMatch) {
+    return null;
+  }
+
+  const value = suffixMatch[1].trim();
+  return value.length > 0 ? value.slice(0, 960) : null;
 }
 
 /**
@@ -353,6 +452,133 @@ function planDeleteSelected(
           },
         },
       ],
+    }),
+  };
+}
+
+/**
+ * Returns whether arrange-grid command is true.
+ */
+function isArrangeGridCommand(message: string): boolean {
+  const lower = normalizeMessage(message);
+  const hasArrangeVerb = /\b(arrange|organize|organise|layout|lay\s*out)\b/.test(
+    lower,
+  );
+  const hasGridLanguage = /\bgrid\b/.test(lower) || /\bcolumns?\b/.test(lower);
+  return hasArrangeVerb && hasGridLanguage;
+}
+
+/**
+ * Handles plan arrange grid.
+ */
+function planArrangeGrid(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
+  if (!isArrangeGridCommand(input.message)) {
+    return null;
+  }
+
+  const selectedObjects = getSelectedObjects(
+    input.boardState,
+    input.selectedObjectIds,
+  );
+  if (selectedObjects.length < 2) {
+    return {
+      planned: false,
+      intent: "arrange-grid",
+      assistantMessage: "Select two or more objects, then run arrange in grid.",
+    };
+  }
+
+  const columns = parseGridColumns(input.message) ?? GRID_DEFAULT_COLUMNS;
+  const gap = parseGridGap(input.message);
+
+  return {
+    planned: true,
+    intent: "arrange-grid",
+    assistantMessage: `Arranged ${selectedObjects.length} selected object${selectedObjects.length === 1 ? "" : "s"} in a grid.`,
+    plan: toPlan({
+      id: "command.arrange-grid",
+      name: "Arrange Selected Objects In Grid",
+      operations: [
+        {
+          tool: "arrangeObjectsInGrid",
+          args: {
+            objectIds: selectedObjects.map((objectItem) => objectItem.id),
+            columns,
+            ...(gap?.gapX !== undefined ? { gapX: gap.gapX } : {}),
+            ...(gap?.gapY !== undefined ? { gapY: gap.gapY } : {}),
+          },
+        },
+      ],
+    }),
+  };
+}
+
+/**
+ * Returns whether create sticky-grid command is true.
+ */
+function isCreateStickyGridCommand(message: string): boolean {
+  const lower = normalizeMessage(message);
+  return (
+    /\b(add|create)\b/.test(lower) &&
+    /\bgrid\b/.test(lower) &&
+    /\bsticky(?:\s+note)?s?\b/.test(lower)
+  );
+}
+
+/**
+ * Handles plan create sticky-grid.
+ */
+function planCreateStickyGrid(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
+  if (!isCreateStickyGridCommand(input.message)) {
+    return null;
+  }
+
+  const dimensions = parseGridDimensions(input.message);
+  if (!dimensions) {
+    return {
+      planned: false,
+      intent: "create-sticky-grid",
+      assistantMessage:
+        "Specify sticky grid dimensions, for example: create a 2x3 grid of sticky notes.",
+    };
+  }
+
+  const point = getAutoSpawnPoint(input.boardState);
+  const color = findColor(input.message) ?? COLOR_KEYWORDS.yellow;
+  const textSeed = parseStickyGridTextSeed(input.message);
+  const total = dimensions.rows * dimensions.columns;
+
+  const operations: BoardToolCall[] = [];
+  for (let row = 0; row < dimensions.rows; row += 1) {
+    for (let column = 0; column < dimensions.columns; column += 1) {
+      const index = row * dimensions.columns + column;
+      const baseText = textSeed
+        ? `${textSeed} ${index + 1}`
+        : `Sticky ${index + 1}`;
+      operations.push({
+        tool: "createStickyNote",
+        args: {
+          text: baseText.slice(0, 1_000),
+          x: point.x + column * STICKY_GRID_SPACING_X,
+          y: point.y + row * STICKY_GRID_SPACING_Y,
+          color,
+        },
+      });
+    }
+  }
+
+  return {
+    planned: true,
+    intent: "create-sticky-grid",
+    assistantMessage: `Created ${dimensions.rows}x${dimensions.columns} sticky grid (${total} notes).`,
+    plan: toPlan({
+      id: "command.create-sticky-grid",
+      name: "Create Sticky Note Grid",
+      operations,
     }),
   };
 }
@@ -838,6 +1064,8 @@ export function planDeterministicCommand(
   const planners = [
     planClearBoard,
     planDeleteSelected,
+    planArrangeGrid,
+    planCreateStickyGrid,
     planCreateSticky,
     planCreateFrame,
     planCreateShape,
@@ -859,6 +1087,6 @@ export function planDeterministicCommand(
     planned: false,
     intent: "unsupported-command",
     assistantMessage:
-      "I could not map that command yet. Try creating shapes/stickies, move/resize selected objects, delete selected, clear the board, change selected color, or create a SWOT template.",
+      "I could not map that command yet. Try creating shapes/stickies, arranging selected objects in a grid, moving/resizing selected objects, deleting selected, clearing the board, changing selected color, or creating a SWOT template.",
   };
 }

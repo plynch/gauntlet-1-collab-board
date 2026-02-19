@@ -26,6 +26,12 @@ const GRID_MAX_COLS = 8;
 const GRID_MIN_GAP = 0;
 const GRID_MAX_GAP = 80;
 const GRID_DEFAULT_GAP = 2;
+const LAYOUT_GRID_MIN_COLUMNS = 1;
+const LAYOUT_GRID_MAX_COLUMNS = 8;
+const LAYOUT_GRID_DEFAULT_COLUMNS = 3;
+const LAYOUT_GRID_MIN_GAP = 0;
+const LAYOUT_GRID_MAX_GAP = 400;
+const LAYOUT_GRID_DEFAULT_GAP = 32;
 
 type BoardToolExecutorOptions = {
   boardId: string;
@@ -702,6 +708,91 @@ export class BoardToolExecutor {
   }
 
   /**
+   * Arranges objects in grid.
+   */
+  async arrangeObjectsInGrid(args: {
+    objectIds: string[];
+    columns: number;
+    gapX?: number;
+    gapY?: number;
+    originX?: number;
+    originY?: number;
+  }): Promise<ExecuteToolResult> {
+    await this.ensureLoadedObjects();
+
+    const uniqueObjectIds = Array.from(
+      new Set(args.objectIds.map((value) => value.trim())),
+    ).filter((value) => value.length > 0);
+
+    const selectedObjects = uniqueObjectIds
+      .map((objectId) => this.objectsById.get(objectId))
+      .filter((objectItem): objectItem is BoardObjectSnapshot =>
+        Boolean(objectItem),
+      );
+
+    if (selectedObjects.length < 2) {
+      return { tool: "arrangeObjectsInGrid" };
+    }
+
+    const sortedObjects = [...selectedObjects].sort((left, right) => {
+      if (left.y !== right.y) {
+        return left.y - right.y;
+      }
+      if (left.x !== right.x) {
+        return left.x - right.x;
+      }
+      if (left.zIndex !== right.zIndex) {
+        return left.zIndex - right.zIndex;
+      }
+      return left.id.localeCompare(right.id);
+    });
+
+    const columns = toGridDimension(
+      args.columns,
+      LAYOUT_GRID_DEFAULT_COLUMNS,
+      LAYOUT_GRID_MIN_COLUMNS,
+      LAYOUT_GRID_MAX_COLUMNS,
+    );
+    const gapX = toGridDimension(
+      args.gapX,
+      LAYOUT_GRID_DEFAULT_GAP,
+      LAYOUT_GRID_MIN_GAP,
+      LAYOUT_GRID_MAX_GAP,
+    );
+    const gapY = toGridDimension(
+      args.gapY,
+      LAYOUT_GRID_DEFAULT_GAP,
+      LAYOUT_GRID_MIN_GAP,
+      LAYOUT_GRID_MAX_GAP,
+    );
+    const cellWidth = Math.max(
+      ...sortedObjects.map((objectItem) => Math.max(1, objectItem.width)),
+    );
+    const cellHeight = Math.max(
+      ...sortedObjects.map((objectItem) => Math.max(1, objectItem.height)),
+    );
+    const defaultOriginX = Math.min(...sortedObjects.map((item) => item.x));
+    const defaultOriginY = Math.min(...sortedObjects.map((item) => item.y));
+    const originX = toNumber(args.originX, defaultOriginX);
+    const originY = toNumber(args.originY, defaultOriginY);
+
+    for (let index = 0; index < sortedObjects.length; index += 1) {
+      const objectItem = sortedObjects[index];
+      const row = Math.floor(index / columns);
+      const column = index % columns;
+      const nextX = originX + column * (cellWidth + gapX);
+      const nextY = originY + row * (cellHeight + gapY);
+
+      await this.updateObject(objectItem.id, {
+        x: nextX,
+        y: nextY,
+      });
+    }
+
+    return { tool: "arrangeObjectsInGrid" };
+  }
+
+  /**
    * Handles move object.
    */
   async moveObject(args: {
@@ -821,6 +912,8 @@ export class BoardToolExecutor {
         return this.createFrame(toolCall.args);
       case "createConnector":
         return this.createConnector(toolCall.args);
+      case "arrangeObjectsInGrid":
+        return this.arrangeObjectsInGrid(toolCall.args);
       case "moveObject":
         return this.moveObject(toolCall.args);
       case "resizeObject":

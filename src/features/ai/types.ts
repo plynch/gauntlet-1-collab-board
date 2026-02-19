@@ -123,6 +123,17 @@ export type BoardToolCall =
       };
     }
   | {
+      tool: "arrangeObjectsInGrid";
+      args: {
+        objectIds: string[];
+        columns: number;
+        gapX?: number;
+        gapY?: number;
+        originX?: number;
+        originY?: number;
+      };
+    }
+  | {
       tool: "moveObject";
       args: {
         objectId: string;

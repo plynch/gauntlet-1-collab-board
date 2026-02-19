@@ -6,6 +6,7 @@ import { createMemoryGuardrailStore } from "@/features/ai/guardrail-store.memory
 export const MAX_AI_OPERATIONS_PER_COMMAND = 20;
 export const MAX_AI_CREATED_OBJECTS_PER_COMMAND = 12;
 export const MAX_AI_DELETIONS_PER_TOOL_CALL = 2_000;
+export const MAX_AI_LAYOUT_OBJECTS_PER_TOOL_CALL = 50;
 export const MAX_AI_COMMANDS_PER_USER_PER_WINDOW = 20;
 export const AI_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1_000;
 export const AI_BOARD_LOCK_TTL_MS = 15_000;
@@ -99,6 +100,19 @@ export function validateTemplatePlan(plan: TemplatePlan):
       ok: false,
       status: 400,
       error: `Delete operation exceeds max object ids (${MAX_AI_DELETIONS_PER_TOOL_CALL}).`,
+    };
+  }
+
+  const oversizedLayout = plan.operations.find(
+    (operation) =>
+      operation.tool === "arrangeObjectsInGrid" &&
+      operation.args.objectIds.length > MAX_AI_LAYOUT_OBJECTS_PER_TOOL_CALL,
+  );
+  if (oversizedLayout && oversizedLayout.tool === "arrangeObjectsInGrid") {
+    return {
+      ok: false,
+      status: 400,
+      error: `Grid layout operation exceeds max object ids (${MAX_AI_LAYOUT_OBJECTS_PER_TOOL_CALL}).`,
     };
   }
 

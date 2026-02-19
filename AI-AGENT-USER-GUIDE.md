@@ -46,6 +46,8 @@ Demo narration tip:
   - `Create a SWOT analysis`
 - Deterministic object command routing:
   - create sticky notes, frames, and shapes
+  - create sticky-note grids from prompts like `create a 2x3 grid of sticky notes`
+  - arrange selected objects into a grid (`arrange selected in a grid`, `arrange selected in 3 columns`)
   - move selected objects
   - move all objects of a type (optionally color-filtered)
   - resize selected objects
@@ -65,7 +67,7 @@ Result:
 ### Not yet routed from natural language
 
 - connector creation from arbitrary language prompts
-- advanced layout prompts (grid/space-evenly) with deterministic planning
+- advanced layout prompts beyond grid v1 (space-evenly, align)
 - complex multi-step templates beyond SWOT (retro, journey map)
 - full LLM planning layer for broader prompt understanding
 
@@ -79,6 +81,7 @@ The backend tool schema includes:
 - `createFrame(title, x, y, width, height)`
 - `createConnector(fromId, toId, style)`
   - `style`: `undirected | one-way-arrow | two-way-arrow`
+- `arrangeObjectsInGrid(objectIds, columns, gapX?, gapY?, originX?, originY?)`
 - `moveObject(objectId, x, y)`
 - `resizeObject(objectId, width, height)`
 - `updateText(objectId, newText)`
@@ -111,8 +114,9 @@ Use these as copy/paste starting points.
 ### Layout commands
 
 - `Arrange selected sticky notes in a grid`
-- `Space selected elements evenly`
+- `Arrange selected objects in 3 columns`
 - `Create a 2x3 grid of sticky notes for pros and cons`
+- `Space selected elements evenly` (planned next)
 
 ### Complex template commands
 
@@ -175,5 +179,5 @@ Near-term roadmap:
 
 1. Route natural language to the full tool set (not just SWOT).
 2. Add MCP fallback path for all tool-planning commands.
-3. Add broader template catalog and command coverage (grid, retro, journey map).
+3. Add broader template catalog and command coverage (space-evenly, align, retro, journey map).
 4. Add LLM planner on top of deterministic paths, with deterministic fallback preserved.

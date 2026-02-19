@@ -108,6 +108,59 @@ describe("planDeterministicCommand", () => {
     }
   });
 
+  it("plans arrange-grid command when selected objects exist", () => {
+    const result = planDeterministicCommand({
+      message: "Arrange selected objects in a grid with 2 columns gap x 24 y 32",
+      boardState: BOARD_STATE,
+      selectedObjectIds: ["obj-1", "obj-2"],
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("arrange-grid");
+      expect(result.plan.operations).toHaveLength(1);
+      expect(result.plan.operations[0]?.tool).toBe("arrangeObjectsInGrid");
+      if (result.plan.operations[0]?.tool === "arrangeObjectsInGrid") {
+        expect(result.plan.operations[0].args.objectIds).toEqual([
+          "obj-1",
+          "obj-2",
+        ]);
+        expect(result.plan.operations[0].args.columns).toBe(2);
+        expect(result.plan.operations[0].args.gapX).toBe(24);
+        expect(result.plan.operations[0].args.gapY).toBe(32);
+      }
+    }
+  });
+
+  it("returns actionable message when arrange-grid has no selection", () => {
+    const result = planDeterministicCommand({
+      message: "Arrange selected in a grid",
+      boardState: BOARD_STATE,
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(false);
+    expect(result.intent).toBe("arrange-grid");
+    expect(result.assistantMessage).toContain("Select two or more objects");
+  });
+
+  it("plans create-sticky-grid for 2x3 prompt", () => {
+    const result = planDeterministicCommand({
+      message: "Create a 2x3 grid of sticky notes for pros and cons",
+      boardState: BOARD_STATE,
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("create-sticky-grid");
+      expect(result.plan.operations).toHaveLength(6);
+      expect(result.plan.operations.every((op) => op.tool === "createStickyNote")).toBe(
+        true,
+      );
+    }
+  });
+
   it("plans move selected commands", () => {
     const result = planDeterministicCommand({
       message: "Move selected objects right by 120",

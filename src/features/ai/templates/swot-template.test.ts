@@ -4,7 +4,7 @@ import { SWOT_TEMPLATE_ID } from "@/features/ai/templates/template-types";
 import { buildSwotTemplatePlan } from "@/features/ai/templates/swot-template";
 
 describe("buildSwotTemplatePlan", () => {
-  it("creates 8 operations with 4 quadrant rectangles and 4 label notes", () => {
+  it("creates one 2x2 grid container with section titles and blank notes", () => {
     const plan = buildSwotTemplatePlan({
       templateId: SWOT_TEMPLATE_ID,
       boardBounds: null,
@@ -13,13 +13,22 @@ describe("buildSwotTemplatePlan", () => {
     });
 
     expect(plan.templateId).toBe(SWOT_TEMPLATE_ID);
-    expect(plan.operations).toHaveLength(8);
-    expect(plan.operations.filter((operation) => operation.tool === "createShape")).toHaveLength(
-      4
-    );
+    expect(plan.operations).toHaveLength(1);
     expect(
-      plan.operations.filter((operation) => operation.tool === "createStickyNote")
-    ).toHaveLength(4);
+      plan.operations.filter((operation) => operation.tool === "createGridContainer")
+    ).toHaveLength(1);
+    const first = plan.operations[0];
+    expect(first?.tool).toBe("createGridContainer");
+    if (first?.tool === "createGridContainer") {
+      expect(first.args.containerTitle).toBe("SWOT Analysis");
+      expect(first.args.sectionTitles).toEqual([
+        "Strengths",
+        "Weaknesses",
+        "Opportunities",
+        "Threats"
+      ]);
+      expect(first.args.sectionNotes).toEqual(["", "", "", ""]);
+    }
   });
 
   it("autoplaces SWOT to the right of existing board content", () => {
@@ -37,14 +46,14 @@ describe("buildSwotTemplatePlan", () => {
       existingObjectCount: 12
     });
 
-    const firstQuadrant = plan.operations.find(
-      (operation) => operation.tool === "createShape"
+    const firstGridContainer = plan.operations.find(
+      (operation) => operation.tool === "createGridContainer"
     );
 
-    expect(firstQuadrant?.tool).toBe("createShape");
-    if (firstQuadrant?.tool === "createShape") {
-      expect(firstQuadrant.args.x).toBeGreaterThan(500);
-      expect(firstQuadrant.args.y).toBe(40);
+    expect(firstGridContainer?.tool).toBe("createGridContainer");
+    if (firstGridContainer?.tool === "createGridContainer") {
+      expect(firstGridContainer.args.x).toBeGreaterThan(500);
+      expect(firstGridContainer.args.y).toBe(40);
     }
   });
 });

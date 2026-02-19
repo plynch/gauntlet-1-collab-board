@@ -34,3 +34,6 @@ ui-debug.log
 # Playwright artifacts
 playwright-report/
 test-results/
+
+# Storybook artifacts
+storybook-static/

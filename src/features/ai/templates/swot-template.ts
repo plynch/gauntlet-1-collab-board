@@ -9,46 +9,46 @@ type SwotQuadrant = {
   key: "strengths" | "weaknesses" | "opportunities" | "threats";
   label: string;
   color: string;
-  x: number;
-  y: number;
+  row: number;
+  col: number;
 };
 
 const QUADRANT_WIDTH = 340;
 const QUADRANT_HEIGHT = 220;
-const QUADRANT_GAP = 28;
+const QUADRANT_GAP = 2;
+const QUADRANT_GRID_ROWS = 2;
+const QUADRANT_GRID_COLS = 2;
 const QUADRANT_RIGHT_PADDING = 160;
-const LABEL_OFFSET_X = 16;
-const LABEL_OFFSET_Y = 16;
 
-function buildSwotQuadrants(startX: number, startY: number): SwotQuadrant[] {
+function buildSwotQuadrants(): SwotQuadrant[] {
   return [
     {
       key: "strengths",
       label: "Strengths",
       color: "#d1fae5",
-      x: startX,
-      y: startY
+      row: 0,
+      col: 0
     },
     {
       key: "weaknesses",
       label: "Weaknesses",
       color: "#fee2e2",
-      x: startX + QUADRANT_WIDTH + QUADRANT_GAP,
-      y: startY
+      row: 0,
+      col: 1
     },
     {
       key: "opportunities",
       label: "Opportunities",
       color: "#dbeafe",
-      x: startX,
-      y: startY + QUADRANT_HEIGHT + QUADRANT_GAP
+      row: 1,
+      col: 0
     },
     {
       key: "threats",
       label: "Threats",
       color: "#fef3c7",
-      x: startX + QUADRANT_WIDTH + QUADRANT_GAP,
-      y: startY + QUADRANT_HEIGHT + QUADRANT_GAP
+      row: 1,
+      col: 1
     }
   ];
 }
@@ -57,29 +57,29 @@ export function buildSwotTemplatePlan(input: TemplateInstantiateInput): Template
   const normalizedBounds = normalizeBounds(input.boardBounds);
   const startX = normalizedBounds ? normalizedBounds.right + QUADRANT_RIGHT_PADDING : 160;
   const startY = normalizedBounds ? normalizedBounds.top : 120;
-  const quadrants = buildSwotQuadrants(startX, startY);
+  const quadrants = buildSwotQuadrants();
+  const gridWidth =
+    QUADRANT_WIDTH * QUADRANT_GRID_COLS + QUADRANT_GAP * (QUADRANT_GRID_COLS - 1);
+  const gridHeight =
+    QUADRANT_HEIGHT * QUADRANT_GRID_ROWS + QUADRANT_GAP * (QUADRANT_GRID_ROWS - 1);
 
   const operations: TemplatePlan["operations"] = [
-    ...quadrants.map((quadrant) => ({
-      tool: "createShape" as const,
+    {
+      tool: "createGridContainer" as const,
       args: {
-        type: "rect" as const,
-        x: quadrant.x,
-        y: quadrant.y,
-        width: QUADRANT_WIDTH,
-        height: QUADRANT_HEIGHT,
-        color: quadrant.color
+        x: startX,
+        y: startY,
+        width: gridWidth,
+        height: gridHeight,
+        rows: QUADRANT_GRID_ROWS,
+        cols: QUADRANT_GRID_COLS,
+        gap: QUADRANT_GAP,
+        containerTitle: "SWOT Analysis",
+        cellColors: quadrants.map((quadrant) => quadrant.color),
+        sectionTitles: quadrants.map((quadrant) => quadrant.label),
+        sectionNotes: quadrants.map(() => "")
       }
-    })),
-    ...quadrants.map((quadrant) => ({
-      tool: "createStickyNote" as const,
-      args: {
-        text: quadrant.label,
-        x: quadrant.x + LABEL_OFFSET_X,
-        y: quadrant.y + LABEL_OFFSET_Y,
-        color: "#fef3c7"
-      }
-    }))
+    }
   ];
 
   return {

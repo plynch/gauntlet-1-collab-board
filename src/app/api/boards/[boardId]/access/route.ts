@@ -7,7 +7,16 @@ import {
   getFirebaseAdminAuth,
   getFirebaseAdminDb
 } from "@/lib/firebase/admin";
-import { AuthError, requireUser } from "@/server/auth/require-user";
+import {
+  boardAccessActionSchema,
+  type BoardAccessAction
+} from "@/server/api/board-route-schemas";
+import {
+  handleRouteError,
+  readJsonBody,
+  trimParam
+} from "@/server/api/route-helpers";
+import { requireUser } from "@/server/auth/require-user";
 import {
   parseBoardDoc,
   resolveUserProfiles,
@@ -23,60 +32,6 @@ type BoardAccessRouteContext = {
     boardId: string;
   }>;
 };
-
-type SetOpenEditAction = {
-  action: "set-open-edit";
-  openEdit: boolean;
-};
-
-type SetOpenReadAction = {
-  action: "set-open-read";
-  openRead: boolean;
-};
-
-type AddEditorAction = {
-  action: "add-editor";
-  editorEmail: string;
-};
-
-type RemoveEditorAction = {
-  action: "remove-editor";
-  editorUid: string;
-};
-
-type AddReaderAction = {
-  action: "add-reader";
-  readerEmail: string;
-};
-
-type RemoveReaderAction = {
-  action: "remove-reader";
-  readerUid: string;
-};
-
-type AccessAction =
-  | SetOpenEditAction
-  | SetOpenReadAction
-  | AddEditorAction
-  | RemoveEditorAction
-  | AddReaderAction
-  | RemoveReaderAction;
-
-function getDebugMessage(error: unknown): string | undefined {
-  if (process.env.NODE_ENV === "production") {
-    return undefined;
-  }
-
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  if (typeof error === "string") {
-    return error;
-  }
-
-  return undefined;
-}
 
 function toBoardDetail(
   boardId: string,
@@ -99,22 +54,6 @@ function toBoardDetail(
   };
 }
 
-function isAccessAction(input: unknown): input is AccessAction {
-  if (!input || typeof input !== "object") {
-    return false;
-  }
-
-  const action = (input as { action?: unknown }).action;
-  return (
-    action === "set-open-edit" ||
-    action === "set-open-read" ||
-    action === "add-editor" ||
-    action === "remove-editor" ||
-    action === "add-reader" ||
-    action === "remove-reader"
-  );
-}
-
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
 }
@@ -125,22 +64,22 @@ export async function PATCH(request: NextRequest, context: BoardAccessRouteConte
 
     const user = await requireUser(request);
     const params = await context.params;
-    const boardId = params.boardId?.trim();
+    const boardId = trimParam(params.boardId);
 
     if (!boardId) {
       return NextResponse.json({ error: "Missing board id." }, { status: 400 });
     }
 
-    let payload: unknown = null;
-    try {
-      payload = await request.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+    const bodyResult = await readJsonBody(request);
+    if (!bodyResult.ok) {
+      return bodyResult.response;
     }
 
-    if (!isAccessAction(payload)) {
+    const parsedAction = boardAccessActionSchema.safeParse(bodyResult.value);
+    if (!parsedAction.success) {
       return NextResponse.json({ error: "Invalid access action." }, { status: 400 });
     }
+    const payload: BoardAccessAction = parsedAction.data;
 
     const db = getFirebaseAdminDb();
     const boardRef = db.collection("boards").doc(boardId);
@@ -299,17 +238,7 @@ export async function PATCH(request: NextRequest, context: BoardAccessRouteConte
       board: toBoardDetail(boardId, updatedBoard, editors, readers)
     });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
     console.error("Failed to update board access", error);
-    return NextResponse.json(
-      {
-        error: "Failed to update board access.",
-        debug: getDebugMessage(error)
-      },
-      { status: 500 }
-    );
+    return handleRouteError(error, "Failed to update board access.");
   }
 }

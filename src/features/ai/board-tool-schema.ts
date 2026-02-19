@@ -37,6 +37,38 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
     }
   },
   {
+    name: "createGridContainer",
+    description:
+      "Create a grid container object with rows, columns, gap, and optional per-cell colors.",
+    parameters: {
+      type: "object",
+      properties: {
+        x: { type: "number" },
+        y: { type: "number" },
+        width: { type: "number" },
+        height: { type: "number" },
+        rows: { type: "number" },
+        cols: { type: "number" },
+        gap: { type: "number" },
+        cellColors: {
+          type: "array",
+          items: { type: "string" }
+        },
+        containerTitle: { type: "string" },
+        sectionTitles: {
+          type: "array",
+          items: { type: "string" }
+        },
+        sectionNotes: {
+          type: "array",
+          items: { type: "string" }
+        }
+      },
+      required: ["x", "y", "width", "height", "rows", "cols", "gap"],
+      additionalProperties: false
+    }
+  },
+  {
     name: "createFrame",
     description: "Create a frame to group board content.",
     parameters: {

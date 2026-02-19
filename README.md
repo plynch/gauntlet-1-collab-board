@@ -43,6 +43,8 @@ npm run dev
 Useful scripts:
 
 ```bash
+npm run storybook
+npm run build-storybook
 npm run test
 npm run test:e2e
 npm run lint
@@ -55,6 +57,10 @@ Playwright first-run setup:
 ```bash
 npx playwright install chromium
 ```
+
+Styleguide route (component library preview in app):
+
+- `http://localhost:3000/styleguide`
 
 ## Current Features
 

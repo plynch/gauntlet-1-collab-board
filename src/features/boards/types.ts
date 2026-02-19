@@ -33,6 +33,7 @@ export type BoardObjectKind =
   | "sticky"
   | "rect"
   | "circle"
+  | "gridContainer"
   | "line"
   | "connectorUndirected"
   | "connectorArrow"
@@ -61,6 +62,17 @@ export type BoardObject = {
   fromY?: number | null;
   toX?: number | null;
   toY?: number | null;
+  gridRows?: number | null;
+  gridCols?: number | null;
+  gridGap?: number | null;
+  gridCellColors?: string[] | null;
+  containerTitle?: string | null;
+  gridSectionTitles?: string[] | null;
+  gridSectionNotes?: string[] | null;
+  containerId?: string | null;
+  containerSectionIndex?: number | null;
+  containerRelX?: number | null;
+  containerRelY?: number | null;
   updatedAt: string | null;
 };
 

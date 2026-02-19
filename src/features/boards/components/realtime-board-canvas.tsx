@@ -35,9 +35,28 @@ import {
   getBoardCommandErrorMessage
 } from "@/features/ai/board-command";
 import {
+  getPathLength,
+  getPathMidPoint,
+  getPointSequenceBounds,
+  getRouteEndDirections,
+  toRoundedConnectorPath
+} from "@/features/boards/components/realtime-canvas/connector-routing-geometry";
+import {
+  OnlineUsersList,
+  RemoteCursorLayer
+} from "@/features/boards/components/realtime-canvas/render-primitives";
+import { calculateSelectionHudPosition } from "@/features/boards/components/realtime-canvas/selection-hud-layout";
+import {
+  getActivePresenceUsers,
+  getPresenceLabel,
+  getRemoteCursors,
+  usePresenceClock
+} from "@/features/boards/components/realtime-canvas/use-presence-sync";
+import {
   createRealtimeWriteMetrics,
   isWriteMetricsDebugEnabled
 } from "@/features/boards/lib/realtime-write-metrics";
+import { GridContainer } from "@/features/ui/components/grid-container";
 import { getFirebaseClientDb } from "@/lib/firebase/client";
 
 // Cost/perf tradeoff: keep cursors smooth while cutting high-frequency write churn.
@@ -138,6 +157,7 @@ type ObjectGeometry = {
 type ObjectWriteOptions = {
   includeUpdatedAt?: boolean;
   force?: boolean;
+  containerMembershipById?: Record<string, ContainerMembershipPatch>;
 };
 
 type CornerResizeState = {
@@ -202,6 +222,36 @@ type StickyTextSyncState = {
   timerId: number | null;
 };
 
+type GridContainerContentDraft = {
+  containerTitle: string;
+  sectionTitles: string[];
+  sectionNotes: string[];
+};
+
+type ContainerMembershipPatch = {
+  containerId: string | null;
+  containerSectionIndex: number | null;
+  containerRelX: number | null;
+  containerRelY: number | null;
+};
+
+type GridSectionBounds = {
+  containerId: string;
+  containerZIndex: number;
+  sectionIndex: number;
+  bounds: ObjectBounds;
+};
+
+type ContainerSectionsInfo = {
+  containerId: string;
+  containerZIndex: number;
+  rows: number;
+  cols: number;
+  gap: number;
+  geometry: ObjectGeometry;
+  sections: ObjectBounds[];
+};
+
 type ColorSwatch = {
   name: string;
   value: string;
@@ -211,6 +261,7 @@ const BOARD_TOOLS: BoardObjectKind[] = [
   "sticky",
   "rect",
   "circle",
+  "gridContainer",
   "connectorUndirected",
   "connectorArrow",
   "connectorBidirectional",
@@ -245,6 +296,16 @@ const BOARD_COLOR_SWATCHES: ColorSwatch[] = [
   { name: "Gray", value: "#d1d5db" },
   { name: "Tan", value: "#d2b48c" }
 ];
+const DEFAULT_SWOT_SECTION_TITLES = [
+  "Strengths",
+  "Weaknesses",
+  "Opportunities",
+  "Threats"
+] as const;
+const GRID_CONTAINER_DEFAULT_GAP = 2;
+const GRID_CONTAINER_PADDING = 8;
+const GRID_CONTAINER_MAX_ROWS = 6;
+const GRID_CONTAINER_MAX_COLS = 6;
 
 const CONNECTOR_MIN_SEGMENT_SIZE = 12;
 const CONNECTOR_HIT_PADDING = 16;
@@ -366,6 +427,199 @@ function getFiniteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function getGridDimension(value: unknown, fallback: number | null): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.max(1, Math.min(Math.max(GRID_CONTAINER_MAX_ROWS, GRID_CONTAINER_MAX_COLS), Math.floor(value)));
+}
+
+function getGridGap(value: unknown, fallback: number | null): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.max(0, Math.min(24, Math.round(value)));
+}
+
+function getNonNegativeInteger(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+
+  const floored = Math.floor(value);
+  return floored >= 0 ? floored : null;
+}
+
+function getGridCellColors(value: unknown): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const colors = value.filter((item): item is string => typeof item === "string");
+  return colors.length > 0 ? colors : null;
+}
+
+function getStringArray(value: unknown): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const values = value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim());
+  return values.length > 0 ? values : null;
+}
+
+function getDefaultSectionTitles(rows: number, cols: number): string[] {
+  const count = Math.max(1, rows * cols);
+  if (rows === 2 && cols === 2) {
+    return Array.from({ length: count }, (_, index) => DEFAULT_SWOT_SECTION_TITLES[index] ?? `Section ${index + 1}`);
+  }
+
+  return Array.from({ length: count }, (_, index) => `Section ${index + 1}`);
+}
+
+function normalizeSectionValues(
+  values: string[] | null | undefined,
+  count: number,
+  fallback: (index: number) => string,
+  maxLength: number
+): string[] {
+  return Array.from({ length: count }, (_, index) => {
+    const value = values?.[index]?.trim() ?? "";
+    if (value.length === 0) {
+      return fallback(index).slice(0, maxLength);
+    }
+
+    return value.slice(0, maxLength);
+  });
+}
+
+function clamp(value: number, minValue: number, maxValue: number): number {
+  return Math.max(minValue, Math.min(maxValue, value));
+}
+
+function isContainerChildEligible(type: BoardObjectKind): boolean {
+  return type !== "gridContainer" && !isConnectorKind(type);
+}
+
+function getGridSectionBoundsFromGeometry(
+  containerGeometry: ObjectGeometry,
+  rows: number,
+  cols: number,
+  gap: number
+): ObjectBounds[] {
+  const safeRows = Math.max(1, Math.floor(rows));
+  const safeCols = Math.max(1, Math.floor(cols));
+  const safeGap = Math.max(0, gap);
+  const innerWidth = Math.max(
+    1,
+    containerGeometry.width - GRID_CONTAINER_PADDING * 2 - safeGap * (safeCols - 1)
+  );
+  const innerHeight = Math.max(
+    1,
+    containerGeometry.height - GRID_CONTAINER_PADDING * 2 - safeGap * (safeRows - 1)
+  );
+  const cellWidth = innerWidth / safeCols;
+  const cellHeight = innerHeight / safeRows;
+  const sections: ObjectBounds[] = [];
+
+  for (let row = 0; row < safeRows; row += 1) {
+    for (let col = 0; col < safeCols; col += 1) {
+      const left =
+        containerGeometry.x + GRID_CONTAINER_PADDING + col * (cellWidth + safeGap);
+      const top =
+        containerGeometry.y + GRID_CONTAINER_PADDING + row * (cellHeight + safeGap);
+      sections.push({
+        left,
+        right: left + cellWidth,
+        top,
+        bottom: top + cellHeight
+      });
+    }
+  }
+
+  return sections;
+}
+
+function getObjectCenterForPlacement(geometry: ObjectGeometry): BoardPoint {
+  return {
+    x: geometry.x + geometry.width / 2,
+    y: geometry.y + geometry.height / 2
+  };
+}
+
+function isPointInsideBounds(point: BoardPoint, bounds: ObjectBounds): boolean {
+  return (
+    point.x >= bounds.left &&
+    point.x <= bounds.right &&
+    point.y >= bounds.top &&
+    point.y <= bounds.bottom
+  );
+}
+
+function areContainerMembershipPatchesEqual(
+  left: ContainerMembershipPatch,
+  right: ContainerMembershipPatch
+): boolean {
+  return (
+    left.containerId === right.containerId &&
+    left.containerSectionIndex === right.containerSectionIndex &&
+    left.containerRelX === right.containerRelX &&
+    left.containerRelY === right.containerRelY
+  );
+}
+
+function getMembershipPatchFromObject(objectItem: BoardObject): ContainerMembershipPatch {
+  return {
+    containerId: objectItem.containerId ?? null,
+    containerSectionIndex: objectItem.containerSectionIndex ?? null,
+    containerRelX: objectItem.containerRelX ?? null,
+    containerRelY: objectItem.containerRelY ?? null
+  };
+}
+
+function getSectionBoundsCenter(bounds: ObjectBounds): BoardPoint {
+  return {
+    x: (bounds.left + bounds.right) / 2,
+    y: (bounds.top + bounds.bottom) / 2
+  };
+}
+
+function getClosestSectionIndex(point: BoardPoint, sections: ObjectBounds[]): number | null {
+  if (sections.length === 0) {
+    return null;
+  }
+
+  let bestIndex = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  sections.forEach((section, index) => {
+    const center = getSectionBoundsCenter(section);
+    const distance = Math.hypot(center.x - point.x, center.y - point.y);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+  });
+
+  return bestIndex;
+}
+
+function toSectionRelativeCoordinate(
+  center: BoardPoint,
+  section: ObjectBounds
+): { x: number; y: number } {
+  const sectionWidth = Math.max(1, section.right - section.left);
+  const sectionHeight = Math.max(1, section.bottom - section.top);
+  return {
+    x: clamp((center.x - section.left) / sectionWidth, 0, 1),
+    y: clamp((center.y - section.top) / sectionHeight, 0, 1)
+  };
+}
+
 function getTimestampIso(value: unknown): string | null {
   if (value instanceof Timestamp) {
     return value.toDate().toISOString();
@@ -399,6 +653,7 @@ function isBoardObjectKind(value: unknown): value is BoardObjectKind {
     value === "sticky" ||
     value === "rect" ||
     value === "circle" ||
+    value === "gridContainer" ||
     value === "line" ||
     value === "connectorUndirected" ||
     value === "connectorArrow" ||
@@ -434,6 +689,10 @@ function getDefaultObjectSize(kind: BoardObjectKind): { width: number; height: n
     return { width: 170, height: 170 };
   }
 
+  if (kind === "gridContainer") {
+    return { width: 708, height: 468 };
+  }
+
   if (kind === "triangle") {
     return { width: 180, height: 170 };
   }
@@ -462,6 +721,10 @@ function getMinimumObjectSize(kind: BoardObjectKind): { width: number; height: n
     return { width: 80, height: 80 };
   }
 
+  if (kind === "gridContainer") {
+    return { width: 180, height: 120 };
+  }
+
   if (kind === "triangle" || kind === "star") {
     return { width: 80, height: 80 };
   }
@@ -484,6 +747,10 @@ function getDefaultObjectColor(kind: BoardObjectKind): string {
 
   if (kind === "circle") {
     return "#86efac";
+  }
+
+  if (kind === "gridContainer") {
+    return "#e2e8f0";
   }
 
   if (kind === "triangle") {
@@ -520,6 +787,10 @@ function getObjectLabel(kind: BoardObjectKind): string {
 
   if (kind === "circle") {
     return "Circle";
+  }
+
+  if (kind === "gridContainer") {
+    return "Grid container";
   }
 
   if (kind === "triangle") {
@@ -877,6 +1148,7 @@ function getAnchorPointForGeometry(
     | "sticky"
     | "rect"
     | "circle"
+    | "gridContainer"
     | "triangle"
     | "star" = "rect"
 ): BoardPoint {
@@ -962,117 +1234,6 @@ function inflateObjectBounds(bounds: ObjectBounds, padding: number): ObjectBound
     right: bounds.right + padding,
     top: bounds.top - padding,
     bottom: bounds.bottom + padding
-  };
-}
-
-function formatPathNumber(value: number): string {
-  return Number(value.toFixed(2)).toString();
-}
-
-function getSegmentDirection(fromPoint: BoardPoint, toPoint: BoardPoint): BoardPoint {
-  const dx = toPoint.x - fromPoint.x;
-  const dy = toPoint.y - fromPoint.y;
-  const magnitude = Math.hypot(dx, dy);
-  if (magnitude <= 0.0001) {
-    return { x: 1, y: 0 };
-  }
-
-  return {
-    x: dx / magnitude,
-    y: dy / magnitude
-  };
-}
-
-function getPointSequenceBounds(points: BoardPoint[], padding = 0): ObjectBounds {
-  const xValues = points.map((point) => point.x);
-  const yValues = points.map((point) => point.y);
-  return {
-    left: Math.min(...xValues) - padding,
-    right: Math.max(...xValues) + padding,
-    top: Math.min(...yValues) - padding,
-    bottom: Math.max(...yValues) + padding
-  };
-}
-
-function getPathLength(points: BoardPoint[]): number {
-  if (points.length < 2) {
-    return 0;
-  }
-
-  let length = 0;
-  for (let index = 0; index < points.length - 1; index += 1) {
-    length += getDistance(points[index], points[index + 1]);
-  }
-  return length;
-}
-
-function getPathMidPoint(points: BoardPoint[]): BoardPoint {
-  if (points.length === 0) {
-    return { x: 0, y: 0 };
-  }
-
-  if (points.length === 1) {
-    return points[0];
-  }
-
-  const totalLength = getPathLength(points);
-  if (totalLength <= 0.0001) {
-    return points[0];
-  }
-
-  const midpointDistance = totalLength / 2;
-  let traversed = 0;
-
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const start = points[index];
-    const end = points[index + 1];
-    const segmentLength = getDistance(start, end);
-    if (traversed + segmentLength >= midpointDistance) {
-      const remaining = midpointDistance - traversed;
-      const ratio = segmentLength <= 0.0001 ? 0 : remaining / segmentLength;
-      return {
-        x: start.x + (end.x - start.x) * ratio,
-        y: start.y + (end.y - start.y) * ratio
-      };
-    }
-    traversed += segmentLength;
-  }
-
-  return points[points.length - 1];
-}
-
-function getRouteEndDirections(points: BoardPoint[]): {
-  startDirection: BoardPoint;
-  endDirection: BoardPoint;
-} {
-  if (points.length < 2) {
-    return {
-      startDirection: { x: 1, y: 0 },
-      endDirection: { x: 1, y: 0 }
-    };
-  }
-
-  let startDirection: BoardPoint = { x: 1, y: 0 };
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const direction = getSegmentDirection(points[index], points[index + 1]);
-    if (Math.hypot(direction.x, direction.y) > 0.0001) {
-      startDirection = direction;
-      break;
-    }
-  }
-
-  let endDirection: BoardPoint = { x: 1, y: 0 };
-  for (let index = points.length - 1; index > 0; index -= 1) {
-    const direction = getSegmentDirection(points[index - 1], points[index]);
-    if (Math.hypot(direction.x, direction.y) > 0.0001) {
-      endDirection = direction;
-      break;
-    }
-  }
-
-  return {
-    startDirection,
-    endDirection
   };
 }
 
@@ -1283,55 +1444,6 @@ function scoreConnectorRoute(
   return intersections * 1_000_000 + bends * 120 + length;
 }
 
-function toRoundedConnectorPath(points: BoardPoint[], cornerRadius = 14): string {
-  if (points.length === 0) {
-    return "";
-  }
-
-  if (points.length === 1) {
-    const point = points[0];
-    return `M ${formatPathNumber(point.x)} ${formatPathNumber(point.y)}`;
-  }
-
-  let pathData = `M ${formatPathNumber(points[0].x)} ${formatPathNumber(points[0].y)}`;
-
-  for (let index = 1; index < points.length - 1; index += 1) {
-    const previous = points[index - 1];
-    const current = points[index];
-    const next = points[index + 1];
-    const inDirection = getSegmentDirection(previous, current);
-    const outDirection = getSegmentDirection(current, next);
-    const inLength = getDistance(previous, current);
-    const outLength = getDistance(current, next);
-    const sameDirection =
-      Math.abs(inDirection.x - outDirection.x) <= 0.001 &&
-      Math.abs(inDirection.y - outDirection.y) <= 0.001;
-
-    if (sameDirection || inLength <= 0.001 || outLength <= 0.001) {
-      pathData += ` L ${formatPathNumber(current.x)} ${formatPathNumber(current.y)}`;
-      continue;
-    }
-
-    const radius = Math.max(0, Math.min(cornerRadius, inLength / 2, outLength / 2));
-    const cornerStart = {
-      x: current.x - inDirection.x * radius,
-      y: current.y - inDirection.y * radius
-    };
-    const cornerEnd = {
-      x: current.x + outDirection.x * radius,
-      y: current.y + outDirection.y * radius
-    };
-
-    pathData += ` L ${formatPathNumber(cornerStart.x)} ${formatPathNumber(cornerStart.y)}`;
-    pathData += ` Q ${formatPathNumber(current.x)} ${formatPathNumber(current.y)} ${formatPathNumber(cornerEnd.x)} ${formatPathNumber(cornerEnd.y)}`;
-  }
-
-  const end = points[points.length - 1];
-  pathData += ` L ${formatPathNumber(end.x)} ${formatPathNumber(end.y)}`;
-
-  return pathData;
-}
-
 function buildConnectorRouteGeometry(options: {
   from: ResolvedConnectorEndpoint;
   to: ResolvedConnectorEndpoint;
@@ -1431,6 +1543,18 @@ function ToolIcon({ kind }: { kind: BoardObjectKind }) {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
         <circle cx="8" cy="8" r="5.5" fill="#86efac" stroke="#15803d" />
+      </svg>
+    );
+  }
+
+  if (kind === "gridContainer") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="2" y="2" width="12" height="12" rx="1.2" fill="#f8fafc" stroke="#475569" />
+        <rect x="3.2" y="3.2" width="4.6" height="4.6" rx="0.6" fill="#d1fae5" />
+        <rect x="8.2" y="3.2" width="4.6" height="4.6" rx="0.6" fill="#fee2e2" />
+        <rect x="3.2" y="8.2" width="4.6" height="4.6" rx="0.6" fill="#dbeafe" />
+        <rect x="8.2" y="8.2" width="4.6" height="4.6" rx="0.6" fill="#fef3c7" />
       </svg>
     );
   }
@@ -1553,6 +1677,23 @@ function TrashIcon() {
   );
 }
 
+function BriefcaseIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="2" y="4.6" width="12" height="8.8" rx="1.5" fill="#e0e7ff" stroke="#3730a3" />
+      <path
+        d="M6 4V3.2c0-.4.3-.7.7-.7h2.6c.4 0 .7.3.7.7V4"
+        stroke="#3730a3"
+        strokeWidth="1.2"
+        fill="none"
+        strokeLinecap="round"
+      />
+      <path d="M2 8.2h12" stroke="#3730a3" strokeWidth="1.2" />
+      <rect x="7.1" y="7.5" width="1.8" height="1.5" rx="0.4" fill="#3730a3" />
+    </svg>
+  );
+}
+
 const CORNER_HANDLES: ResizeCorner[] = ["nw", "ne", "sw", "se"];
 
 function getCornerCursor(corner: ResizeCorner): string {
@@ -1622,6 +1763,20 @@ function toBoardObject(rawId: string, rawData: Record<string, unknown>): BoardOb
     fromY: getFiniteNumber(rawData.fromY),
     toX: getFiniteNumber(rawData.toX),
     toY: getFiniteNumber(rawData.toY),
+    gridRows: getGridDimension(rawData.gridRows, type === "gridContainer" ? 2 : null),
+    gridCols: getGridDimension(rawData.gridCols, type === "gridContainer" ? 2 : null),
+    gridGap: getGridGap(rawData.gridGap, type === "gridContainer" ? GRID_CONTAINER_DEFAULT_GAP : null),
+    gridCellColors: getGridCellColors(rawData.gridCellColors),
+    containerTitle:
+      type === "gridContainer"
+        ? getString(rawData.containerTitle, "Grid container")
+        : getNullableString(rawData.containerTitle),
+    gridSectionTitles: getStringArray(rawData.gridSectionTitles),
+    gridSectionNotes: getStringArray(rawData.gridSectionNotes),
+    containerId: getNullableString(rawData.containerId),
+    containerSectionIndex: getNonNegativeInteger(rawData.containerSectionIndex),
+    containerRelX: getFiniteNumber(rawData.containerRelX),
+    containerRelY: getFiniteNumber(rawData.containerRelY),
     updatedAt: getTimestampIso(rawData.updatedAt)
   };
 }
@@ -1640,10 +1795,6 @@ function toPresenceUser(rawId: string, rawData: Record<string, unknown>): Presen
     active: Boolean(rawData.active),
     lastSeenAt
   };
-}
-
-function getPresenceLabel(user: PresenceUser): string {
-  return user.displayName ?? user.email ?? user.uid;
 }
 
 function toBoardErrorMessage(error: unknown, fallback: string): string {
@@ -1706,7 +1857,9 @@ export default function RealtimeBoardCanvas({
   const selectedObjectIdsRef = useRef<Set<string>>(new Set());
   const draftGeometryByIdRef = useRef<Record<string, ObjectGeometry>>({});
   const draftConnectorByIdRef = useRef<Record<string, ConnectorDraft>>({});
+  const gridContentDraftByIdRef = useRef<Record<string, GridContainerContentDraft>>({});
   const stickyTextSyncStateRef = useRef<Map<string, StickyTextSyncState>>(new Map());
+  const gridContentSyncTimerByIdRef = useRef<Map<string, number>>(new Map());
   const sendCursorAtRef = useRef(0);
   const canEditRef = useRef(canEdit);
   const lastCursorWriteRef = useRef<BoardPoint | null>(null);
@@ -1725,11 +1878,14 @@ export default function RealtimeBoardCanvas({
   const [draftConnectorById, setDraftConnectorById] = useState<Record<string, ConnectorDraft>>(
     {}
   );
+  const [gridContentDraftById, setGridContentDraftById] = useState<
+    Record<string, GridContainerContentDraft>
+  >({});
   const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>([]);
   const [marqueeSelectionState, setMarqueeSelectionState] =
     useState<MarqueeSelectionState | null>(null);
   const [boardError, setBoardError] = useState<string | null>(null);
-  const [presenceClock, setPresenceClock] = useState(() => Date.now());
+  const presenceClock = usePresenceClock(5_000);
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
   const [isAiFooterCollapsed, setIsAiFooterCollapsed] = useState(false);
@@ -1774,6 +1930,26 @@ export default function RealtimeBoardCanvas({
           }
         });
       });
+
+    const removedGridDraftIds = Object.keys(gridContentDraftByIdRef.current).filter(
+      (objectId) => !objectIds.has(objectId)
+    );
+    if (removedGridDraftIds.length > 0) {
+      setGridContentDraftById((previous) => {
+        const next = { ...previous };
+        removedGridDraftIds.forEach((objectId) => {
+          delete next[objectId];
+        });
+        return next;
+      });
+      removedGridDraftIds.forEach((objectId) => {
+        const timerId = gridContentSyncTimerByIdRef.current.get(objectId);
+        if (timerId !== undefined) {
+          window.clearTimeout(timerId);
+          gridContentSyncTimerByIdRef.current.delete(objectId);
+        }
+      });
+    }
   }, [objects]);
 
   useEffect(() => {
@@ -1783,6 +1959,10 @@ export default function RealtimeBoardCanvas({
   useEffect(() => {
     draftConnectorByIdRef.current = draftConnectorById;
   }, [draftConnectorById]);
+
+  useEffect(() => {
+    gridContentDraftByIdRef.current = gridContentDraftById;
+  }, [gridContentDraftById]);
 
   useEffect(() => {
     selectedObjectIdsRef.current = new Set(selectedObjectIds);
@@ -1872,6 +2052,7 @@ export default function RealtimeBoardCanvas({
 
   useEffect(() => {
     const syncStates = stickyTextSyncStateRef.current;
+    const gridSyncTimers = gridContentSyncTimerByIdRef.current;
 
     return () => {
       syncStates.forEach((syncState) => {
@@ -1880,6 +2061,10 @@ export default function RealtimeBoardCanvas({
         }
       });
       syncStates.clear();
+      gridSyncTimers.forEach((timerId) => {
+        window.clearTimeout(timerId);
+      });
+      gridSyncTimers.clear();
     };
   }, []);
 
@@ -2045,13 +2230,8 @@ export default function RealtimeBoardCanvas({
       void setPresenceState(null, true);
     }, PRESENCE_HEARTBEAT_MS);
 
-    const presenceTicker = window.setInterval(() => {
-      setPresenceClock(Date.now());
-    }, 5_000);
-
     return () => {
       window.clearInterval(heartbeatInterval);
-      window.clearInterval(presenceTicker);
       markPresenceInactive(false);
     };
   }, [boardColor, markPresenceInactive, selfPresenceRef, user.displayName, user.email, user.uid]);
@@ -2269,6 +2449,210 @@ export default function RealtimeBoardCanvas({
     [getConnectorDraftForObject, resolveConnectorEndpoint]
   );
 
+  const getContainerSectionsInfoById = useCallback(
+    (
+      geometryOverrides: Record<string, ObjectGeometry> = {}
+    ): Map<string, ContainerSectionsInfo> => {
+      const infos = new Map<string, ContainerSectionsInfo>();
+
+      objectsByIdRef.current.forEach((objectItem) => {
+        if (objectItem.type !== "gridContainer") {
+          return;
+        }
+
+        const geometry =
+          geometryOverrides[objectItem.id] ??
+          getCurrentObjectGeometry(objectItem.id) ?? {
+            x: objectItem.x,
+            y: objectItem.y,
+            width: objectItem.width,
+            height: objectItem.height,
+            rotationDeg: objectItem.rotationDeg
+          };
+        const rows = Math.max(1, Math.min(GRID_CONTAINER_MAX_ROWS, objectItem.gridRows ?? 2));
+        const cols = Math.max(1, Math.min(GRID_CONTAINER_MAX_COLS, objectItem.gridCols ?? 2));
+        const gap = Math.max(0, objectItem.gridGap ?? GRID_CONTAINER_DEFAULT_GAP);
+        infos.set(objectItem.id, {
+          containerId: objectItem.id,
+          containerZIndex: objectItem.zIndex,
+          rows,
+          cols,
+          gap,
+          geometry,
+          sections: getGridSectionBoundsFromGeometry(geometry, rows, cols, gap)
+        });
+      });
+
+      return infos;
+    },
+    [getCurrentObjectGeometry]
+  );
+
+  const resolveContainerMembershipForGeometry = useCallback(
+    (
+      objectId: string,
+      geometry: ObjectGeometry,
+      containerSectionsById: Map<string, ContainerSectionsInfo>
+    ): ContainerMembershipPatch => {
+      const objectItem = objectsByIdRef.current.get(objectId);
+      if (!objectItem || !isContainerChildEligible(objectItem.type)) {
+        return {
+          containerId: null,
+          containerSectionIndex: null,
+          containerRelX: null,
+          containerRelY: null
+        };
+      }
+
+      const center = getObjectCenterForPlacement(geometry);
+      const candidateSections: GridSectionBounds[] = [];
+
+      containerSectionsById.forEach((containerInfo) => {
+        if (containerInfo.containerId === objectId) {
+          return;
+        }
+
+        containerInfo.sections.forEach((section, sectionIndex) => {
+          if (isPointInsideBounds(center, section)) {
+            candidateSections.push({
+              containerId: containerInfo.containerId,
+              containerZIndex: containerInfo.containerZIndex,
+              sectionIndex,
+              bounds: section
+            });
+          }
+        });
+      });
+
+      if (candidateSections.length === 0) {
+        return {
+          containerId: null,
+          containerSectionIndex: null,
+          containerRelX: null,
+          containerRelY: null
+        };
+      }
+
+      candidateSections.sort((left, right) => {
+        if (left.containerZIndex !== right.containerZIndex) {
+          return right.containerZIndex - left.containerZIndex;
+        }
+
+        const leftCenter = getSectionBoundsCenter(left.bounds);
+        const rightCenter = getSectionBoundsCenter(right.bounds);
+        const leftDistance = getDistance(center, leftCenter);
+        const rightDistance = getDistance(center, rightCenter);
+        return leftDistance - rightDistance;
+      });
+
+      const winner = candidateSections[0];
+      const relative = toSectionRelativeCoordinate(center, winner.bounds);
+
+      return {
+        containerId: winner.containerId,
+        containerSectionIndex: winner.sectionIndex,
+        containerRelX: roundToStep(relative.x, 0.001),
+        containerRelY: roundToStep(relative.y, 0.001)
+      };
+    },
+    []
+  );
+
+  const getSectionAnchoredObjectUpdatesForContainer = useCallback(
+    (
+      containerId: string,
+      containerGeometry: ObjectGeometry,
+      rows: number,
+      cols: number,
+      gap: number
+    ): {
+      positionByObjectId: Record<string, BoardPoint>;
+      membershipByObjectId: Record<string, ContainerMembershipPatch>;
+    } => {
+      const sections = getGridSectionBoundsFromGeometry(containerGeometry, rows, cols, gap);
+      const containerBounds: ObjectBounds = {
+        left: containerGeometry.x,
+        right: containerGeometry.x + containerGeometry.width,
+        top: containerGeometry.y,
+        bottom: containerGeometry.y + containerGeometry.height
+      };
+      const positionByObjectId: Record<string, BoardPoint> = {};
+      const membershipByObjectId: Record<string, ContainerMembershipPatch> = {};
+
+      objectsByIdRef.current.forEach((objectItem) => {
+        if (!isContainerChildEligible(objectItem.type)) {
+          return;
+        }
+
+        const geometry =
+          getCurrentObjectGeometry(objectItem.id) ?? {
+            x: objectItem.x,
+            y: objectItem.y,
+            width: objectItem.width,
+            height: objectItem.height,
+            rotationDeg: objectItem.rotationDeg
+          };
+        const center = getObjectCenterForPlacement(geometry);
+        const belongsToContainer =
+          objectItem.containerId === containerId || isPointInsideBounds(center, containerBounds);
+
+        if (!belongsToContainer) {
+          return;
+        }
+
+        const explicitSectionIndex = objectItem.containerSectionIndex;
+        const sectionIndex =
+          typeof explicitSectionIndex === "number" &&
+          explicitSectionIndex >= 0 &&
+          explicitSectionIndex < sections.length
+            ? explicitSectionIndex
+            : getClosestSectionIndex(center, sections);
+        if (sectionIndex === null) {
+          return;
+        }
+
+        const section = sections[sectionIndex];
+        const sectionWidth = Math.max(1, section.right - section.left);
+        const sectionHeight = Math.max(1, section.bottom - section.top);
+        const relX = clamp(objectItem.containerRelX ?? 0.5, 0, 1);
+        const relY = clamp(objectItem.containerRelY ?? 0.5, 0, 1);
+        const targetCenterX = section.left + relX * sectionWidth;
+        const targetCenterY = section.top + relY * sectionHeight;
+        const maxX = section.right - geometry.width;
+        const maxY = section.bottom - geometry.height;
+
+        let nextX = targetCenterX - geometry.width / 2;
+        let nextY = targetCenterY - geometry.height / 2;
+        nextX =
+          maxX < section.left
+            ? section.left + (sectionWidth - geometry.width) / 2
+            : clamp(nextX, section.left, maxX);
+        nextY =
+          maxY < section.top
+            ? section.top + (sectionHeight - geometry.height) / 2
+            : clamp(nextY, section.top, maxY);
+
+        const nextCenter = {
+          x: nextX + geometry.width / 2,
+          y: nextY + geometry.height / 2
+        };
+        const nextRelative = toSectionRelativeCoordinate(nextCenter, section);
+        const nextMembership: ContainerMembershipPatch = {
+          containerId,
+          containerSectionIndex: sectionIndex,
+          containerRelX: roundToStep(nextRelative.x, 0.001),
+          containerRelY: roundToStep(nextRelative.y, 0.001)
+        };
+
+        positionByObjectId[objectItem.id] = { x: nextX, y: nextY };
+        membershipByObjectId[objectItem.id] = nextMembership;
+      });
+
+      return { positionByObjectId, membershipByObjectId };
+    },
+    [getCurrentObjectGeometry]
+  );
+
   const updateObjectGeometry = useCallback(
     async (objectId: string, geometry: ObjectGeometry, options: ObjectWriteOptions = {}) => {
       const writeMetrics = writeMetricsRef.current;
@@ -2281,14 +2665,34 @@ export default function RealtimeBoardCanvas({
 
       const includeUpdatedAt = options.includeUpdatedAt ?? true;
       const force = options.force ?? false;
+      const objectItem = objectsByIdRef.current.get(objectId);
       const nextGeometry: ObjectGeometry = {
         x: roundToStep(geometry.x, POSITION_WRITE_STEP),
         y: roundToStep(geometry.y, POSITION_WRITE_STEP),
         width: roundToStep(geometry.width, POSITION_WRITE_STEP),
         height: roundToStep(geometry.height, POSITION_WRITE_STEP),
-        rotationDeg: geometry.rotationDeg
+        rotationDeg: objectItem?.type === "gridContainer" ? 0 : geometry.rotationDeg
       };
-      const objectItem = objectsByIdRef.current.get(objectId);
+      const currentMembership = objectItem
+        ? getMembershipPatchFromObject(objectItem)
+        : {
+            containerId: null,
+            containerSectionIndex: null,
+            containerRelX: null,
+            containerRelY: null
+          };
+      const membershipPatchFromOptions = options.containerMembershipById?.[objectId];
+      const membershipPatch =
+        membershipPatchFromOptions ??
+        (objectItem && isContainerChildEligible(objectItem.type)
+          ? resolveContainerMembershipForGeometry(
+              objectId,
+              nextGeometry,
+              getContainerSectionsInfoById({
+                [objectId]: nextGeometry
+              })
+            )
+          : null);
       const previousGeometry =
         lastGeometryWriteByIdRef.current.get(objectId) ??
         (objectItem
@@ -2300,8 +2704,16 @@ export default function RealtimeBoardCanvas({
               rotationDeg: objectItem.rotationDeg
             }
           : null);
+      const hasMembershipChange = membershipPatch
+        ? !areContainerMembershipPatchesEqual(currentMembership, membershipPatch)
+        : false;
 
-      if (!force && previousGeometry && areGeometriesClose(previousGeometry, nextGeometry)) {
+      if (
+        !force &&
+        previousGeometry &&
+        areGeometriesClose(previousGeometry, nextGeometry) &&
+        !hasMembershipChange
+      ) {
         writeMetrics.markSkipped("object-geometry");
         return;
       }
@@ -2314,6 +2726,12 @@ export default function RealtimeBoardCanvas({
           height: nextGeometry.height,
           rotationDeg: nextGeometry.rotationDeg
         };
+        if (membershipPatch && (hasMembershipChange || force)) {
+          payload.containerId = membershipPatch.containerId;
+          payload.containerSectionIndex = membershipPatch.containerSectionIndex;
+          payload.containerRelX = membershipPatch.containerRelX;
+          payload.containerRelY = membershipPatch.containerRelY;
+        }
         if (includeUpdatedAt) {
           payload.updatedAt = serverTimestamp();
         }
@@ -2330,7 +2748,7 @@ export default function RealtimeBoardCanvas({
         setBoardError(toBoardErrorMessage(error, "Failed to update object transform."));
       }
     },
-    [boardId, db]
+    [boardId, db, getContainerSectionsInfoById, resolveContainerMembershipForGeometry]
   );
 
   const updateConnectorDraft = useCallback(
@@ -2407,6 +2825,7 @@ export default function RealtimeBoardCanvas({
 
       const includeUpdatedAt = options.includeUpdatedAt ?? false;
       const force = options.force ?? false;
+      const membershipPatches = options.containerMembershipById ?? {};
 
       try {
         const batch = writeBatch(db);
@@ -2424,8 +2843,25 @@ export default function RealtimeBoardCanvas({
                   y: objectItem.y
                 }
               : null);
+          const currentMembership = objectItem
+            ? getMembershipPatchFromObject(objectItem)
+            : {
+                containerId: null,
+                containerSectionIndex: null,
+                containerRelX: null,
+                containerRelY: null
+              };
+          const nextMembershipPatch = membershipPatches[objectId];
+          const hasMembershipChange = nextMembershipPatch
+            ? !areContainerMembershipPatchesEqual(currentMembership, nextMembershipPatch)
+            : false;
 
-          if (!force && previousPosition && arePointsClose(previousPosition, nextPosition, POSITION_WRITE_EPSILON)) {
+          if (
+            !force &&
+            previousPosition &&
+            arePointsClose(previousPosition, nextPosition, POSITION_WRITE_EPSILON) &&
+            !hasMembershipChange
+          ) {
             skippedCount += 1;
             return;
           }
@@ -2434,6 +2870,12 @@ export default function RealtimeBoardCanvas({
             x: nextPosition.x,
             y: nextPosition.y
           };
+          if (nextMembershipPatch && (hasMembershipChange || force)) {
+            updatePayload.containerId = nextMembershipPatch.containerId;
+            updatePayload.containerSectionIndex = nextMembershipPatch.containerSectionIndex;
+            updatePayload.containerRelX = nextMembershipPatch.containerRelX;
+            updatePayload.containerRelY = nextMembershipPatch.containerRelY;
+          }
           if (includeUpdatedAt) {
             updatePayload.updatedAt = serverTimestamp();
           }
@@ -2469,6 +2911,64 @@ export default function RealtimeBoardCanvas({
       }
     },
     [boardId, db]
+  );
+
+  const buildContainerMembershipPatchesForPositions = useCallback(
+    (
+      nextPositionsById: Record<string, BoardPoint>,
+      seedPatches: Record<string, ContainerMembershipPatch> = {}
+    ): Record<string, ContainerMembershipPatch> => {
+      const geometryOverrides: Record<string, ObjectGeometry> = {};
+      Object.entries(nextPositionsById).forEach(([objectId, nextPosition]) => {
+        const geometry =
+          getCurrentObjectGeometry(objectId) ?? {
+            x: nextPosition.x,
+            y: nextPosition.y,
+            width: 0,
+            height: 0,
+            rotationDeg: 0
+          };
+        geometryOverrides[objectId] = {
+          ...geometry,
+          x: nextPosition.x,
+          y: nextPosition.y
+        };
+      });
+
+      const containerSectionsById = getContainerSectionsInfoById(geometryOverrides);
+      const nextPatches: Record<string, ContainerMembershipPatch> = { ...seedPatches };
+
+      Object.entries(nextPositionsById).forEach(([objectId, nextPosition]) => {
+        const objectItem = objectsByIdRef.current.get(objectId);
+        if (!objectItem || !isContainerChildEligible(objectItem.type)) {
+          return;
+        }
+
+        const geometry = geometryOverrides[objectId] ?? {
+          x: nextPosition.x,
+          y: nextPosition.y,
+          width: objectItem.width,
+          height: objectItem.height,
+          rotationDeg: objectItem.rotationDeg
+        };
+        const nextMembership = resolveContainerMembershipForGeometry(
+          objectId,
+          geometry,
+          containerSectionsById
+        );
+        const currentMembership = getMembershipPatchFromObject(objectItem);
+        const seedMembership = nextPatches[objectId];
+        if (seedMembership && areContainerMembershipPatchesEqual(seedMembership, nextMembership)) {
+          return;
+        }
+        if (!areContainerMembershipPatchesEqual(currentMembership, nextMembership)) {
+          nextPatches[objectId] = nextMembership;
+        }
+      });
+
+      return nextPatches;
+    },
+    [getContainerSectionsInfoById, getCurrentObjectGeometry, resolveContainerMembershipForGeometry]
   );
 
   const getObjectSelectionBounds = useCallback(
@@ -2959,13 +3459,41 @@ export default function RealtimeBoardCanvas({
       if (cornerResizeState) {
         cornerResizeStateRef.current = null;
         const finalGeometry = draftGeometryByIdRef.current[cornerResizeState.objectId];
+        const resizedObject = objectsByIdRef.current.get(cornerResizeState.objectId);
         clearDraftGeometry(cornerResizeState.objectId);
 
         if (finalGeometry && canEditRef.current) {
-          void updateObjectGeometry(cornerResizeState.objectId, finalGeometry, {
-            includeUpdatedAt: true,
-            force: true
-          });
+          void (async () => {
+            await updateObjectGeometry(cornerResizeState.objectId, finalGeometry, {
+              includeUpdatedAt: true,
+              force: true
+            });
+
+            if (resizedObject?.type === "gridContainer") {
+              const rows = Math.max(1, resizedObject.gridRows ?? 2);
+              const cols = Math.max(1, resizedObject.gridCols ?? 2);
+              const gap = Math.max(0, resizedObject.gridGap ?? GRID_CONTAINER_DEFAULT_GAP);
+              const childUpdates = getSectionAnchoredObjectUpdatesForContainer(
+                resizedObject.id,
+                finalGeometry,
+                rows,
+                cols,
+                gap
+              );
+              const childIds = Object.keys(childUpdates.positionByObjectId);
+              if (childIds.length > 0) {
+                const membershipByObjectId = buildContainerMembershipPatchesForPositions(
+                  childUpdates.positionByObjectId,
+                  childUpdates.membershipByObjectId
+                );
+                await updateObjectPositionsBatch(childUpdates.positionByObjectId, {
+                  includeUpdatedAt: true,
+                  force: true,
+                  containerMembershipById: membershipByObjectId
+                });
+              }
+            }
+          })();
         }
         return;
       }
@@ -3068,6 +3596,7 @@ export default function RealtimeBoardCanvas({
 
       if (canEditRef.current) {
         const nextPositionsById: Record<string, BoardPoint> = {};
+        const seedMembershipByObjectId: Record<string, ContainerMembershipPatch> = {};
         dragState.objectIds.forEach((objectId) => {
           const initialGeometry = dragState.initialGeometries[objectId];
           if (!initialGeometry) {
@@ -3081,9 +3610,56 @@ export default function RealtimeBoardCanvas({
           };
         });
 
+        dragState.objectIds.forEach((objectId) => {
+          const objectItem = objectsByIdRef.current.get(objectId);
+          if (!objectItem || objectItem.type !== "gridContainer") {
+            return;
+          }
+
+          const nextPosition = nextPositionsById[objectId];
+          if (!nextPosition) {
+            return;
+          }
+
+          const nextContainerGeometry: ObjectGeometry = {
+            x: nextPosition.x,
+            y: nextPosition.y,
+            width: objectItem.width,
+            height: objectItem.height,
+            rotationDeg: objectItem.rotationDeg
+          };
+          const rows = Math.max(1, objectItem.gridRows ?? 2);
+          const cols = Math.max(1, objectItem.gridCols ?? 2);
+          const gap = Math.max(0, objectItem.gridGap ?? GRID_CONTAINER_DEFAULT_GAP);
+          const childUpdates = getSectionAnchoredObjectUpdatesForContainer(
+            objectId,
+            nextContainerGeometry,
+            rows,
+            cols,
+            gap
+          );
+
+          Object.entries(childUpdates.positionByObjectId).forEach(([childId, childPosition]) => {
+            if (!(childId in nextPositionsById)) {
+              nextPositionsById[childId] = childPosition;
+            }
+          });
+          Object.entries(childUpdates.membershipByObjectId).forEach(([childId, patch]) => {
+            if (!(childId in seedMembershipByObjectId)) {
+              seedMembershipByObjectId[childId] = patch;
+            }
+          });
+        });
+
+        const membershipByObjectId = buildContainerMembershipPatchesForPositions(
+          nextPositionsById,
+          seedMembershipByObjectId
+        );
+
         void updateObjectPositionsBatch(nextPositionsById, {
           includeUpdatedAt: true,
-          force: true
+          force: true,
+          containerMembershipById: membershipByObjectId
         });
       } else {
         dragState.objectIds.forEach((objectId) => {
@@ -3110,6 +3686,8 @@ export default function RealtimeBoardCanvas({
     getResizedGeometry,
     setDraftConnector,
     setDraftGeometry,
+    buildContainerMembershipPatchesForPositions,
+    getSectionAnchoredObjectUpdatesForContainer,
     updateConnectorDraft,
     updateObjectGeometry,
     updateObjectPositionsBatch
@@ -3236,6 +3814,16 @@ export default function RealtimeBoardCanvas({
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         };
+        if (kind === "gridContainer") {
+          const defaultSectionTitles = getDefaultSectionTitles(2, 2);
+          payload.gridRows = 2;
+          payload.gridCols = 2;
+          payload.gridGap = GRID_CONTAINER_DEFAULT_GAP;
+          payload.gridCellColors = ["#d1fae5", "#fee2e2", "#dbeafe", "#fef3c7"];
+          payload.containerTitle = "Grid container";
+          payload.gridSectionTitles = defaultSectionTitles;
+          payload.gridSectionNotes = Array.from({ length: defaultSectionTitles.length }, () => "");
+        }
 
         if (connectorFrom && connectorTo) {
           payload.fromObjectId = null;
@@ -3273,6 +3861,20 @@ export default function RealtimeBoardCanvas({
         lastStickyWriteByIdRef.current.delete(objectId);
         lastPositionWriteByIdRef.current.delete(objectId);
         lastGeometryWriteByIdRef.current.delete(objectId);
+        const gridTimerId = gridContentSyncTimerByIdRef.current.get(objectId);
+        if (gridTimerId !== undefined) {
+          window.clearTimeout(gridTimerId);
+          gridContentSyncTimerByIdRef.current.delete(objectId);
+        }
+        setGridContentDraftById((previous) => {
+          if (!(objectId in previous)) {
+            return previous;
+          }
+
+          const next = { ...previous };
+          delete next[objectId];
+          return next;
+        });
         setTextDrafts((previous) => {
           if (!(objectId in previous)) {
             return previous;
@@ -3439,6 +4041,238 @@ export default function RealtimeBoardCanvas({
     [saveStickyText]
   );
 
+  const buildGridDraft = useCallback((objectItem: BoardObject): GridContainerContentDraft => {
+    const rows = Math.max(1, objectItem.gridRows ?? 2);
+    const cols = Math.max(1, objectItem.gridCols ?? 2);
+    const sectionCount = rows * cols;
+    const defaultSectionTitles = getDefaultSectionTitles(rows, cols);
+    return {
+      containerTitle: (objectItem.containerTitle ?? "Grid container").slice(0, 120),
+      sectionTitles: normalizeSectionValues(
+        objectItem.gridSectionTitles,
+        sectionCount,
+        (index) => defaultSectionTitles[index] ?? `Section ${index + 1}`,
+        80
+      ),
+      sectionNotes: normalizeSectionValues(
+        objectItem.gridSectionNotes,
+        sectionCount,
+        () => "",
+        600
+      )
+    };
+  }, []);
+
+  const getGridDraftForObject = useCallback(
+    (objectItem: BoardObject): GridContainerContentDraft => {
+      const existing = gridContentDraftByIdRef.current[objectItem.id];
+      if (existing) {
+        return existing;
+      }
+
+      return buildGridDraft(objectItem);
+    },
+    [buildGridDraft]
+  );
+
+  const flushGridContentSync = useCallback(
+    async (objectId: string, nextDraft?: GridContainerContentDraft) => {
+      if (!canEditRef.current) {
+        return;
+      }
+
+      const objectItem = objectsByIdRef.current.get(objectId);
+      if (!objectItem || objectItem.type !== "gridContainer") {
+        return;
+      }
+
+      const draft = nextDraft ?? gridContentDraftByIdRef.current[objectId];
+      if (!draft) {
+        return;
+      }
+
+      const normalizedDraft: GridContainerContentDraft = {
+        containerTitle: draft.containerTitle.trim().slice(0, 120) || "Grid container",
+        sectionTitles: draft.sectionTitles.map((value, index) => {
+          const trimmed = value.trim();
+          return (trimmed.length > 0 ? trimmed : `Section ${index + 1}`).slice(0, 80);
+        }),
+        sectionNotes: draft.sectionNotes.map((value) => value.slice(0, 600))
+      };
+
+      const latestObject = objectsByIdRef.current.get(objectId);
+      if (!latestObject || latestObject.type !== "gridContainer") {
+        return;
+      }
+      const latestBaseline = buildGridDraft(latestObject);
+      const hasNoopWrite =
+        latestBaseline.containerTitle === normalizedDraft.containerTitle &&
+        JSON.stringify(latestBaseline.sectionTitles) ===
+          JSON.stringify(normalizedDraft.sectionTitles) &&
+        JSON.stringify(latestBaseline.sectionNotes) ===
+          JSON.stringify(normalizedDraft.sectionNotes);
+      if (hasNoopWrite) {
+        return;
+      }
+
+      try {
+        await updateDoc(doc(db, `boards/${boardId}/objects/${objectId}`), {
+          containerTitle: normalizedDraft.containerTitle,
+          gridSectionTitles: normalizedDraft.sectionTitles,
+          gridSectionNotes: normalizedDraft.sectionNotes,
+          updatedAt: serverTimestamp()
+        });
+        setGridContentDraftById((previous) => {
+          if (!(objectId in previous)) {
+            return previous;
+          }
+
+          const next = { ...previous };
+          delete next[objectId];
+          return next;
+        });
+      } catch (error) {
+        console.error("Failed to update grid container content", error);
+        setBoardError(toBoardErrorMessage(error, "Failed to update grid container content."));
+      }
+    },
+    [boardId, buildGridDraft, db]
+  );
+
+  const queueGridContentSync = useCallback(
+    (objectId: string, nextDraft: GridContainerContentDraft, options?: { immediate?: boolean }) => {
+      setGridContentDraftById((previous) => ({
+        ...previous,
+        [objectId]: nextDraft
+      }));
+
+      const existingTimer = gridContentSyncTimerByIdRef.current.get(objectId);
+      if (existingTimer !== undefined) {
+        window.clearTimeout(existingTimer);
+      }
+
+      if (options?.immediate) {
+        gridContentSyncTimerByIdRef.current.delete(objectId);
+        void flushGridContentSync(objectId, nextDraft);
+        return;
+      }
+
+      const nextTimerId = window.setTimeout(() => {
+        gridContentSyncTimerByIdRef.current.delete(objectId);
+        void flushGridContentSync(objectId, nextDraft);
+      }, STICKY_TEXT_SYNC_THROTTLE_MS);
+      gridContentSyncTimerByIdRef.current.set(objectId, nextTimerId);
+    },
+    [flushGridContentSync]
+  );
+
+  const updateGridContainerDimensions = useCallback(
+    async (objectId: string, nextRowsRaw: number, nextColsRaw: number) => {
+      if (!canEditRef.current) {
+        return;
+      }
+
+      const objectItem = objectsByIdRef.current.get(objectId);
+      if (!objectItem || objectItem.type !== "gridContainer") {
+        return;
+      }
+
+      const nextRows = Math.max(1, Math.min(GRID_CONTAINER_MAX_ROWS, Math.floor(nextRowsRaw)));
+      const nextCols = Math.max(1, Math.min(GRID_CONTAINER_MAX_COLS, Math.floor(nextColsRaw)));
+      const currentRows = Math.max(1, objectItem.gridRows ?? 2);
+      const currentCols = Math.max(1, objectItem.gridCols ?? 2);
+      if (nextRows === currentRows && nextCols === currentCols) {
+        return;
+      }
+
+      const sectionCount = nextRows * nextCols;
+      const fallbackTitles = getDefaultSectionTitles(nextRows, nextCols);
+      const currentDraft = getGridDraftForObject(objectItem);
+      const nextSectionTitles = normalizeSectionValues(
+        currentDraft.sectionTitles,
+        sectionCount,
+        (index) => fallbackTitles[index] ?? `Section ${index + 1}`,
+        80
+      );
+      const nextSectionNotes = normalizeSectionValues(
+        currentDraft.sectionNotes,
+        sectionCount,
+        () => "",
+        600
+      );
+
+      const palette =
+        objectItem.gridCellColors && objectItem.gridCellColors.length > 0
+          ? objectItem.gridCellColors
+          : ["#d1fae5", "#fee2e2", "#dbeafe", "#fef3c7"];
+      const nextCellColors = Array.from(
+        { length: sectionCount },
+        (_, index) => palette[index % palette.length] ?? "#e2e8f0"
+      );
+      const geometry =
+        getCurrentObjectGeometry(objectId) ?? {
+          x: objectItem.x,
+          y: objectItem.y,
+          width: objectItem.width,
+          height: objectItem.height,
+          rotationDeg: objectItem.rotationDeg
+        };
+      const nextGap = Math.max(0, objectItem.gridGap ?? GRID_CONTAINER_DEFAULT_GAP);
+      const childUpdates = getSectionAnchoredObjectUpdatesForContainer(
+        objectId,
+        geometry,
+        nextRows,
+        nextCols,
+        nextGap
+      );
+      const membershipByObjectId = buildContainerMembershipPatchesForPositions(
+        childUpdates.positionByObjectId,
+        childUpdates.membershipByObjectId
+      );
+
+      try {
+        await updateDoc(doc(db, `boards/${boardId}/objects/${objectId}`), {
+          gridRows: nextRows,
+          gridCols: nextCols,
+          gridSectionTitles: nextSectionTitles,
+          gridSectionNotes: nextSectionNotes,
+          gridCellColors: nextCellColors,
+          updatedAt: serverTimestamp()
+        });
+        setGridContentDraftById((previous) => {
+          if (!(objectId in previous)) {
+            return previous;
+          }
+
+          const next = { ...previous };
+          delete next[objectId];
+          return next;
+        });
+
+        const childIds = Object.keys(childUpdates.positionByObjectId);
+        if (childIds.length > 0) {
+          await updateObjectPositionsBatch(childUpdates.positionByObjectId, {
+            includeUpdatedAt: true,
+            force: true,
+            containerMembershipById: membershipByObjectId
+          });
+        }
+      } catch (error) {
+        console.error("Failed to update grid container dimensions", error);
+        setBoardError(toBoardErrorMessage(error, "Failed to update grid container dimensions."));
+      }
+    },
+    [
+      boardId,
+      buildContainerMembershipPatchesForPositions,
+      db,
+      getCurrentObjectGeometry,
+      getGridDraftForObject,
+      getSectionAnchoredObjectUpdatesForContainer,
+      updateObjectPositionsBatch
+    ]
+  );
+
   const saveSelectedObjectsColor = useCallback(
     async (color: string) => {
       if (!canEditRef.current) {
@@ -3590,6 +4424,106 @@ export default function RealtimeBoardCanvas({
     [aiFooterHeight, isAiFooterCollapsed]
   );
 
+  const submitAiCommandMessage = useCallback(
+    async (nextMessage: string, options?: { appendUserMessage?: boolean; clearInput?: boolean }) => {
+      const appendUserMessage = options?.appendUserMessage ?? true;
+      const clearInput = options?.clearInput ?? false;
+      if (nextMessage.trim().length === 0 || isAiSubmitting) {
+        return;
+      }
+
+      if (appendUserMessage) {
+        setChatMessages((previous) => [
+          ...previous,
+          {
+            id: createChatMessageId("u"),
+            role: "user",
+            text: nextMessage
+          }
+        ]);
+      }
+      if (clearInput) {
+        setChatInput("");
+      }
+
+      setIsAiSubmitting(true);
+      const requestController = new AbortController();
+      const timeoutId = window.setTimeout(() => {
+        requestController.abort();
+      }, AI_COMMAND_REQUEST_TIMEOUT_MS);
+
+      try {
+        const idToken = idTokenRef.current ?? (await user.getIdToken());
+        idTokenRef.current = idToken;
+
+        const response = await fetch("/api/ai/board-command", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${idToken}`,
+            "Content-Type": "application/json"
+          },
+          signal: requestController.signal,
+          body: JSON.stringify({
+            boardId,
+            message: nextMessage,
+            selectedObjectIds: Array.from(selectedObjectIdsRef.current)
+          })
+        });
+
+        if (!response.ok) {
+          const assistantMessage = getBoardCommandErrorMessage({
+            status: response.status
+          });
+          setChatMessages((previous) => [
+            ...previous,
+            {
+              id: createChatMessageId("a"),
+              role: "assistant",
+              text: assistantMessage
+            }
+          ]);
+          return;
+        }
+
+        const payload = (await response.json()) as {
+          assistantMessage?: unknown;
+        };
+        const assistantMessage =
+          typeof payload.assistantMessage === "string" && payload.assistantMessage.trim()
+            ? payload.assistantMessage
+            : "AI agent coming soon!";
+
+        setChatMessages((previous) => [
+          ...previous,
+          {
+            id: createChatMessageId("a"),
+            role: "assistant",
+            text: assistantMessage
+          }
+        ]);
+      } catch (error) {
+        const timedOut = error instanceof DOMException && error.name === "AbortError";
+        const assistantMessage = getBoardCommandErrorMessage({
+          status: null,
+          timedOut
+        });
+
+        setChatMessages((previous) => [
+          ...previous,
+          {
+            id: createChatMessageId("a"),
+            role: "assistant",
+            text: assistantMessage
+          }
+        ]);
+      } finally {
+        window.clearTimeout(timeoutId);
+        setIsAiSubmitting(false);
+      }
+    },
+    [boardId, isAiSubmitting, user]
+  );
+
   const handleAiChatSubmit = useCallback(
     (event: ReactFormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -3597,97 +4531,23 @@ export default function RealtimeBoardCanvas({
       if (nextMessage.length === 0 || isAiSubmitting) {
         return;
       }
-
-      setChatMessages((previous) => {
-        const next = [...previous];
-        next.push({
-          id: createChatMessageId("u"),
-          role: "user",
-          text: nextMessage
-        });
-        return next;
+      void submitAiCommandMessage(nextMessage, {
+        appendUserMessage: true,
+        clearInput: true
       });
-      setChatInput("");
-      setIsAiSubmitting(true);
-
-      void (async () => {
-        const requestController = new AbortController();
-        const timeoutId = window.setTimeout(() => {
-          requestController.abort();
-        }, AI_COMMAND_REQUEST_TIMEOUT_MS);
-
-        try {
-          const idToken = idTokenRef.current ?? (await user.getIdToken());
-          idTokenRef.current = idToken;
-
-          const response = await fetch("/api/ai/board-command", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${idToken}`,
-              "Content-Type": "application/json"
-            },
-            signal: requestController.signal,
-            body: JSON.stringify({
-              boardId,
-              message: nextMessage,
-              selectedObjectIds: Array.from(selectedObjectIdsRef.current)
-            })
-          });
-
-          if (!response.ok) {
-            const assistantMessage = getBoardCommandErrorMessage({
-              status: response.status
-            });
-            setChatMessages((previous) => [
-              ...previous,
-              {
-                id: createChatMessageId("a"),
-                role: "assistant",
-                text: assistantMessage
-              }
-            ]);
-            return;
-          }
-
-          const payload = (await response.json()) as {
-            assistantMessage?: unknown;
-          };
-          const assistantMessage =
-            typeof payload.assistantMessage === "string" && payload.assistantMessage.trim()
-              ? payload.assistantMessage
-              : "AI agent coming soon!";
-
-          setChatMessages((previous) => [
-            ...previous,
-            {
-              id: createChatMessageId("a"),
-              role: "assistant",
-              text: assistantMessage
-            }
-          ]);
-        } catch (error) {
-          const timedOut = error instanceof DOMException && error.name === "AbortError";
-          const assistantMessage = getBoardCommandErrorMessage({
-            status: null,
-            timedOut
-          });
-
-          setChatMessages((previous) => [
-            ...previous,
-            {
-              id: createChatMessageId("a"),
-              role: "assistant",
-              text: assistantMessage
-            }
-          ]);
-        } finally {
-          window.clearTimeout(timeoutId);
-          setIsAiSubmitting(false);
-        }
-      })();
     },
-    [boardId, chatInput, isAiSubmitting, user]
+    [chatInput, isAiSubmitting, submitAiCommandMessage]
   );
+
+  const handleCreateSwotButtonClick = useCallback(() => {
+    if (!canEdit || isAiSubmitting) {
+      return;
+    }
+
+    void submitAiCommandMessage("Create a SWOT analysis", {
+      appendUserMessage: false
+    });
+  }, [canEdit, isAiSubmitting, submitAiCommandMessage]);
 
   const handleStagePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
@@ -3929,7 +4789,11 @@ export default function RealtimeBoardCanvas({
       event.stopPropagation();
 
       const objectItem = objectsByIdRef.current.get(objectId);
-      if (!objectItem || !isConnectableShapeKind(objectItem.type)) {
+      if (
+        !objectItem ||
+        !isConnectableShapeKind(objectItem.type) ||
+        objectItem.type === "gridContainer"
+      ) {
         return;
       }
 
@@ -4082,30 +4946,13 @@ export default function RealtimeBoardCanvas({
 
   const onlineUsers = useMemo(
     () =>
-      presenceUsers
-        .filter((presenceUser) => {
-          if (!presenceUser.active) {
-            return false;
-          }
-
-          if (!presenceUser.lastSeenAt) {
-            return false;
-          }
-
-          return presenceClock - presenceUser.lastSeenAt <= PRESENCE_TTL_MS;
-        })
+      getActivePresenceUsers(presenceUsers, presenceClock, PRESENCE_TTL_MS)
         .sort((left, right) => getPresenceLabel(left).localeCompare(getPresenceLabel(right))),
     [presenceClock, presenceUsers]
   );
 
   const remoteCursors = useMemo(
-    () =>
-      onlineUsers.filter(
-        (presenceUser) =>
-          presenceUser.uid !== user.uid &&
-          presenceUser.cursorX !== null &&
-          presenceUser.cursorY !== null
-      ),
+    () => getRemoteCursors(onlineUsers, user.uid),
     [onlineUsers, user.uid]
   );
 
@@ -4453,79 +5300,27 @@ export default function RealtimeBoardCanvas({
       hasMeaningfulRotation(selectedObject.geometry.rotationDeg)
     );
   const canShowSelectionHud = canColorSelection;
+  const singleSelectedObject =
+    selectedObjects.length === 1 ? selectedObjects[0]?.object ?? null : null;
+  const preferSidePlacement =
+    singleSelectedObject !== null &&
+    singleSelectedObject.type !== "line" &&
+    !isConnectorKind(singleSelectedObject.type);
   const selectionHudPosition = useMemo(() => {
-    if (!canShowSelectionHud || !selectedObjectBounds) {
-      return null;
-    }
-
-    if (stageSize.width <= 0 || stageSize.height <= 0) {
-      return null;
-    }
-
-    const hudWidth = selectionHudSize.width > 0 ? selectionHudSize.width : 214;
-    const hudHeight = selectionHudSize.height > 0 ? selectionHudSize.height : 86;
-    const edgePadding = 10;
-    const offset = 10;
-    const maxX = Math.max(edgePadding, stageSize.width - hudWidth - edgePadding);
-    const maxY = Math.max(edgePadding, stageSize.height - hudHeight - edgePadding);
-    const clampPoint = (point: { x: number; y: number }) => ({
-      x: Math.max(edgePadding, Math.min(maxX, point.x)),
-      y: Math.max(edgePadding, Math.min(maxY, point.y))
+    return calculateSelectionHudPosition({
+      canShowHud: canShowSelectionHud,
+      selectedObjectBounds,
+      stageSize,
+      viewport,
+      selectionHudSize,
+      selectedConnectorMidpoint,
+      preferSidePlacement
     });
-
-    if (selectedConnectorMidpoint) {
-      const connectorCenter = {
-        x: viewport.x + selectedConnectorMidpoint.x * viewport.scale - hudWidth / 2,
-        y: viewport.y + selectedConnectorMidpoint.y * viewport.scale - hudHeight / 2
-      };
-
-      return clampPoint(connectorCenter);
-    }
-
-    const selectionLeft = viewport.x + selectedObjectBounds.left * viewport.scale;
-    const selectionRight = viewport.x + selectedObjectBounds.right * viewport.scale;
-    const selectionTop = viewport.y + selectedObjectBounds.top * viewport.scale;
-    const selectionBottom = viewport.y + selectedObjectBounds.bottom * viewport.scale;
-    const selectionCenterY = (selectionTop + selectionBottom) / 2;
-
-    const isFullyVisible = (point: { x: number; y: number }) =>
-      point.x >= edgePadding &&
-      point.y >= edgePadding &&
-      point.x + hudWidth <= stageSize.width - edgePadding &&
-      point.y + hudHeight <= stageSize.height - edgePadding;
-
-    const singleSelectedObject =
-      selectedObjects.length === 1 ? selectedObjects[0].object : null;
-    const preferSidePlacement =
-      singleSelectedObject !== null &&
-      singleSelectedObject.type !== "line" &&
-      !isConnectorKind(singleSelectedObject.type);
-
-    const candidates = preferSidePlacement
-      ? [
-          { x: selectionRight + offset, y: selectionCenterY - hudHeight / 2 },
-          { x: selectionLeft - hudWidth - offset, y: selectionCenterY - hudHeight / 2 },
-          { x: selectionRight - hudWidth, y: selectionBottom + offset },
-          { x: selectionRight - hudWidth, y: selectionTop - hudHeight - offset }
-        ]
-      : [
-          { x: selectionRight - hudWidth, y: selectionTop - hudHeight - offset },
-          { x: selectionRight - hudWidth, y: selectionBottom + offset },
-          { x: selectionRight + offset, y: selectionCenterY - hudHeight / 2 },
-          { x: selectionLeft - hudWidth - offset, y: selectionCenterY - hudHeight / 2 }
-        ];
-
-    const visibleCandidate = candidates.find((candidate) => isFullyVisible(candidate));
-    if (visibleCandidate) {
-      return visibleCandidate;
-    }
-
-    return clampPoint(candidates[0] ?? { x: edgePadding, y: edgePadding });
   }, [
     canShowSelectionHud,
+    preferSidePlacement,
     selectedConnectorMidpoint,
     selectedObjectBounds,
-    selectedObjects,
     selectionHudSize,
     stageSize,
     viewport
@@ -4760,6 +5555,31 @@ export default function RealtimeBoardCanvas({
                     </button>
                   ))}
                 </div>
+
+                <button
+                  type="button"
+                  onClick={handleCreateSwotButtonClick}
+                  disabled={!canEdit || isAiSubmitting}
+                  title="Create SWOT analysis"
+                  style={{
+                    width: "100%",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "0.45rem",
+                    border: "1px solid #c7d2fe",
+                    borderRadius: 8,
+                    background: !canEdit || isAiSubmitting ? "#eef2ff" : "#e0e7ff",
+                    color: "#312e81",
+                    height: 34,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: !canEdit || isAiSubmitting ? "not-allowed" : "pointer"
+                  }}
+                >
+                  <BriefcaseIcon />
+                  <span>SWOT</span>
+                </button>
 
                 {hasDeletableSelection ? (
                   <button
@@ -5038,6 +5858,31 @@ export default function RealtimeBoardCanvas({
                 objectItem.type === "line" ? getLineEndpointOffsets(objectGeometry) : null;
               const isPolygonShape =
                 objectItem.type === "triangle" || objectItem.type === "star";
+              const isGridContainer = objectItem.type === "gridContainer";
+              const gridRows = isGridContainer ? Math.max(1, objectItem.gridRows ?? 2) : 0;
+              const gridCols = isGridContainer ? Math.max(1, objectItem.gridCols ?? 2) : 0;
+              const gridGap = isGridContainer
+                ? Math.max(0, objectItem.gridGap ?? GRID_CONTAINER_DEFAULT_GAP)
+                : 0;
+              const gridTotalCells = isGridContainer ? gridRows * gridCols : 0;
+              const gridCellColors =
+                isGridContainer && objectItem.gridCellColors && objectItem.gridCellColors.length > 0
+                  ? objectItem.gridCellColors
+                  : ["#d1fae5", "#fee2e2", "#dbeafe", "#fef3c7"];
+              const gridFallbackTitles = isGridContainer
+                ? getDefaultSectionTitles(gridRows, gridCols)
+                : [];
+              const gridDraft = isGridContainer ? getGridDraftForObject(objectItem) : null;
+              const gridContainerTitle =
+                gridDraft?.containerTitle ?? objectItem.containerTitle ?? "Grid container";
+              const gridSectionTitles =
+                gridDraft?.sectionTitles ??
+                normalizeSectionValues(
+                  objectItem.gridSectionTitles,
+                  gridTotalCells,
+                  (index) => gridFallbackTitles[index] ?? `Section ${index + 1}`,
+                  80
+                );
 
               if (isConnector && connectorRoute && connectorFrame) {
                 const strokeWidth = 3;
@@ -5487,12 +6332,13 @@ export default function RealtimeBoardCanvas({
                       objectItem.type === "circle"
                         ? "999px"
                         : objectItem.type === "line" ||
+                            objectItem.type === "gridContainer" ||
                             objectItem.type === "triangle" ||
                             objectItem.type === "star"
                           ? 0
                           : 4,
                     transform:
-                      objectItem.type === "line"
+                      objectItem.type === "line" || objectItem.type === "gridContainer"
                         ? "none"
                         : `rotate(${objectRotationDeg}deg)`,
                     transformOrigin: "center center",
@@ -5511,7 +6357,7 @@ export default function RealtimeBoardCanvas({
                       justifyContent: "center",
                       cursor: canEdit ? "grab" : "default",
                       border:
-                        objectItem.type === "line" || isPolygonShape
+                        objectItem.type === "line" || isPolygonShape || isGridContainer
                           ? "none"
                           : "2px solid rgba(15, 23, 42, 0.55)",
                       borderRadius:
@@ -5521,11 +6367,11 @@ export default function RealtimeBoardCanvas({
                             ? "999px"
                             : 0,
                       background:
-                        objectItem.type === "line" || isPolygonShape
+                        objectItem.type === "line" || isPolygonShape || isGridContainer
                           ? "transparent"
                           : objectItem.color,
                       boxShadow:
-                        objectItem.type === "line" || isPolygonShape
+                        objectItem.type === "line" || isPolygonShape || isGridContainer
                           ? "none"
                           : "0 3px 10px rgba(0,0,0,0.08)"
                     }}
@@ -5573,10 +6419,92 @@ export default function RealtimeBoardCanvas({
                           strokeLinejoin="round"
                         />
                       </svg>
+                    ) : objectItem.type === "gridContainer" ? (
+                      <GridContainer
+                        rows={gridRows}
+                        cols={gridCols}
+                        gap={gridGap}
+                        minCellHeight={0}
+                        className="h-full w-full rounded-[10px] border-2 border-slate-600/55 bg-transparent p-2 shadow-none"
+                        cellClassName="rounded-lg border border-slate-500/30 p-2"
+                        containerTitle={gridContainerTitle}
+                        cellColors={Array.from({ length: gridTotalCells }, (_, index) => {
+                          return gridCellColors[index % gridCellColors.length] ?? "#e2e8f0";
+                        })}
+                        sectionTitles={gridSectionTitles}
+                        showGridControls={isSingleSelected && canEdit}
+                        minRows={1}
+                        maxRows={GRID_CONTAINER_MAX_ROWS}
+                        minCols={1}
+                        maxCols={GRID_CONTAINER_MAX_COLS}
+                        onGridDimensionsChange={
+                          canEdit
+                            ? (nextRows, nextCols) => {
+                                void updateGridContainerDimensions(objectItem.id, nextRows, nextCols);
+                              }
+                            : undefined
+                        }
+                        onContainerTitleChange={
+                          canEdit
+                            ? (nextTitle) => {
+                              const currentDraft = getGridDraftForObject(objectItem);
+                              queueGridContentSync(
+                                  objectItem.id,
+                                  {
+                                    ...currentDraft,
+                                    containerTitle: nextTitle.slice(0, 120)
+                                  },
+                                  { immediate: true }
+                                );
+                              }
+                            : undefined
+                        }
+                        onSectionTitleChange={
+                          canEdit
+                            ? (sectionIndex, nextTitle) => {
+                                const currentDraft = getGridDraftForObject(objectItem);
+                                const nextTitles = [...currentDraft.sectionTitles];
+                                nextTitles[sectionIndex] = nextTitle.slice(0, 80);
+                                queueGridContentSync(
+                                  objectItem.id,
+                                  {
+                                    ...currentDraft,
+                                    sectionTitles: nextTitles
+                                  },
+                                  { immediate: true }
+                                );
+                              }
+                            : undefined
+                        }
+                        onCellColorChange={
+                          canEdit
+                            ? (cellIndex, color) => {
+                                const nextColors = Array.from(
+                                  { length: gridTotalCells },
+                                  (_, index) => gridCellColors[index % gridCellColors.length] ?? "#e2e8f0"
+                                );
+                                nextColors[cellIndex] = color;
+                                void updateDoc(doc(db, `boards/${boardId}/objects/${objectItem.id}`), {
+                                  gridCellColors: nextColors,
+                                  updatedAt: serverTimestamp()
+                                }).catch((error) => {
+                                  console.error("Failed to update grid container colors", error);
+                                  setBoardError(
+                                    toBoardErrorMessage(error, "Failed to update grid container colors.")
+                                  );
+                                });
+                              }
+                            : undefined
+                        }
+                        showCellColorPickers={isSingleSelected && canEdit}
+                      />
                     ) : null}
                   </div>
 
-                  {isSingleSelected && canEdit && objectItem.type !== "line" ? (
+                  {isSingleSelected &&
+                  canEdit &&
+                  objectItem.type !== "line" &&
+                  objectItem.type !== "gridContainer" ? (
                     <>
                       <div
                         style={{
@@ -5612,7 +6540,10 @@ export default function RealtimeBoardCanvas({
                     </>
                   ) : null}
 
-                  {isSingleSelected && canEdit && objectItem.type !== "line" ? (
+                  {isSingleSelected &&
+                  canEdit &&
+                  objectItem.type !== "line" &&
+                  objectItem.type !== "gridContainer" ? (
                     <div>
                       {CORNER_HANDLES.map((corner) => (
                         <button
@@ -5718,51 +6649,7 @@ export default function RealtimeBoardCanvas({
             />
           ) : null}
 
-          {remoteCursors.map((presenceUser) => (
-            <div
-              key={presenceUser.uid}
-              style={{
-                position: "absolute",
-                left: viewport.x + (presenceUser.cursorX ?? 0) * viewport.scale,
-                top: viewport.y + (presenceUser.cursorY ?? 0) * viewport.scale,
-                pointerEvents: "none",
-                transform: "translate(-2px, -2px)"
-              }}
-            >
-              <svg
-                width="18"
-                height="24"
-                viewBox="0 0 18 24"
-                style={{
-                  display: "block",
-                  filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.35))"
-                }}
-                aria-hidden="true"
-              >
-                <path
-                  d="M2 1.5 L2 18.8 L6.6 14.9 L9.2 22 L12 20.8 L9.5 13.8 L16.2 13.8 Z"
-                  fill={presenceUser.color}
-                  stroke="white"
-                  strokeWidth="1.15"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              <div
-                style={{
-                  marginTop: 2,
-                  marginLeft: 10,
-                  padding: "2px 6px",
-                  borderRadius: 999,
-                  background: presenceUser.color,
-                  color: "white",
-                  fontSize: 11,
-                  whiteSpace: "nowrap"
-                }}
-              >
-                {getPresenceLabel(presenceUser)}
-              </div>
-            </div>
-          ))}
+          <RemoteCursorLayer remoteCursors={remoteCursors} viewport={viewport} />
         </div>
       </div>
 
@@ -5882,34 +6769,7 @@ export default function RealtimeBoardCanvas({
                   color: "#374151"
                 }}
               >
-                {onlineUsers.length > 0 ? (
-                  onlineUsers.map((presenceUser) => (
-                    <span
-                      key={presenceUser.uid}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.4rem",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis"
-                      }}
-                      title={getPresenceLabel(presenceUser)}
-                    >
-                      <span style={{ color: presenceUser.color }}>●</span>
-                      <span
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis"
-                        }}
-                      >
-                        {getPresenceLabel(presenceUser)}
-                      </span>
-                    </span>
-                  ))
-                ) : (
-                  <span style={{ color: "#6b7280" }}>No active users yet.</span>
-                )}
+                <OnlineUsersList onlineUsers={onlineUsers} />
               </div>
             </>
           )}

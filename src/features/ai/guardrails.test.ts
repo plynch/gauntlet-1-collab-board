@@ -1,12 +1,22 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { createMemoryGuardrailStore } from "@/features/ai/guardrail-store.memory";
 import {
   acquireBoardCommandLock,
   checkUserRateLimit,
   releaseBoardCommandLock,
+  setGuardrailStoreForTests,
   validateTemplatePlan
 } from "@/features/ai/guardrails";
 import { SWOT_TEMPLATE_ID } from "@/features/ai/templates/template-types";
+
+beforeEach(() => {
+  setGuardrailStoreForTests(createMemoryGuardrailStore());
+});
+
+afterEach(() => {
+  setGuardrailStoreForTests(null);
+});
 
 describe("validateTemplatePlan", () => {
   it("accepts plan within operation and create limits", () => {
@@ -53,13 +63,13 @@ describe("validateTemplatePlan", () => {
 });
 
 describe("checkUserRateLimit", () => {
-  it("blocks after max calls in the same window", () => {
+  it("blocks after max calls in the same window", async () => {
     const userId = `test-user-${Date.now()}`;
     const now = Date.now();
     let blockedAt: number | null = null;
 
     for (let index = 0; index < 25; index += 1) {
-      const result = checkUserRateLimit(userId, now + index);
+      const result = await checkUserRateLimit(userId, now + index);
       if (!result.ok) {
         blockedAt = index;
         break;
@@ -71,16 +81,16 @@ describe("checkUserRateLimit", () => {
 });
 
 describe("acquireBoardCommandLock", () => {
-  it("allows only one lock holder per board id", () => {
+  it("allows only one lock holder per board id", async () => {
     const boardId = `board-${Date.now()}`;
-    const first = acquireBoardCommandLock(boardId);
-    const second = acquireBoardCommandLock(boardId);
-    releaseBoardCommandLock(boardId);
-    const third = acquireBoardCommandLock(boardId);
+    const first = await acquireBoardCommandLock(boardId);
+    const second = await acquireBoardCommandLock(boardId);
+    await releaseBoardCommandLock(boardId);
+    const third = await acquireBoardCommandLock(boardId);
 
     expect(first.ok).toBe(true);
     expect(second.ok).toBe(false);
     expect(third.ok).toBe(true);
-    releaseBoardCommandLock(boardId);
+    await releaseBoardCommandLock(boardId);
   });
 });

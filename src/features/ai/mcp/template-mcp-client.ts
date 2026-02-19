@@ -1,5 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { z } from "zod";
 
 import type { DeterministicCommandPlanResult } from "@/features/ai/commands/deterministic-command-planner";
 import { withTimeout } from "@/features/ai/guardrails";
@@ -25,75 +26,47 @@ type CallCommandPlanOptions = TemplateMcpClientOptions & {
   boardState: BoardObjectSnapshot[];
 };
 
+const operationSchema = z.object({
+  tool: z.string().min(1),
+  args: z.record(z.string(), z.unknown()).optional()
+});
+
+const templateInstantiateOutputSchema = z.object({
+  plan: z.object({
+    templateId: z.string().min(1),
+    templateName: z.string().min(1),
+    operations: z.array(operationSchema),
+    metadata: z.record(z.string(), z.unknown()).optional()
+  })
+});
+
+const commandPlanOutputSchema = z.discriminatedUnion("planned", [
+  z.object({
+    planned: z.literal(false),
+    intent: z.string().min(1),
+    assistantMessage: z.string().min(1)
+  }),
+  z.object({
+    planned: z.literal(true),
+    intent: z.string().min(1),
+    assistantMessage: z.string().min(1),
+    plan: z.object({
+      templateId: z.string().min(1),
+      templateName: z.string().min(1),
+      operations: z.array(operationSchema),
+      metadata: z.record(z.string(), z.unknown()).optional()
+    })
+  })
+]);
+
 function parseTemplateInstantiateOutput(value: unknown): TemplateInstantiateOutput | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const candidate = value as {
-    plan?: {
-      templateId?: unknown;
-      templateName?: unknown;
-      operations?: unknown;
-    };
-  };
-
-  if (!candidate.plan || typeof candidate.plan !== "object") {
-    return null;
-  }
-
-  const templateId = candidate.plan.templateId;
-  const templateName = candidate.plan.templateName;
-  const operations = candidate.plan.operations;
-
-  if (typeof templateId !== "string" || templateId.length === 0) {
-    return null;
-  }
-
-  if (typeof templateName !== "string" || templateName.length === 0) {
-    return null;
-  }
-
-  if (!Array.isArray(operations)) {
-    return null;
-  }
-
-  return value as TemplateInstantiateOutput;
+  const parsed = templateInstantiateOutputSchema.safeParse(value);
+  return parsed.success ? (parsed.data as TemplateInstantiateOutput) : null;
 }
 
 function parseCommandPlanOutput(value: unknown): DeterministicCommandPlanResult | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const candidate = value as {
-    planned?: unknown;
-    intent?: unknown;
-    assistantMessage?: unknown;
-    plan?: unknown;
-  };
-
-  if (
-    typeof candidate.planned !== "boolean" ||
-    typeof candidate.intent !== "string" ||
-    typeof candidate.assistantMessage !== "string"
-  ) {
-    return null;
-  }
-
-  if (!candidate.planned) {
-    return {
-      planned: false,
-      intent: candidate.intent,
-      assistantMessage: candidate.assistantMessage
-    };
-  }
-
-  if (!candidate.plan || typeof candidate.plan !== "object") {
-    return null;
-  }
-
-  return value as DeterministicCommandPlanResult;
+  const parsed = commandPlanOutputSchema.safeParse(value);
+  return parsed.success ? (parsed.data as DeterministicCommandPlanResult) : null;
 }
 
 async function withMcpClient<T>(

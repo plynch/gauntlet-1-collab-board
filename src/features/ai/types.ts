@@ -19,6 +19,7 @@ export type BoardObjectToolKind =
   | "sticky"
   | "rect"
   | "circle"
+  | "gridContainer"
   | "line"
   | "connectorUndirected"
   | "connectorArrow"
@@ -37,6 +38,17 @@ export type BoardObjectSnapshot = {
   rotationDeg: number;
   color: string;
   text: string;
+  gridRows?: number | null;
+  gridCols?: number | null;
+  gridGap?: number | null;
+  gridCellColors?: string[] | null;
+  containerTitle?: string | null;
+  gridSectionTitles?: string[] | null;
+  gridSectionNotes?: string[] | null;
+  containerId?: string | null;
+  containerSectionIndex?: number | null;
+  containerRelX?: number | null;
+  containerRelY?: number | null;
   updatedAt: string | null;
 };
 
@@ -68,6 +80,22 @@ export type BoardToolCall =
         width: number;
         height: number;
         color: string;
+      };
+    }
+  | {
+      tool: "createGridContainer";
+      args: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        rows: number;
+        cols: number;
+        gap: number;
+        cellColors?: string[];
+        containerTitle?: string;
+        sectionTitles?: string[];
+        sectionNotes?: string[];
       };
     }
   | {

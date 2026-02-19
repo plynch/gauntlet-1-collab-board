@@ -3,7 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 import type { BoardDetail, BoardPermissions } from "@/features/boards/types";
 import { assertFirestoreWritesAllowedInDev, getFirebaseAdminDb } from "@/lib/firebase/admin";
-import { AuthError, requireUser } from "@/server/auth/require-user";
+import { boardTitleBodySchema } from "@/server/api/board-route-schemas";
+import {
+  handleRouteError,
+  readJsonBody,
+  trimParam
+} from "@/server/api/route-helpers";
+import { requireUser } from "@/server/auth/require-user";
 import {
   canUserEditBoard,
   canUserReadBoard,
@@ -21,35 +27,6 @@ type BoardRouteContext = {
     boardId: string;
   }>;
 };
-
-function getDebugMessage(error: unknown): string | undefined {
-  if (process.env.NODE_ENV === "production") {
-    return undefined;
-  }
-
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  if (typeof error === "string") {
-    return error;
-  }
-
-  return undefined;
-}
-
-function parseBoardTitle(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const normalized = value.trim();
-  if (!normalized) {
-    return null;
-  }
-
-  return normalized.slice(0, 80);
-}
 
 function toBoardDetail(
   boardId: string,
@@ -76,7 +53,7 @@ export async function GET(request: NextRequest, context: BoardRouteContext) {
   try {
     const user = await requireUser(request);
     const params = await context.params;
-    const boardId = params.boardId?.trim();
+    const boardId = trimParam(params.boardId);
 
     if (!boardId) {
       return NextResponse.json({ error: "Missing board id." }, { status: 400 });
@@ -112,18 +89,8 @@ export async function GET(request: NextRequest, context: BoardRouteContext) {
       permissions
     });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
     console.error("Failed to load board", error);
-    return NextResponse.json(
-      {
-        error: "Failed to load board.",
-        debug: getDebugMessage(error)
-      },
-      { status: 500 }
-    );
+    return handleRouteError(error, "Failed to load board.");
   }
 }
 
@@ -133,7 +100,7 @@ export async function DELETE(request: NextRequest, context: BoardRouteContext) {
 
     const user = await requireUser(request);
     const params = await context.params;
-    const boardId = params.boardId?.trim();
+    const boardId = trimParam(params.boardId);
 
     if (!boardId) {
       return NextResponse.json({ error: "Missing board id." }, { status: 400 });
@@ -160,18 +127,8 @@ export async function DELETE(request: NextRequest, context: BoardRouteContext) {
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
     console.error("Failed to delete board", error);
-    return NextResponse.json(
-      {
-        error: "Failed to delete board.",
-        debug: getDebugMessage(error)
-      },
-      { status: 500 }
-    );
+    return handleRouteError(error, "Failed to delete board.");
   }
 }
 
@@ -181,7 +138,7 @@ export async function PATCH(request: NextRequest, context: BoardRouteContext) {
 
     const user = await requireUser(request);
     const params = await context.params;
-    const boardId = params.boardId?.trim();
+    const boardId = trimParam(params.boardId);
 
     if (!boardId) {
       return NextResponse.json({ error: "Missing board id." }, { status: 400 });
@@ -204,17 +161,16 @@ export async function PATCH(request: NextRequest, context: BoardRouteContext) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
 
-    let requestBody: { title?: unknown } = {};
-    try {
-      requestBody = (await request.json()) as { title?: unknown };
-    } catch {
-      requestBody = {};
+    const bodyResult = await readJsonBody(request);
+    if (!bodyResult.ok) {
+      return bodyResult.response;
     }
 
-    const title = parseBoardTitle(requestBody.title);
-    if (!title) {
+    const parsedPayload = boardTitleBodySchema.safeParse(bodyResult.value);
+    if (!parsedPayload.success) {
       return NextResponse.json({ error: "Board title is required." }, { status: 400 });
     }
+    const title = parsedPayload.data.title;
 
     await boardRef.update({
       title,
@@ -231,17 +187,7 @@ export async function PATCH(request: NextRequest, context: BoardRouteContext) {
       board: toBoardDetail(updatedSnapshot.id, updatedBoard, [], [])
     });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
     console.error("Failed to update board", error);
-    return NextResponse.json(
-      {
-        error: "Failed to update board.",
-        debug: getDebugMessage(error)
-      },
-      { status: 500 }
-    );
+    return handleRouteError(error, "Failed to update board.");
   }
 }

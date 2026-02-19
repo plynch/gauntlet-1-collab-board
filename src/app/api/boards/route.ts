@@ -3,7 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { MAX_OWNED_BOARDS, type BoardSummary } from "@/features/boards/types";
 import { assertFirestoreWritesAllowedInDev, getFirebaseAdminDb } from "@/lib/firebase/admin";
-import { AuthError, requireUser } from "@/server/auth/require-user";
+import { boardTitleBodySchema } from "@/server/api/board-route-schemas";
+import { handleRouteError, readJsonBody } from "@/server/api/route-helpers";
+import { requireUser } from "@/server/auth/require-user";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,38 +39,9 @@ function toBoardSummary(id: string, boardDoc: BoardDoc): BoardSummary {
   };
 }
 
-function parseBoardTitle(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const normalized = value.trim();
-  if (!normalized) {
-    return null;
-  }
-
-  return normalized.slice(0, 80);
-}
-
 function boardSortValue(board: BoardSummary): number {
   const rawValue = board.updatedAt ?? board.createdAt;
   return rawValue ? Date.parse(rawValue) : 0;
-}
-
-function getDebugMessage(error: unknown): string | undefined {
-  if (process.env.NODE_ENV === "production") {
-    return undefined;
-  }
-
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  if (typeof error === "string") {
-    return error;
-  }
-
-  return undefined;
 }
 
 export async function GET(request: NextRequest) {
@@ -90,18 +63,8 @@ export async function GET(request: NextRequest) {
       maxOwnedBoards: MAX_OWNED_BOARDS
     });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
     console.error("Failed to list boards", error);
-    return NextResponse.json(
-      {
-        error: "Failed to list boards.",
-        debug: getDebugMessage(error)
-      },
-      { status: 500 }
-    );
+    return handleRouteError(error, "Failed to list boards.");
   }
 }
 
@@ -127,18 +90,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let requestBody: { title?: unknown } = {};
-    try {
-      requestBody = (await request.json()) as { title?: unknown };
-    } catch {
-      requestBody = {};
+    const bodyResult = await readJsonBody(request);
+    if (!bodyResult.ok) {
+      return bodyResult.response;
     }
 
-    const title = parseBoardTitle(requestBody.title);
-    if (!title) {
+    const parsedPayload = boardTitleBodySchema.safeParse(bodyResult.value);
+    if (!parsedPayload.success) {
       return NextResponse.json({ error: "Board title is required." }, { status: 400 });
     }
 
+    const title = parsedPayload.data.title;
     const boardRef = db.collection("boards").doc();
 
     await boardRef.set({
@@ -165,17 +127,7 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
     console.error("Failed to create board", error);
-    return NextResponse.json(
-      {
-        error: "Failed to create board.",
-        debug: getDebugMessage(error)
-      },
-      { status: 500 }
-    );
+    return handleRouteError(error, "Failed to create board.");
   }
 }

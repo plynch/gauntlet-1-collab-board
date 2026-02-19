@@ -212,7 +212,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (intent === "stub" && canEdit) {
-      const rateLimitResult = checkUserRateLimit(user.uid);
+      const rateLimitResult = await checkUserRateLimit(user.uid);
       if (!rateLimitResult.ok) {
         return NextResponse.json(
           { error: rateLimitResult.error },
@@ -220,7 +220,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const lockResult = acquireBoardCommandLock(parsedPayload.boardId);
+      const lockResult = await acquireBoardCommandLock(parsedPayload.boardId);
       if (!lockResult.ok) {
         return NextResponse.json({ error: lockResult.error }, { status: lockResult.status });
       }
@@ -407,12 +407,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const rateLimitResult = checkUserRateLimit(user.uid);
+    const rateLimitResult = await checkUserRateLimit(user.uid);
     if (!rateLimitResult.ok) {
       return NextResponse.json({ error: rateLimitResult.error }, { status: rateLimitResult.status });
     }
 
-    const lockResult = acquireBoardCommandLock(parsedPayload.boardId);
+    const lockResult = await acquireBoardCommandLock(parsedPayload.boardId);
     if (!lockResult.ok) {
       return NextResponse.json({ error: lockResult.error }, { status: lockResult.status });
     }
@@ -618,7 +618,7 @@ export async function POST(request: NextRequest) {
     );
   } finally {
     if (boardLockId) {
-      releaseBoardCommandLock(boardLockId);
+      await releaseBoardCommandLock(boardLockId);
     }
     await flushLangfuseClient();
   }

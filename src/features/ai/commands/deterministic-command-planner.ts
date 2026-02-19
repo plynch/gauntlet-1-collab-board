@@ -53,6 +53,7 @@ const DEFAULT_SIZES: Record<BoardObjectToolKind, Size> = {
   sticky: { width: 220, height: 170 },
   rect: { width: 240, height: 150 },
   circle: { width: 170, height: 170 },
+  gridContainer: { width: 708, height: 468 },
   line: { width: 240, height: 64 },
   connectorUndirected: { width: 220, height: 120 },
   connectorArrow: { width: 220, height: 120 },

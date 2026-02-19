@@ -13,6 +13,45 @@ import type { BoardObjectSnapshot, TemplateInstantiateInput } from "@/features/a
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const boardStateObjectSchema = z.object({
+  id: z.string().min(1),
+  type: z.string().min(1),
+  x: z.number().finite(),
+  y: z.number().finite(),
+  width: z.number().finite(),
+  height: z.number().finite(),
+  rotationDeg: z.number().finite(),
+  color: z.string(),
+  text: z.string(),
+  zIndex: z.number().finite(),
+  updatedAt: z.string().nullable().optional()
+});
+
+const boardStateSchema = z.array(boardStateObjectSchema);
+
+const templateInstantiateArgsSchema = z.object({
+  templateId: z.string().min(1),
+  boardBounds: z
+    .object({
+      left: z.number(),
+      right: z.number(),
+      top: z.number(),
+      bottom: z.number(),
+      width: z.number(),
+      height: z.number()
+    })
+    .nullable()
+    .optional(),
+  selectedObjectIds: z.array(z.string()).optional(),
+  existingObjectCount: z.number().int().min(0).optional()
+});
+
+const commandPlanArgsSchema = z.object({
+  message: z.string().min(1),
+  selectedObjectIds: z.array(z.string()).optional(),
+  boardState: boardStateSchema.optional()
+});
+
 function getInternalToken(): string | null {
   const token = process.env.MCP_INTERNAL_TOKEN?.trim();
   return token && token.length > 0 ? token : null;
@@ -50,32 +89,14 @@ function toTemplateInstantiateInput(args: {
 }
 
 function toBoardState(raw: unknown): BoardObjectSnapshot[] {
-  if (!Array.isArray(raw)) {
+  const parsed = boardStateSchema.safeParse(raw);
+  if (!parsed.success) {
     return [];
   }
 
-  return raw
-    .filter((value): value is BoardObjectSnapshot => {
-      if (!value || typeof value !== "object") {
-        return false;
-      }
-
-      const candidate = value as Record<string, unknown>;
-      return (
-        typeof candidate.id === "string" &&
-        typeof candidate.type === "string" &&
-        typeof candidate.x === "number" &&
-        typeof candidate.y === "number" &&
-        typeof candidate.width === "number" &&
-        typeof candidate.height === "number" &&
-        typeof candidate.rotationDeg === "number" &&
-        typeof candidate.color === "string" &&
-        typeof candidate.text === "string" &&
-        typeof candidate.zIndex === "number"
-      );
-    })
-    .map((value) => ({
+  return parsed.data.map((value) => ({
       ...value,
+      type: value.type as BoardObjectSnapshot["type"],
       updatedAt: value.updatedAt ?? null
     }));
 }
@@ -130,7 +151,12 @@ function createTemplateMcpServer(): McpServer {
       }
     },
     async (args) => {
-      const input = toTemplateInstantiateInput(args);
+      const parsedArgs = templateInstantiateArgsSchema.safeParse(args);
+      if (!parsedArgs.success) {
+        throw new Error("Invalid template.instantiate arguments.");
+      }
+
+      const input = toTemplateInstantiateInput(parsedArgs.data);
       const output = instantiateLocalTemplate(input);
 
       return {
@@ -156,10 +182,15 @@ function createTemplateMcpServer(): McpServer {
       }
     },
     async (args) => {
+      const parsedArgs = commandPlanArgsSchema.safeParse(args);
+      if (!parsedArgs.success) {
+        throw new Error("Invalid command.plan arguments.");
+      }
+
       const result = planDeterministicCommand({
-        message: args.message,
-        selectedObjectIds: args.selectedObjectIds ?? [],
-        boardState: toBoardState(args.boardState)
+        message: parsedArgs.data.message,
+        selectedObjectIds: parsedArgs.data.selectedObjectIds ?? [],
+        boardState: toBoardState(parsedArgs.data.boardState)
       });
 
       return {

@@ -15,6 +15,13 @@ type ExecuteToolResult = {
 };
 
 const DELETE_BATCH_CHUNK_SIZE = 400;
+const GRID_MIN_ROWS = 1;
+const GRID_MAX_ROWS = 8;
+const GRID_MIN_COLS = 1;
+const GRID_MAX_COLS = 8;
+const GRID_MIN_GAP = 0;
+const GRID_MAX_GAP = 80;
+const GRID_DEFAULT_GAP = 2;
 
 type BoardToolExecutorOptions = {
   boardId: string;
@@ -32,6 +39,13 @@ type BoardObjectDoc = {
   rotationDeg: number;
   color: string;
   text: string;
+  gridRows?: number | null;
+  gridCols?: number | null;
+  gridGap?: number | null;
+  gridCellColors?: string[] | null;
+  containerTitle?: string | null;
+  gridSectionTitles?: string[] | null;
+  gridSectionNotes?: string[] | null;
   updatedAt: string | null;
 };
 
@@ -43,11 +57,76 @@ function toStringValue(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
 
+function toNullableFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function toGridDimension(
+  value: unknown,
+  fallback: number,
+  minimum: number,
+  maximum: number
+): number {
+  const parsed = Math.floor(toNumber(value, fallback));
+  return Math.max(minimum, Math.min(maximum, parsed));
+}
+
+function toGridCellColors(value: unknown): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const colors = value.filter((item): item is string => typeof item === "string");
+  return colors.length > 0 ? colors : null;
+}
+
+function toStringArray(value: unknown): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const values = value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim());
+
+  return values.length > 0 ? values : null;
+}
+
+function toOptionalString(value: unknown, maxLength: number): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  return trimmed.slice(0, maxLength);
+}
+
+function normalizeSectionValues(
+  values: string[] | null,
+  expectedCount: number,
+  fallback: (index: number) => string,
+  maxLength: number
+): string[] {
+  return Array.from({ length: expectedCount }, (_, index) => {
+    const candidate = values?.[index]?.trim() ?? "";
+    if (candidate.length === 0) {
+      return fallback(index).slice(0, maxLength);
+    }
+
+    return candidate.slice(0, maxLength);
+  });
+}
+
 function isObjectKind(value: unknown): value is BoardObjectToolKind {
   return (
     value === "sticky" ||
     value === "rect" ||
     value === "circle" ||
+    value === "gridContainer" ||
     value === "line" ||
     value === "connectorUndirected" ||
     value === "connectorArrow" ||
@@ -144,6 +223,13 @@ function toBoardObjectDoc(id: string, raw: Record<string, unknown>): BoardObject
     rotationDeg: toNumber(raw.rotationDeg, 0),
     color: toStringValue(raw.color, "#93c5fd"),
     text: toStringValue(raw.text, ""),
+    gridRows: toNullableFiniteNumber(raw.gridRows),
+    gridCols: toNullableFiniteNumber(raw.gridCols),
+    gridGap: toNullableFiniteNumber(raw.gridGap),
+    gridCellColors: toGridCellColors(raw.gridCellColors),
+    containerTitle: toOptionalString(raw.containerTitle, 120),
+    gridSectionTitles: toStringArray(raw.gridSectionTitles),
+    gridSectionNotes: toStringArray(raw.gridSectionNotes),
     updatedAt: timestampToIso(raw.updatedAt)
   };
 }
@@ -209,10 +295,17 @@ export class BoardToolExecutor {
     color: string;
     text?: string;
     rotationDeg?: number;
+    gridRows?: number;
+    gridCols?: number;
+    gridGap?: number;
+    gridCellColors?: string[];
+    containerTitle?: string;
+    gridSectionTitles?: string[];
+    gridSectionNotes?: string[];
   }): Promise<BoardObjectSnapshot> {
     await this.ensureLoadedObjects();
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       type: options.type,
       zIndex: this.nextZIndex++,
       x: options.x,
@@ -226,19 +319,47 @@ export class BoardToolExecutor {
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp()
     };
+    if (
+      typeof options.gridRows === "number" &&
+      typeof options.gridCols === "number" &&
+      typeof options.gridGap === "number"
+    ) {
+      payload.gridRows = options.gridRows;
+      payload.gridCols = options.gridCols;
+      payload.gridGap = options.gridGap;
+      if (options.gridCellColors && options.gridCellColors.length > 0) {
+        payload.gridCellColors = options.gridCellColors;
+      }
+    }
+    if (typeof options.containerTitle === "string" && options.containerTitle.trim().length > 0) {
+      payload.containerTitle = options.containerTitle.trim().slice(0, 120);
+    }
+    if (options.gridSectionTitles && options.gridSectionTitles.length > 0) {
+      payload.gridSectionTitles = options.gridSectionTitles.map((title) => title.slice(0, 80));
+    }
+    if (options.gridSectionNotes && options.gridSectionNotes.length > 0) {
+      payload.gridSectionNotes = options.gridSectionNotes.map((note) => note.slice(0, 600));
+    }
 
     const created = await this.objectsCollection.add(payload);
     const snapshot: BoardObjectSnapshot = {
       id: created.id,
-      type: payload.type,
-      zIndex: payload.zIndex,
-      x: payload.x,
-      y: payload.y,
-      width: payload.width,
-      height: payload.height,
-      rotationDeg: payload.rotationDeg,
-      color: payload.color,
-      text: payload.text,
+      type: payload.type as BoardObjectToolKind,
+      zIndex: payload.zIndex as number,
+      x: payload.x as number,
+      y: payload.y as number,
+      width: payload.width as number,
+      height: payload.height as number,
+      rotationDeg: payload.rotationDeg as number,
+      color: payload.color as string,
+      text: payload.text as string,
+      gridRows: toNullableFiniteNumber(payload.gridRows),
+      gridCols: toNullableFiniteNumber(payload.gridCols),
+      gridGap: toNullableFiniteNumber(payload.gridGap),
+      gridCellColors: toGridCellColors(payload.gridCellColors),
+      containerTitle: toOptionalString(payload.containerTitle, 120),
+      gridSectionTitles: toStringArray(payload.gridSectionTitles),
+      gridSectionNotes: toStringArray(payload.gridSectionNotes),
       updatedAt: null
     };
 
@@ -294,7 +415,7 @@ export class BoardToolExecutor {
     height: number;
     color: string;
   }): Promise<ExecuteToolResult> {
-    if (args.type === "line" || isConnectorType(args.type)) {
+    if (args.type === "line" || args.type === "gridContainer" || isConnectorType(args.type)) {
       throw new Error("createShape only supports non-connector board shapes.");
     }
 
@@ -308,6 +429,55 @@ export class BoardToolExecutor {
     });
 
     return { tool: "createShape", objectId: created.id };
+  }
+
+  async createGridContainer(args: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    rows: number;
+    cols: number;
+    gap: number;
+    cellColors?: string[];
+    containerTitle?: string;
+    sectionTitles?: string[];
+    sectionNotes?: string[];
+  }): Promise<ExecuteToolResult> {
+    const rows = toGridDimension(args.rows, 2, GRID_MIN_ROWS, GRID_MAX_ROWS);
+    const cols = toGridDimension(args.cols, 2, GRID_MIN_COLS, GRID_MAX_COLS);
+    const sectionCount = rows * cols;
+    const sectionTitles = normalizeSectionValues(
+      toStringArray(args.sectionTitles),
+      sectionCount,
+      (index) => `Section ${index + 1}`,
+      80
+    );
+    const sectionNotes = normalizeSectionValues(
+      toStringArray(args.sectionNotes),
+      sectionCount,
+      () => "",
+      600
+    );
+    const containerTitle = toOptionalString(args.containerTitle, 120) ?? "Grid container";
+
+    const created = await this.createObject({
+      type: "gridContainer",
+      x: args.x,
+      y: args.y,
+      width: Math.max(120, args.width),
+      height: Math.max(100, args.height),
+      color: "#e2e8f0",
+      gridRows: rows,
+      gridCols: cols,
+      gridGap: toGridDimension(args.gap, GRID_DEFAULT_GAP, GRID_MIN_GAP, GRID_MAX_GAP),
+      gridCellColors: toGridCellColors(args.cellColors) ?? undefined,
+      containerTitle,
+      gridSectionTitles: sectionTitles,
+      gridSectionNotes: sectionNotes
+    });
+
+    return { tool: "createGridContainer", objectId: created.id };
   }
 
   async createFrame(args: {
@@ -490,6 +660,8 @@ export class BoardToolExecutor {
         return this.createStickyNote(toolCall.args);
       case "createShape":
         return this.createShape(toolCall.args);
+      case "createGridContainer":
+        return this.createGridContainer(toolCall.args);
       case "createFrame":
         return this.createFrame(toolCall.args);
       case "createConnector":
@@ -521,7 +693,14 @@ export class BoardToolExecutor {
     for (const operation of plan.operations) {
       const result = await this.executeToolCall(operation);
       results.push(result);
-      if (result.objectId && (operation.tool === "createStickyNote" || operation.tool === "createShape" || operation.tool === "createFrame" || operation.tool === "createConnector")) {
+      if (
+        result.objectId &&
+        (operation.tool === "createStickyNote" ||
+          operation.tool === "createShape" ||
+          operation.tool === "createGridContainer" ||
+          operation.tool === "createFrame" ||
+          operation.tool === "createConnector")
+      ) {
         createdObjectIds.push(result.objectId);
       }
     }

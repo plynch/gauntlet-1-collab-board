@@ -1,4 +1,7 @@
 import type { BoardToolCall, TemplatePlan } from "@/features/ai/types";
+import { createFirestoreGuardrailStore } from "@/features/ai/guardrail-store.firestore";
+import type { GuardrailStore } from "@/features/ai/guardrail-store";
+import { createMemoryGuardrailStore } from "@/features/ai/guardrail-store.memory";
 
 export const MAX_AI_OPERATIONS_PER_COMMAND = 20;
 export const MAX_AI_CREATED_OBJECTS_PER_COMMAND = 12;
@@ -8,17 +11,30 @@ export const AI_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1_000;
 export const AI_BOARD_LOCK_TTL_MS = 15_000;
 export const AI_ROUTE_TIMEOUT_MS = 12_000;
 
-type RateWindow = {
-  timestamps: number[];
-};
+let guardrailStore: GuardrailStore | null = null;
 
-const userRateWindows = new Map<string, RateWindow>();
-const boardLocks = new Map<string, number>();
+function getGuardrailStore(): GuardrailStore {
+  if (guardrailStore) {
+    return guardrailStore;
+  }
+
+  guardrailStore =
+    process.env.AI_GUARDRAIL_STORE === "firestore"
+      ? createFirestoreGuardrailStore()
+      : createMemoryGuardrailStore();
+
+  return guardrailStore;
+}
+
+export function setGuardrailStoreForTests(store: GuardrailStore | null): void {
+  guardrailStore = store;
+}
 
 function isCreateTool(toolCall: BoardToolCall): boolean {
   return (
     toolCall.tool === "createStickyNote" ||
     toolCall.tool === "createShape" ||
+    toolCall.tool === "createGridContainer" ||
     toolCall.tool === "createFrame" ||
     toolCall.tool === "createConnector"
   );
@@ -72,53 +88,40 @@ export function validateTemplatePlan(plan: TemplatePlan): {
   return { ok: true, objectsCreated };
 }
 
-export function checkUserRateLimit(userId: string, nowMs = Date.now()): {
+export async function checkUserRateLimit(userId: string, nowMs = Date.now()): Promise<{
   ok: true;
 } | {
   ok: false;
   status: number;
   error: string;
-} {
-  const windowStart = nowMs - AI_RATE_LIMIT_WINDOW_MS;
-  const current = userRateWindows.get(userId) ?? { timestamps: [] };
-  const nextTimestamps = current.timestamps.filter((timestamp) => timestamp >= windowStart);
-
-  if (nextTimestamps.length >= MAX_AI_COMMANDS_PER_USER_PER_WINDOW) {
-    userRateWindows.set(userId, { timestamps: nextTimestamps });
-    return {
-      ok: false,
-      status: 429,
-      error: "Too many AI commands. Please wait a minute and retry."
-    };
-  }
-
-  nextTimestamps.push(nowMs);
-  userRateWindows.set(userId, { timestamps: nextTimestamps });
-  return { ok: true };
+}> {
+  return getGuardrailStore().checkUserRateLimit({
+    userId,
+    nowMs,
+    windowMs: AI_RATE_LIMIT_WINDOW_MS,
+    maxCommandsPerWindow: MAX_AI_COMMANDS_PER_USER_PER_WINDOW
+  });
 }
 
-export function acquireBoardCommandLock(boardId: string, nowMs = Date.now()): {
+export async function acquireBoardCommandLock(
+  boardId: string,
+  nowMs = Date.now()
+): Promise<{
   ok: true;
 } | {
   ok: false;
   status: number;
   error: string;
-} {
-  const existingExpiresAt = boardLocks.get(boardId) ?? 0;
-  if (existingExpiresAt > nowMs) {
-    return {
-      ok: false,
-      status: 409,
-      error: "Another AI command is already running on this board."
-    };
-  }
-
-  boardLocks.set(boardId, nowMs + AI_BOARD_LOCK_TTL_MS);
-  return { ok: true };
+}> {
+  return getGuardrailStore().acquireBoardCommandLock({
+    boardId,
+    nowMs,
+    ttlMs: AI_BOARD_LOCK_TTL_MS
+  });
 }
 
-export function releaseBoardCommandLock(boardId: string): void {
-  boardLocks.delete(boardId);
+export async function releaseBoardCommandLock(boardId: string): Promise<void> {
+  await getGuardrailStore().releaseBoardCommandLock(boardId);
 }
 
 export async function withTimeout<T>(

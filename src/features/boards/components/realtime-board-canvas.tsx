@@ -7432,10 +7432,12 @@ export default function RealtimeBoardCanvas({
           }
           style={{
             position: "absolute",
-            right: "clamp(0.8rem, 2vw, 1.5rem)",
+            left: "50%",
+            transform: "translateX(-50%)",
             top: 0,
             height: 28,
-            minWidth: 120,
+            minWidth: 72,
+            padding: "0 0.9rem",
             border: "1px solid #64748b",
             borderTop: "none",
             borderRadius: "0 0 12px 12px",
@@ -7488,7 +7490,6 @@ export default function RealtimeBoardCanvas({
                 justifyContent: "center",
                 background: "#f8fafc",
                 touchAction: "none",
-                paddingRight: 128,
               }}
             >
               <span

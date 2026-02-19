@@ -582,6 +582,14 @@ function planCreateStickyGrid(
   const textSeed = parseStickyGridTextSeed(input.message);
   const total = dimensions.rows * dimensions.columns;
 
+  if (total > MAX_STICKY_BATCH_COUNT) {
+    return {
+      planned: false,
+      intent: "create-sticky-grid",
+      assistantMessage: `Create sticky grids up to ${MAX_STICKY_BATCH_COUNT} notes per command.`,
+    };
+  }
+
   const operations: BoardToolCall[] = [];
   for (let row = 0; row < dimensions.rows; row += 1) {
     for (let column = 0; column < dimensions.columns; column += 1) {

@@ -195,6 +195,18 @@ describe("planDeterministicCommand", () => {
     }
   });
 
+  it("returns actionable message for oversized sticky-grid prompts", () => {
+    const result = planDeterministicCommand({
+      message: "Create a 10x10 grid of sticky notes",
+      boardState: BOARD_STATE,
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(false);
+    expect(result.intent).toBe("create-sticky-grid");
+    expect(result.assistantMessage).toContain("up to 50");
+  });
+
   it("plans move selected commands", () => {
     const result = planDeterministicCommand({
       message: "Move selected objects right by 120",

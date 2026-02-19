@@ -170,8 +170,8 @@ Required env vars:
 The AI route currently enforces:
 
 - max command length
-- max operations per command
-- max object creations per command
+- max operations per command (50)
+- max object creations per command (50)
 - per-user command rate limit window
 - per-board concurrency lock
 - MCP timeout and overall route timeout

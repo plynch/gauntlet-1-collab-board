@@ -43,8 +43,10 @@ Configuration file:
 ## 4. Testing
 
 1. `npm run test` must pass before merge.
-2. For interaction-sensitive changes, include Playwright e2e coverage.
-3. Tests should assert behavior, not implementation detail.
+2. Any user-visible feature or behavior change must ship with unit tests in the same commit.
+3. Any user-visible feature or behavior change must also ship with Playwright e2e coverage in the same commit.
+4. If an e2e test is intentionally skipped or deferred, document the reason in the PR notes and backlog before merge.
+5. Tests should assert behavior, not implementation detail.
 
 ## 5. Commit and Review Quality
 

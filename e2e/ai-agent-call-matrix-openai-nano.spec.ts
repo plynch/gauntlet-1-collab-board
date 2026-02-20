@@ -53,6 +53,7 @@ test.beforeAll(async ({ request }) => {
     ready?: unknown;
     model?: unknown;
     plannerMode?: unknown;
+    runtime?: unknown;
     reason?: unknown;
   };
 
@@ -74,6 +75,7 @@ test.beforeAll(async ({ request }) => {
 
   expect(openAiPayload.model).toBe("gpt-4.1-nano");
   expect(openAiPayload.plannerMode).toBe("openai-strict");
+  expect(openAiPayload.runtime).toBe("agents-sdk");
 });
 
 type UserIdentity = {

@@ -85,6 +85,10 @@ export async function GET() {
     validationMode: shouldValidate ? "live" : "config-only",
     model: config.model,
     plannerMode: config.plannerMode,
+    runtime: config.runtime,
+    agentsMaxTurns: config.agentsMaxTurns,
+    agentsTracing: config.agentsTracing,
+    agentsWorkflowName: config.agentsWorkflowName,
     baseUrl: config.baseUrl,
     reason,
   });

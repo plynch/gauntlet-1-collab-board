@@ -37,9 +37,9 @@ import {
 } from "@/features/ai/openai/openai-cost-controls";
 import { getOpenAiPlannerConfig } from "@/features/ai/openai/openai-client";
 import {
-  type OpenAiPlannerFailureError,
   planBoardCommandWithOpenAi,
 } from "@/features/ai/openai/openai-command-planner";
+import { runBoardCommandWithOpenAiAgents } from "@/features/ai/openai/agents/openai-agents-runner";
 import { getOpenAiRequiredErrorResponse } from "@/features/ai/openai/openai-required-response";
 import { instantiateLocalTemplate } from "@/features/ai/templates/local-template-provider";
 import { SWOT_TEMPLATE_ID } from "@/features/ai/templates/template-types";
@@ -49,6 +49,7 @@ import type {
   BoardObjectSnapshot,
   BoardToolCall,
   TemplatePlan,
+  ViewportBounds,
 } from "@/features/ai/types";
 import {
   assertFirestoreWritesAllowedInDev,
@@ -207,20 +208,32 @@ type OpenAiPlanAttempt =
   | {
       status: "disabled";
       model: string;
+      runtime: "agents-sdk" | "chat-completions";
       reason: string;
     }
   | {
       status: "budget-blocked";
       model: string;
+      runtime: "agents-sdk" | "chat-completions";
       assistantMessage: string;
       totalSpentUsd: number;
     }
   | {
       status: "planned";
       model: string;
+      runtime: "agents-sdk" | "chat-completions";
       intent: string;
       assistantMessage: string;
-      plan: TemplatePlan;
+      plan: TemplatePlan | null;
+      executedDirectly: boolean;
+      directExecution?: {
+        operationsExecuted: BoardToolCall[];
+        results: Awaited<ReturnType<BoardToolExecutor["executeToolCall"]>>[];
+        createdObjectIds: string[];
+        deletedCount: number;
+        toolCalls: number;
+        responseId?: string;
+      };
       totalSpentUsd: number;
       usage: {
         model: string;
@@ -233,6 +246,7 @@ type OpenAiPlanAttempt =
   | {
       status: "not-planned";
       model: string;
+      runtime: "agents-sdk" | "chat-completions";
       intent: string;
       assistantMessage: string;
       totalSpentUsd: number;
@@ -247,6 +261,7 @@ type OpenAiPlanAttempt =
   | {
       status: "error";
       model: string;
+      runtime: "agents-sdk" | "chat-completions";
       reason: string;
       totalSpentUsd?: number;
       usage?: {
@@ -393,6 +408,7 @@ function buildOpenAiExecutionSummary(openAiAttempt: OpenAiPlanAttempt): {
   attempted: boolean;
   status: "disabled" | "budget-blocked" | "planned" | "not-planned" | "error";
   model: string;
+  runtime: "agents-sdk" | "chat-completions";
   estimatedCostUsd: number;
   totalSpentUsd?: number;
 } {
@@ -401,6 +417,7 @@ function buildOpenAiExecutionSummary(openAiAttempt: OpenAiPlanAttempt): {
       attempted: false,
       status: "disabled",
       model: openAiAttempt.model,
+      runtime: openAiAttempt.runtime,
       estimatedCostUsd: 0,
     };
   }
@@ -410,6 +427,7 @@ function buildOpenAiExecutionSummary(openAiAttempt: OpenAiPlanAttempt): {
       attempted: true,
       status: "budget-blocked",
       model: openAiAttempt.model,
+      runtime: openAiAttempt.runtime,
       estimatedCostUsd: 0,
       totalSpentUsd: openAiAttempt.totalSpentUsd,
     };
@@ -420,6 +438,7 @@ function buildOpenAiExecutionSummary(openAiAttempt: OpenAiPlanAttempt): {
       attempted: true,
       status: "planned",
       model: openAiAttempt.model,
+      runtime: openAiAttempt.runtime,
       estimatedCostUsd: openAiAttempt.usage.estimatedCostUsd,
       totalSpentUsd: openAiAttempt.totalSpentUsd,
     };
@@ -430,6 +449,7 @@ function buildOpenAiExecutionSummary(openAiAttempt: OpenAiPlanAttempt): {
       attempted: true,
       status: "not-planned",
       model: openAiAttempt.model,
+      runtime: openAiAttempt.runtime,
       estimatedCostUsd: openAiAttempt.usage.estimatedCostUsd,
       totalSpentUsd: openAiAttempt.totalSpentUsd,
     };
@@ -439,6 +459,7 @@ function buildOpenAiExecutionSummary(openAiAttempt: OpenAiPlanAttempt): {
     attempted: true,
     status: "error",
     model: openAiAttempt.model,
+    runtime: openAiAttempt.runtime,
     estimatedCostUsd: openAiAttempt.usage?.estimatedCostUsd ?? 0,
     ...(typeof openAiAttempt.totalSpentUsd === "number"
       ? { totalSpentUsd: openAiAttempt.totalSpentUsd }
@@ -456,10 +477,17 @@ function getOpenAiUsageFromError(error: unknown): {
   totalTokens: number;
   estimatedCostUsd: number;
 } | null {
-  const usage = (error as OpenAiPlannerFailureError | null)?.usage;
-  if (!usage) {
+  const usageCandidate = (error as { usage?: unknown } | null)?.usage;
+  if (!usageCandidate || typeof usageCandidate !== "object") {
     return null;
   }
+  const usage = usageCandidate as {
+    model?: unknown;
+    inputTokens?: unknown;
+    outputTokens?: unknown;
+    totalTokens?: unknown;
+    estimatedCostUsd?: unknown;
+  };
 
   if (
     typeof usage.model !== "string" ||
@@ -471,7 +499,13 @@ function getOpenAiUsageFromError(error: unknown): {
     return null;
   }
 
-  return usage;
+  return {
+    model: usage.model,
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    totalTokens: usage.totalTokens,
+    estimatedCostUsd: usage.estimatedCostUsd,
+  };
 }
 
 /**
@@ -488,6 +522,10 @@ async function attemptOpenAiPlanner(options: {
   message: string;
   boardState: BoardObjectSnapshot[];
   selectedObjectIds: string[];
+  viewportBounds: ViewportBounds | null;
+  boardId: string;
+  userId: string;
+  executor: BoardToolExecutor;
   trace: ReturnType<typeof createAiTraceRun>;
 }): Promise<OpenAiPlanAttempt> {
   const config = getOpenAiPlannerConfig();
@@ -495,6 +533,7 @@ async function attemptOpenAiPlanner(options: {
     return {
       status: "disabled",
       model: config.model,
+      runtime: config.runtime,
       reason: "OpenAI planner disabled.",
     };
   }
@@ -510,6 +549,7 @@ async function attemptOpenAiPlanner(options: {
     return {
       status: "budget-blocked",
       model: config.model,
+      runtime: config.runtime,
       assistantMessage: budgetReservation.error,
       totalSpentUsd: budgetReservation.totalSpentUsd,
     };
@@ -522,12 +562,105 @@ async function attemptOpenAiPlanner(options: {
   const coordinateHints = parseCoordinateHintsFromMessage(options.message);
   const openAiSpan = options.trace.startSpan("openai.call", {
     model: config.model,
+    runtime: config.runtime,
+    openAiTraceEnabled: config.agentsTracing,
+    openAiWorkflowName: config.agentsWorkflowName,
     messagePreview: options.message.slice(0, 240),
     hintedX: coordinateHints.hintedX,
     hintedY: coordinateHints.hintedY,
   });
 
   try {
+    if (config.runtime === "agents-sdk") {
+      const toolExecutionSpan = options.trace.startSpan("tool.execute", {
+        runtime: "agents-sdk",
+      });
+
+      const agentsRunResult = await runBoardCommandWithOpenAiAgents({
+        message: options.message,
+        boardId: options.boardId,
+        userId: options.userId,
+        boardState: options.boardState,
+        selectedObjectIds: options.selectedObjectIds,
+        viewportBounds: options.viewportBounds,
+        executor: options.executor,
+        trace: options.trace,
+      });
+      toolExecutionSpan.end({
+        runtime: "agents-sdk",
+        toolCalls: agentsRunResult.toolCalls,
+        operationsExecuted: agentsRunResult.operationsExecuted.length,
+      });
+
+      const syntheticPlan: TemplatePlan = {
+        templateId: "openai.agents.direct",
+        templateName: "OpenAI Agents Direct",
+        operations: agentsRunResult.operationsExecuted,
+      };
+      const planTraceFields = buildOpenAiPlanTraceFields(syntheticPlan);
+      const operationCountsByToolJson = buildOperationCountsByTool(syntheticPlan);
+
+      const actualUsd =
+        agentsRunResult.usage.estimatedCostUsd > 0
+          ? agentsRunResult.usage.estimatedCostUsd
+          : config.reserveUsdPerCall;
+      const finalized = await finalizeOpenAiBudgetReservation({
+        reservedUsd: budgetReservation.reservedUsd,
+        actualUsd,
+      });
+      reservationOpen = false;
+
+      openAiSpan.end({
+        planned: agentsRunResult.planned,
+        intent: agentsRunResult.intent,
+        inputTokens: agentsRunResult.usage.inputTokens,
+        outputTokens: agentsRunResult.usage.outputTokens,
+        totalTokens: agentsRunResult.usage.totalTokens,
+        estimatedCostUsd: agentsRunResult.usage.estimatedCostUsd,
+        totalSpentUsd: finalized.totalSpentUsd,
+        openAiRuntime: "agents-sdk",
+        openAiRunId: agentsRunResult.responseId ?? null,
+        operationCount: planTraceFields.operationCount,
+        operationCountsByToolJson,
+        operationsPreviewJson: planTraceFields.operationsPreviewJson,
+        firstOperationTool: planTraceFields.firstOperationTool,
+        firstOperationX: planTraceFields.firstOperationX,
+        firstOperationY: planTraceFields.firstOperationY,
+      });
+
+      if (!agentsRunResult.planned) {
+        return {
+          status: "not-planned",
+          model: config.model,
+          runtime: config.runtime,
+          intent: agentsRunResult.intent,
+          assistantMessage: agentsRunResult.assistantMessage,
+          totalSpentUsd: finalized.totalSpentUsd,
+          usage: agentsRunResult.usage,
+        };
+      }
+
+      return {
+        status: "planned",
+        model: config.model,
+        runtime: config.runtime,
+        intent: agentsRunResult.intent,
+        assistantMessage: agentsRunResult.assistantMessage,
+        plan: null,
+        executedDirectly: true,
+        directExecution: {
+          operationsExecuted: agentsRunResult.operationsExecuted,
+          results: agentsRunResult.results,
+          createdObjectIds: agentsRunResult.createdObjectIds,
+          deletedCount: agentsRunResult.deletedCount,
+          toolCalls: agentsRunResult.toolCalls,
+          responseId: agentsRunResult.responseId,
+        },
+        totalSpentUsd: finalized.totalSpentUsd,
+        usage: agentsRunResult.usage,
+      };
+    }
+
     const plannerResult = await planBoardCommandWithOpenAi({
       message: options.message,
       boardState: options.boardState,
@@ -556,6 +689,7 @@ async function attemptOpenAiPlanner(options: {
       totalTokens: plannerResult.usage.totalTokens,
       estimatedCostUsd: plannerResult.usage.estimatedCostUsd,
       totalSpentUsd: finalized.totalSpentUsd,
+      openAiRuntime: "chat-completions",
       operationCount: planTraceFields.operationCount,
       operationCountsByToolJson,
       operationsPreviewJson: planTraceFields.operationsPreviewJson,
@@ -568,6 +702,7 @@ async function attemptOpenAiPlanner(options: {
       return {
         status: "not-planned",
         model: config.model,
+        runtime: config.runtime,
         intent: plannerResult.intent,
         assistantMessage: plannerResult.assistantMessage,
         totalSpentUsd: finalized.totalSpentUsd,
@@ -578,9 +713,11 @@ async function attemptOpenAiPlanner(options: {
     return {
       status: "planned",
       model: config.model,
+      runtime: config.runtime,
       intent: plannerResult.intent,
       assistantMessage: plannerResult.assistantMessage,
       plan: plannerResult.plan,
+      executedDirectly: false,
       totalSpentUsd: finalized.totalSpentUsd,
       usage: plannerResult.usage,
     };
@@ -619,6 +756,7 @@ async function attemptOpenAiPlanner(options: {
     return {
       status: "error",
       model: config.model,
+      runtime: config.runtime,
       reason,
       ...(usage ? { usage } : {}),
       ...(typeof totalSpentUsd === "number" ? { totalSpentUsd } : {}),
@@ -997,25 +1135,30 @@ export async function POST(request: NextRequest) {
           const openAiAttempt = shouldAttemptOpenAi
             ? await attemptOpenAiPlanner({
                 message: parsedPayload.message,
+                boardId: parsedPayload.boardId,
+                userId: user.uid,
                 boardState: boardObjects,
                 selectedObjectIds,
+                viewportBounds: parsedPayload.viewportBounds ?? null,
+                executor,
                 trace: activeTrace,
               })
             : {
                 status: "disabled" as const,
                 model: openAiConfig.model,
+                runtime: openAiConfig.runtime,
                 reason:
                   plannerMode === "deterministic-only"
                     ? "Skipped because AI_PLANNER_MODE=deterministic-only."
                     : "Skipped for deterministic clear-board policy.",
               };
           const openAiExecution = buildOpenAiExecutionSummary(openAiAttempt);
-          if (openAiAttempt.status === "planned") {
+  if (openAiAttempt.status === "planned") {
             plannerResult = {
               planned: true,
               intent: openAiAttempt.intent,
               assistantMessage: openAiAttempt.assistantMessage,
-              plan: openAiAttempt.plan,
+              plan: openAiAttempt.plan ?? undefined,
             };
             llmUsed = true;
             mcpUsed = false;
@@ -1156,27 +1299,49 @@ export async function POST(request: NextRequest) {
 
           const clearBoardObjectIdsBeforeExecution =
             plannerResult.intent === "clear-board"
-              ? await listAllBoardObjectIds(parsedPayload.boardId)
+              ? boardObjects.map((objectItem) => objectItem.id)
               : null;
 
-          const executionPlan = plannerResult.plan;
-          if (!executionPlan) {
-            throw createHttpError(500, "Planner returned no execution plan.");
-          }
+          let executionResult: {
+            results: Awaited<ReturnType<BoardToolExecutor["executeToolCall"]>>[];
+            createdObjectIds: string[];
+          };
+          let executedOperationCount = 0;
 
-          const validation = validateTemplatePlan(executionPlan);
-          if (!validation.ok) {
-            throw createHttpError(validation.status, validation.error);
-          }
+          if (openAiAttempt.status === "planned" && openAiAttempt.executedDirectly) {
+            if (!openAiAttempt.directExecution) {
+              throw createHttpError(
+                500,
+                "OpenAI agents runtime did not provide execution results.",
+              );
+            }
+            executionResult = {
+              results: openAiAttempt.directExecution.results,
+              createdObjectIds: openAiAttempt.directExecution.createdObjectIds,
+            };
+            executedOperationCount =
+              openAiAttempt.directExecution.operationsExecuted.length;
+          } else {
+            const executionPlan = plannerResult.plan;
+            if (!executionPlan) {
+              throw createHttpError(500, "Planner returned no execution plan.");
+            }
 
-          const executionResult = await executePlanWithTracing({
-            executor,
-            trace: activeTrace,
-            operations: executionPlan.operations,
-          });
+            const validation = validateTemplatePlan(executionPlan);
+            if (!validation.ok) {
+              throw createHttpError(validation.status, validation.error);
+            }
+
+            executionResult = await executePlanWithTracing({
+              executor,
+              trace: activeTrace,
+              operations: executionPlan.operations,
+            });
+            executedOperationCount = executionPlan.operations.length;
+          }
 
           const commitSpan = activeTrace.startSpan("board.write.commit", {
-            operationCount: executionPlan.operations.length,
+            operationCount: executedOperationCount,
           });
           commitSpan.end({
             createdObjectCount: executionResult.createdObjectIds.length,
@@ -1209,12 +1374,18 @@ export async function POST(request: NextRequest) {
             });
           }
 
+          const executedToolCalls =
+            openAiAttempt.status === "planned" && openAiAttempt.executedDirectly
+              ? openAiAttempt.directExecution?.toolCalls ??
+                executionResult.results.length
+              : executionResult.results.length;
+
           const execution = {
             intent: plannerResult.intent,
             mode: llmUsed ? ("llm" as const) : ("deterministic" as const),
             mcpUsed,
             fallbackUsed,
-            toolCalls: executionResult.results.length,
+            toolCalls: executedToolCalls,
             objectsCreated: executionResult.createdObjectIds.length,
             openAi: openAiExecution,
           };
@@ -1237,7 +1408,7 @@ export async function POST(request: NextRequest) {
             traceId,
             fallbackUsed,
             mcpUsed,
-            toolCalls: executionResult.results.length,
+            toolCalls: executedToolCalls,
             objectsCreated: executionResult.createdObjectIds.length,
             intent: plannerResult.intent,
           });
@@ -1252,7 +1423,7 @@ export async function POST(request: NextRequest) {
 
           activeTrace.finishSuccess({
             intent: plannerResult.intent,
-            toolCalls: executionResult.results.length,
+            toolCalls: executedToolCalls,
             objectsCreated: executionResult.createdObjectIds.length,
             fallbackUsed,
             mcpUsed,

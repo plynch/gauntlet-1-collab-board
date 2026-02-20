@@ -4,6 +4,7 @@ export type AiPlannerMode =
   | "openai-strict"
   | "openai-with-fallback"
   | "deterministic-only";
+export type OpenAiRuntime = "agents-sdk" | "chat-completions";
 
 type OpenAiPlannerConfig = {
   enabled: boolean;
@@ -11,11 +12,15 @@ type OpenAiPlannerConfig = {
   baseUrl: string | null;
   model: string;
   plannerMode: AiPlannerMode;
+  runtime: OpenAiRuntime;
   maxOutputTokens: number;
   reserveUsdPerCall: number;
   inputCostPerMillionUsd: number;
   outputCostPerMillionUsd: number;
   maxContextObjects: number;
+  agentsMaxTurns: number;
+  agentsTracing: boolean;
+  agentsWorkflowName: string;
 };
 
 let openAiClient: OpenAI | null | undefined;
@@ -63,6 +68,35 @@ function parsePlannerModeEnv(value: string | undefined): AiPlannerMode {
 }
 
 /**
+ * Parses openai runtime env.
+ */
+function parseOpenAiRuntimeEnv(value: string | undefined): OpenAiRuntime {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "chat-completions") {
+    return "chat-completions";
+  }
+  return "agents-sdk";
+}
+
+/**
+ * Parses boolean env.
+ */
+function parseBooleanEnv(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true") {
+    return true;
+  }
+  if (normalized === "false") {
+    return false;
+  }
+  return fallback;
+}
+
+/**
  * Gets openai planner config.
  */
 export function getOpenAiPlannerConfig(): OpenAiPlannerConfig {
@@ -70,6 +104,7 @@ export function getOpenAiPlannerConfig(): OpenAiPlannerConfig {
   const baseUrl = process.env.OPENAI_BASE_URL?.trim() || null;
   const model = process.env.OPENAI_MODEL?.trim() || "gpt-4.1-nano";
   const plannerMode = parsePlannerModeEnv(process.env.AI_PLANNER_MODE);
+  const runtime = parseOpenAiRuntimeEnv(process.env.OPENAI_RUNTIME);
   const enabled =
     plannerMode !== "deterministic-only" &&
     process.env.AI_ENABLE_OPENAI !== "false" &&
@@ -81,6 +116,7 @@ export function getOpenAiPlannerConfig(): OpenAiPlannerConfig {
     baseUrl,
     model,
     plannerMode,
+    runtime,
     maxOutputTokens: parsePositiveIntegerEnv(
       process.env.OPENAI_MAX_OUTPUT_TOKENS,
       700,
@@ -101,6 +137,13 @@ export function getOpenAiPlannerConfig(): OpenAiPlannerConfig {
       process.env.OPENAI_MAX_CONTEXT_OBJECTS,
       120,
     ),
+    agentsMaxTurns: parsePositiveIntegerEnv(
+      process.env.OPENAI_AGENTS_MAX_TURNS,
+      8,
+    ),
+    agentsTracing: parseBooleanEnv(process.env.OPENAI_AGENTS_TRACING, true),
+    agentsWorkflowName:
+      process.env.OPENAI_AGENTS_WORKFLOW_NAME?.trim() || "collabboard-command",
   };
 }
 

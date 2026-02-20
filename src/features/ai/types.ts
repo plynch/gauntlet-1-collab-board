@@ -275,6 +275,7 @@ export type BoardCommandExecutionSummary = {
     attempted: boolean;
     status: "disabled" | "budget-blocked" | "planned" | "not-planned" | "error";
     model: string;
+    runtime?: "agents-sdk" | "chat-completions";
     estimatedCostUsd: number;
     totalSpentUsd?: number;
   };

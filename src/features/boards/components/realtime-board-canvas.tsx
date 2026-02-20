@@ -3459,6 +3459,46 @@ export default function RealtimeBoardCanvas({
         nextHeight = size;
       }
 
+      if (
+        snapToGridEnabledRef.current &&
+        isSnapEligibleObjectType(state.objectType)
+      ) {
+        const initialRight = state.initialGeometry.x + state.initialGeometry.width;
+        const initialBottom =
+          state.initialGeometry.y + state.initialGeometry.height;
+
+        if (state.objectType === "circle") {
+          const snappedSize = Math.max(minimumSize.width, snapToGrid(nextWidth));
+          nextWidth = snappedSize;
+          nextHeight = snappedSize;
+
+          if (state.corner === "nw") {
+            nextX = initialRight - snappedSize;
+            nextY = initialBottom - snappedSize;
+          } else if (state.corner === "ne") {
+            nextY = initialBottom - snappedSize;
+          } else if (state.corner === "sw") {
+            nextX = initialRight - snappedSize;
+          }
+        } else {
+          const snappedWidth = Math.max(minimumSize.width, snapToGrid(nextWidth));
+          const snappedHeight = Math.max(
+            minimumSize.height,
+            snapToGrid(nextHeight),
+          );
+
+          if (state.corner === "nw" || state.corner === "sw") {
+            nextX = initialRight - snappedWidth;
+          }
+          if (state.corner === "nw" || state.corner === "ne") {
+            nextY = initialBottom - snappedHeight;
+          }
+
+          nextWidth = snappedWidth;
+          nextHeight = snappedHeight;
+        }
+      }
+
       return {
         x: nextX,
         y: nextY,

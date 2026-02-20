@@ -22,6 +22,27 @@ type AiCommandResult = {
   provider: string;
 };
 
+test.beforeAll(async ({ request }) => {
+  const response = await request.get("/api/e2e/langfuse-ready");
+  expect(response.ok()).toBeTruthy();
+
+  const payload = (await response.json()) as {
+    ready?: unknown;
+    baseUrl?: unknown;
+  };
+
+  const ready = payload.ready === true;
+  if (!ready) {
+    const baseUrl =
+      typeof payload.baseUrl === "string" && payload.baseUrl.length > 0
+        ? payload.baseUrl
+        : "(unset)";
+    throw new Error(
+      `Langfuse is not configured server-side for e2e run (baseUrl=${baseUrl}).`,
+    );
+  }
+});
+
 type UserIdentity = {
   uid: string;
   email: string;

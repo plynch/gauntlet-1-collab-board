@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { planDeterministicCommand } from "@/features/ai/commands/deterministic-command-planner";
 import type { BoardObjectSnapshot } from "@/features/ai/types";
+import { getGridSectionBoundsFromGeometry } from "@/features/boards/components/realtime-canvas/container-membership-geometry";
 
 const BOARD_STATE: BoardObjectSnapshot[] = [
   {
@@ -138,6 +139,31 @@ describe("planDeterministicCommand", () => {
         expect(first.args.count).toBe(25);
         expect(first.args.color).toBe("#fca5a5");
         expect(first.args.textPrefix).toBe("Sticky");
+      }
+    }
+  });
+
+  it("plans create-sticky-batch for note phrasing and bottom viewport placement", () => {
+    const result = planDeterministicCommand({
+      message: "Create 10 red notes on the bottom of the board",
+      boardState: BOARD_STATE,
+      selectedObjectIds: [],
+      viewportBounds: {
+        left: 0,
+        top: 0,
+        width: 1200,
+        height: 900,
+      },
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("create-sticky-batch");
+      expect(result.plan.operations[0]?.tool).toBe("createStickyBatch");
+      if (result.plan.operations[0]?.tool === "createStickyBatch") {
+        expect(result.plan.operations[0].args.count).toBe(10);
+        expect(result.plan.operations[0].args.color).toBe("#fca5a5");
+        expect(result.plan.operations[0].args.originY).toBeGreaterThan(450);
       }
     }
   });
@@ -292,6 +318,81 @@ describe("planDeterministicCommand", () => {
         expect(result.plan.operations[0].args.columns).toBe(3);
       }
     }
+  });
+
+  it("plans add SWOT strength item commands", () => {
+    const swotContainer: BoardObjectSnapshot = {
+      id: "swot-1",
+      type: "gridContainer",
+      zIndex: 10,
+      x: 120,
+      y: 80,
+      width: 760,
+      height: 520,
+      rotationDeg: 0,
+      color: "#e2e8f0",
+      text: "",
+      gridRows: 2,
+      gridCols: 2,
+      gridGap: 2,
+      containerTitle: "SWOT Analysis",
+      gridSectionTitles: ["Strengths", "Weaknesses", "Opportunities", "Threats"],
+      updatedAt: null,
+    };
+
+    const result = planDeterministicCommand({
+      message: "add a strength - \"our team\"",
+      boardState: [swotContainer],
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("add-swot-item");
+      expect(result.plan.operations).toHaveLength(1);
+      expect(result.plan.operations[0]?.tool).toBe("createStickyNote");
+      if (result.plan.operations[0]?.tool === "createStickyNote") {
+        expect(result.plan.operations[0].args.text).toBe("our team");
+        expect(result.plan.operations[0].args.color).toBe("#86efac");
+
+        const sectionBounds = getGridSectionBoundsFromGeometry(
+          {
+            x: swotContainer.x,
+            y: swotContainer.y,
+            width: swotContainer.width,
+            height: swotContainer.height,
+          },
+          2,
+          2,
+          2,
+        )[0]!;
+
+        expect(result.plan.operations[0].args.x).toBeGreaterThanOrEqual(
+          sectionBounds.left,
+        );
+        expect(result.plan.operations[0].args.x).toBeLessThanOrEqual(
+          sectionBounds.right,
+        );
+        expect(result.plan.operations[0].args.y).toBeGreaterThanOrEqual(
+          sectionBounds.top,
+        );
+        expect(result.plan.operations[0].args.y).toBeLessThanOrEqual(
+          sectionBounds.bottom,
+        );
+      }
+    }
+  });
+
+  it("returns guidance when adding SWOT items without a SWOT container", () => {
+    const result = planDeterministicCommand({
+      message: "add a strength - \"our team\"",
+      boardState: BOARD_STATE,
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(false);
+    expect(result.intent).toBe("add-swot-item");
+    expect(result.assistantMessage).toContain("Create a SWOT analysis first");
   });
 
   it("plans create-retrospective-board command", () => {

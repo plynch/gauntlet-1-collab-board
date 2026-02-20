@@ -4,6 +4,10 @@ import type {
   BoardToolCall,
   TemplatePlan,
 } from "@/features/ai/types";
+import {
+  clampObjectTopLeftToSection,
+  getGridSectionBoundsFromGeometry,
+} from "@/features/boards/components/realtime-canvas/container-membership-geometry";
 
 type PlannerInput = {
   message: string;
@@ -39,6 +43,12 @@ type Size = {
   width: number;
   height: number;
 };
+
+type SwotSectionKey =
+  | "strengths"
+  | "weaknesses"
+  | "opportunities"
+  | "threats";
 
 const COLOR_KEYWORDS: Record<string, string> = {
   yellow: "#fde68a",
@@ -86,6 +96,38 @@ const JOURNEY_STAGE_SPACING_X = 230;
 const RETRO_COLUMN_SPACING_X = 320;
 const MAX_MOVE_OBJECTS = 500;
 const DEFAULT_FRAME_FIT_PADDING = 40;
+const STICKY_VIEWPORT_PADDING = 32;
+const SWOT_SECTION_KEYS: SwotSectionKey[] = [
+  "strengths",
+  "weaknesses",
+  "opportunities",
+  "threats",
+];
+const SWOT_SECTION_ALIASES: Record<SwotSectionKey, string[]> = {
+  strengths: ["strength", "strengths"],
+  weaknesses: ["weakness", "weaknesses"],
+  opportunities: ["opportunity", "opportunities"],
+  threats: ["threat", "threats"],
+};
+const SWOT_SECTION_DEFAULT_INDEX: Record<SwotSectionKey, number> = {
+  strengths: 0,
+  weaknesses: 1,
+  opportunities: 2,
+  threats: 3,
+};
+const SWOT_SECTION_STICKY_COLORS: Record<SwotSectionKey, string> = {
+  strengths: COLOR_KEYWORDS.green,
+  weaknesses: COLOR_KEYWORDS.red,
+  opportunities: COLOR_KEYWORDS.teal,
+  threats: COLOR_KEYWORDS.orange,
+};
+
+/**
+ * Escapes text for regex usage.
+ */
+function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 /**
  * Handles normalize message.
@@ -220,6 +262,16 @@ function findColor(message: string): string | null {
  * Parses coordinate point.
  */
 function parseCoordinatePoint(message: string): Point | null {
+  const xyMatch = message.match(
+    /\bx\s*=?\s*(-?\d+(?:\.\d+)?)\s*y\s*=?\s*(-?\d+(?:\.\d+)?)/i,
+  );
+  if (xyMatch) {
+    return {
+      x: Number(xyMatch[1]),
+      y: Number(xyMatch[2]),
+    };
+  }
+
   const atMatch = message.match(
     /\b(?:at|to)\s*(?:position\s*)?(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/i,
   );
@@ -476,7 +528,9 @@ function parseDirectionDelta(message: string): Point | null {
  */
 function parseSideTarget(message: string): "left" | "right" | "top" | "bottom" | null {
   const lower = normalizeMessage(message);
-  const sideMatch = lower.match(/\b(right|left|top|bottom)\s+(?:side|edge)\b/);
+  const sideMatch = lower.match(
+    /\b(right|left|top|bottom)\s+(?:side|edge)\b|\b(?:on|to)\s+the\s+(right|left|top|bottom)\b/,
+  );
   if (!sideMatch) {
     return null;
   }
@@ -485,7 +539,7 @@ function parseSideTarget(message: string): "left" | "right" | "top" | "bottom" |
     return null;
   }
 
-  const direction = sideMatch[1];
+  const direction = sideMatch[1] ?? sideMatch[2];
   if (
     direction !== "left" &&
     direction !== "right" &&
@@ -533,14 +587,14 @@ function parseStickyBatchCount(message: string): number | null {
   const lower = normalizeMessage(message);
   if (
     !/\b(add|create|make|generate)\b/.test(lower) ||
-    !/\bstick(?:y|ies)(?:\s+notes?)?\b/.test(lower) ||
+    !/\b(?:stick(?:y|ies)(?:\s+notes?)?|notes?)\b/.test(lower) ||
     /\bgrid\b/.test(lower)
   ) {
     return null;
   }
 
   const countMatch = message.match(
-    /\b(\d+)\s+(?:\w+\s+){0,2}stick(?:y|ies)(?:\s+notes?)?\b/i,
+    /\b(\d+)\s+(?:\w+\s+){0,3}(?:stick(?:y|ies)(?:\s+notes?)?|notes?)\b/i,
   );
   if (!countMatch) {
     return null;
@@ -552,6 +606,203 @@ function parseStickyBatchCount(message: string): number | null {
   }
 
   return count;
+}
+
+/**
+ * Gets viewport-anchored origin for sticky creation.
+ */
+function getViewportAnchoredStickyOrigin(options: {
+  message: string;
+  viewportBounds?: PlannerInput["viewportBounds"];
+  count: number;
+  columns: number;
+}): Point | null {
+  const side = parseSideTarget(options.message);
+  const viewport = options.viewportBounds;
+  if (!side || !viewport) {
+    return null;
+  }
+
+  const stickySize = DEFAULT_SIZES.sticky;
+  const safeCount = Math.max(1, Math.floor(options.count));
+  const safeColumns = Math.max(
+    1,
+    Math.min(Math.floor(options.columns), safeCount),
+  );
+  const rows = Math.max(1, Math.ceil(safeCount / safeColumns));
+  const clusterWidth = Math.max(
+    stickySize.width,
+    stickySize.width + (safeColumns - 1) * STICKY_GRID_SPACING_X,
+  );
+  const clusterHeight = Math.max(
+    stickySize.height,
+    stickySize.height + (rows - 1) * STICKY_GRID_SPACING_Y,
+  );
+
+  const minX = viewport.left + STICKY_VIEWPORT_PADDING;
+  const maxX =
+    viewport.left + viewport.width - clusterWidth - STICKY_VIEWPORT_PADDING;
+  const minY = viewport.top + STICKY_VIEWPORT_PADDING;
+  const maxY =
+    viewport.top + viewport.height - clusterHeight - STICKY_VIEWPORT_PADDING;
+  const fallbackX = viewport.left + (viewport.width - clusterWidth) / 2;
+  const fallbackY = viewport.top + (viewport.height - clusterHeight) / 2;
+
+  const clampOrFallback = (value: number, min: number, max: number): number => {
+    if (max < min) {
+      return min;
+    }
+    return Math.min(max, Math.max(min, value));
+  };
+
+  let x = fallbackX;
+  let y = fallbackY;
+  if (side === "left") {
+    x = minX;
+  } else if (side === "right") {
+    x = maxX;
+  } else if (side === "top") {
+    y = minY;
+  } else if (side === "bottom") {
+    y = maxY;
+  }
+
+  return {
+    x: clampOrFallback(x, minX, maxX),
+    y: clampOrFallback(y, minY, maxY),
+  };
+}
+
+/**
+ * Parses SWOT section target from message.
+ */
+function parseSwotSectionTarget(message: string): SwotSectionKey | null {
+  const lower = normalizeMessage(message);
+
+  for (const key of SWOT_SECTION_KEYS) {
+    const hasMatch = SWOT_SECTION_ALIASES[key].some((alias) =>
+      new RegExp(`\\b${escapeRegex(alias)}\\b`, "i").test(lower),
+    );
+    if (hasMatch) {
+      return key;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Parses SWOT item text from message.
+ */
+function parseSwotItemText(
+  message: string,
+  section: SwotSectionKey,
+): string | null {
+  const quotedMatch = message.match(/["“”']([^"“”']+)["“”']/);
+  if (quotedMatch) {
+    return quotedMatch[1].trim().slice(0, 1_000);
+  }
+
+  const aliases = SWOT_SECTION_ALIASES[section]
+    .map((alias) => escapeRegex(alias))
+    .join("|");
+  const trailingMatch = message.match(
+    new RegExp(`\\b(?:${aliases})\\b\\s*(?:-|:|=)?\\s*(.+)$`, "i"),
+  );
+  if (!trailingMatch) {
+    return null;
+  }
+
+  const value = trailingMatch[1]
+    .trim()
+    .replace(/^(?:note|item)\s*(?:-|:)?\s*/i, "")
+    .trim();
+  if (value.length === 0) {
+    return null;
+  }
+
+  return value.slice(0, 1_000);
+}
+
+/**
+ * Finds SWOT section placement bounds for targeted section.
+ */
+function findSwotSectionPlacement(options: {
+  boardState: BoardObjectSnapshot[];
+  section: SwotSectionKey;
+}):
+  | {
+      containerId: string;
+      sectionIndex: number;
+      sectionBounds: {
+        left: number;
+        right: number;
+        top: number;
+        bottom: number;
+      };
+    }
+  | null {
+  const containers = options.boardState
+    .filter((objectItem) => objectItem.type === "gridContainer")
+    .sort((left, right) => right.zIndex - left.zIndex);
+
+  for (const container of containers) {
+    const rows = Math.max(1, container.gridRows ?? 2);
+    const cols = Math.max(1, container.gridCols ?? 2);
+    const gap = Math.max(0, container.gridGap ?? 2);
+    const sectionBounds = getGridSectionBoundsFromGeometry(
+      {
+        x: container.x,
+        y: container.y,
+        width: container.width,
+        height: container.height,
+      },
+      rows,
+      cols,
+      gap,
+    );
+    const totalSections = sectionBounds.length;
+    if (totalSections === 0) {
+      continue;
+    }
+
+    const sectionTitles = Array.from(
+      { length: totalSections },
+      (_, index) => container.gridSectionTitles?.[index]?.trim() ?? "",
+    );
+    const aliasForTarget = SWOT_SECTION_ALIASES[options.section];
+    const explicitSectionIndex = sectionTitles.findIndex((title) => {
+      const lowerTitle = title.toLowerCase();
+      return aliasForTarget.some((alias) => lowerTitle.includes(alias));
+    });
+    if (explicitSectionIndex >= 0) {
+      return {
+        containerId: container.id,
+        sectionIndex: explicitSectionIndex,
+        sectionBounds: sectionBounds[explicitSectionIndex]!,
+      };
+    }
+
+    const isSwotContainer = (container.containerTitle ?? "")
+      .toLowerCase()
+      .includes("swot");
+    if (!isSwotContainer) {
+      continue;
+    }
+
+    const defaultSectionIndex = SWOT_SECTION_DEFAULT_INDEX[options.section];
+    if (defaultSectionIndex >= totalSections) {
+      continue;
+    }
+
+    return {
+      containerId: container.id,
+      sectionIndex: defaultSectionIndex,
+      sectionBounds: sectionBounds[defaultSectionIndex]!,
+    };
+  }
+
+  return null;
 }
 
 /**
@@ -1221,13 +1472,20 @@ function planCreateSticky(
   const lower = normalizeMessage(input.message);
   if (
     !/\b(add|create)\b/.test(lower) ||
-    !/\bsticky(?:\s+note)?s?\b/.test(lower)
+    !/\b(?:sticky(?:\s+note)?s?|notes?)\b/.test(lower)
   ) {
     return null;
   }
 
   const point =
-    parseCoordinatePoint(input.message) ?? getAutoSpawnPoint(input.boardState);
+    parseCoordinatePoint(input.message) ??
+    getViewportAnchoredStickyOrigin({
+      message: input.message,
+      viewportBounds: input.viewportBounds,
+      count: 1,
+      columns: 1,
+    }) ??
+    getAutoSpawnPoint(input.boardState);
   const color = findColor(input.message) ?? COLOR_KEYWORDS.yellow;
   const text = parseStickyText(input.message);
 
@@ -1272,14 +1530,21 @@ function planCreateStickyBatch(
     };
   }
 
+  const columns = Math.min(STICKY_BATCH_DEFAULT_COLUMNS, count);
   const point =
-    parseCoordinatePoint(input.message) ?? getAutoSpawnPoint(input.boardState);
+    parseCoordinatePoint(input.message) ??
+    getViewportAnchoredStickyOrigin({
+      message: input.message,
+      viewportBounds: input.viewportBounds,
+      count,
+      columns,
+    }) ??
+    getAutoSpawnPoint(input.boardState);
   const color = findColor(input.message) ?? COLOR_KEYWORDS.yellow;
   const hasExplicitText = /\b(?:that says|saying|with text|text)\b/i.test(
     input.message,
   );
   const textSeed = hasExplicitText ? parseStickyText(input.message) : "Sticky";
-  const columns = Math.min(STICKY_BATCH_DEFAULT_COLUMNS, count);
 
   return {
     planned: true,
@@ -1300,6 +1565,79 @@ function planCreateStickyBatch(
             gapX: STICKY_GRID_SPACING_X,
             gapY: STICKY_GRID_SPACING_Y,
             textPrefix: textSeed,
+          },
+        },
+      ],
+    }),
+  };
+}
+
+/**
+ * Handles plan add SWOT section item.
+ */
+function planAddSwotSectionItem(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
+  const lower = normalizeMessage(input.message);
+  if (!/\b(add|create)\b/.test(lower)) {
+    return null;
+  }
+
+  const targetSection = parseSwotSectionTarget(input.message);
+  if (!targetSection) {
+    return null;
+  }
+
+  const text = parseSwotItemText(input.message, targetSection);
+  if (!text) {
+    return {
+      planned: false,
+      intent: "add-swot-item",
+      assistantMessage:
+        "Add text for the SWOT item, for example: add a strength - \"our team\".",
+    };
+  }
+
+  const placement = findSwotSectionPlacement({
+    boardState: input.boardState,
+    section: targetSection,
+  });
+  if (!placement) {
+    return {
+      planned: false,
+      intent: "add-swot-item",
+      assistantMessage:
+        "Create a SWOT analysis first, then add strengths, weaknesses, opportunities, or threats.",
+    };
+  }
+
+  const stickySize = DEFAULT_SIZES.sticky;
+  const topLeft = clampObjectTopLeftToSection(
+    placement.sectionBounds,
+    stickySize,
+    {
+      x: placement.sectionBounds.left + 24,
+      y: placement.sectionBounds.top + 24,
+    },
+  );
+  const color = findColor(input.message) ?? SWOT_SECTION_STICKY_COLORS[targetSection];
+  const label = targetSection.slice(0, -1);
+
+  return {
+    planned: true,
+    intent: "add-swot-item",
+    assistantMessage: `Added ${label} sticky note.`,
+    plan: toPlan({
+      id: "command.add-swot-item",
+      name: "Add SWOT Item",
+      operations: [
+        {
+          tool: "createStickyNote",
+          args: {
+            text,
+            x: topLeft.x,
+            y: topLeft.y,
+            color,
           },
         },
       ],
@@ -1933,6 +2271,7 @@ export function planDeterministicCommand(
     planSummarizeSource,
     planExtractActionItems,
     planCreateStickyGrid,
+    planAddSwotSectionItem,
     planCreateJourneyMap,
     planCreateRetrospectiveBoard,
     planCreateStickyBatch,
@@ -1958,6 +2297,6 @@ export function planDeterministicCommand(
     planned: false,
     intent: "unsupported-command",
     assistantMessage:
-      "I could not map that command yet. Try creating stickies/shapes/frames, arranging or aligning or distributing selected objects, moving object groups, resizing selected or fitting a frame to contents, summarizing notes, extracting action items, deleting selected, clearing the board, changing selected color, or creating SWOT, retrospective, and journey-map templates.",
+      "I could not map that command yet. Try creating stickies/shapes/frames, adding SWOT items (strength/weakness/opportunity/threat), arranging or aligning or distributing selected objects, moving object groups, resizing selected or fitting a frame to contents, summarizing notes, extracting action items, deleting selected, clearing the board, changing selected color, or creating SWOT, retrospective, and journey-map templates.",
   };
 }

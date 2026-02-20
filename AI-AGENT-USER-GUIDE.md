@@ -35,6 +35,7 @@ In strict mode, the route does not silently hide OpenAI planner failures.
 - `Add a yellow sticky note that says User Research`
 - `Add a pink sticky note at position 520, 280 that says Follow-up`
 - `Create 25 red stickies`
+- `Create 10 red notes on the bottom of the board`
 - `Create a 2x3 grid of sticky notes for pros and cons`
 - `Create a blue rectangle at position 900, 120`
 - `Create an orange circle`
@@ -64,6 +65,10 @@ In strict mode, the route does not silently hide OpenAI planner failures.
 ### Complex templates
 
 - `Create a SWOT analysis template`
+- `Add a strength - "our team"`
+- `Add a weakness: slow onboarding`
+- `Add an opportunity "enterprise expansion"`
+- `Add a threat - new competitor`
 - `Build a user journey map with 5 stages`
 - `Set up a retrospective board with What Went Well, What Didn't, and Action Items columns`
 

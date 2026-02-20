@@ -215,4 +215,40 @@ describe("parseOpenAiPlannerOutput", () => {
       },
     ]);
   });
+
+  it("normalizes function-call shaped operations", () => {
+    const parsed = parseOpenAiPlannerOutput(
+      JSON.stringify({
+        intent: "create-sticky",
+        planned: true,
+        assistantMessage: "Created sticky note.",
+        toolCalls: [
+          {
+            function: {
+              name: "createStickyNote",
+              arguments: JSON.stringify({
+                text: "From function call",
+                x: 200,
+                y: 210,
+                color: "#fde68a",
+              }),
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(parsed.planned).toBe(true);
+    expect(parsed.operations).toEqual([
+      {
+        tool: "createStickyNote",
+        args: {
+          text: "From function call",
+          x: 200,
+          y: 210,
+          color: "#fde68a",
+        },
+      },
+    ]);
+  });
 });

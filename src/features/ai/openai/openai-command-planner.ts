@@ -62,6 +62,31 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 }
 
 /**
+ * Parses object-like value from unknown or json string.
+ */
+function parseObjectLikeValue(value: unknown): Record<string, unknown> | null {
+  const direct = asRecord(value);
+  if (direct) {
+    return direct;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
+    return null;
+  }
+
+  try {
+    return asRecord(JSON.parse(trimmed));
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Handles parse number value.
  */
 function parseNumberValue(value: unknown): number | null {
@@ -83,6 +108,11 @@ function parseNumberValue(value: unknown): number | null {
  * Handles normalize tool name.
  */
 function normalizeToolName(value: unknown): string | null {
+  const structured = asRecord(value);
+  if (structured && typeof structured.name === "string") {
+    return normalizeToolName(structured.name);
+  }
+
   if (typeof value !== "string") {
     return null;
   }
@@ -116,21 +146,52 @@ function normalizeToolName(value: unknown): string | null {
 }
 
 /**
+ * Gets operation tool candidate.
+ */
+function getOperationToolCandidate(operation: Record<string, unknown>): unknown {
+  const functionRecord = asRecord(operation.function);
+  const callRecord = asRecord(operation.call);
+  const actionRecord = asRecord(operation.action);
+
+  return (
+    operation.tool ??
+    operation.name ??
+    functionRecord?.name ??
+    callRecord?.tool ??
+    callRecord?.name ??
+    actionRecord?.tool ??
+    actionRecord?.name ??
+    operation.type
+  );
+}
+
+/**
  * Handles normalize operation args.
  */
 function normalizeOperationArgs(
   tool: string,
   operation: Record<string, unknown>,
 ): Record<string, unknown> {
+  const functionRecord = asRecord(operation.function);
+  const callRecord = asRecord(operation.call);
+  const actionRecord = asRecord(operation.action);
   const directArgs = asRecord(operation.args);
+  const directArguments = parseObjectLikeValue(operation.arguments);
   const parameterArgs = asRecord(operation.parameters);
   const payloadArgs = asRecord(operation.payload);
   const inputArgs = asRecord(operation.input);
+  const functionArgs = parseObjectLikeValue(functionRecord?.arguments);
+  const callArgs = parseObjectLikeValue(callRecord?.arguments);
+  const actionArgs = parseObjectLikeValue(actionRecord?.arguments);
   const args: Record<string, unknown> = {
     ...(directArgs ?? {}),
+    ...(directArguments ?? {}),
     ...(parameterArgs ?? {}),
     ...(payloadArgs ?? {}),
     ...(inputArgs ?? {}),
+    ...(functionArgs ?? {}),
+    ...(callArgs ?? {}),
+    ...(actionArgs ?? {}),
   };
 
   // Support flat operation objects with no nested args.
@@ -189,7 +250,7 @@ function normalizeOperationArgs(
       args.type = normalizedShapeType;
     }
 
-    const rawTool = String(operation.tool ?? "").toLowerCase();
+    const rawTool = String(getOperationToolCandidate(operation) ?? "").toLowerCase();
     if (rawTool.includes("line") && typeof args.type !== "string") {
       args.type = "line";
     }
@@ -330,15 +391,21 @@ function normalizeOpenAiPlannerOutput(raw: unknown): unknown {
 
   const rawOperations = Array.isArray(plannerOutput.operations)
     ? plannerOutput.operations
-    : [];
+    : Array.isArray(plannerOutput.toolCalls)
+      ? plannerOutput.toolCalls
+      : Array.isArray(plannerOutput.calls)
+        ? plannerOutput.calls
+        : plannerOutput.operation
+          ? [plannerOutput.operation]
+          : [];
 
   const operations = rawOperations.map((value) => {
-    const operation = asRecord(value);
+    const operation = parseObjectLikeValue(value);
     if (!operation) {
       return value;
     }
 
-    const normalizedTool = normalizeToolName(operation.tool);
+    const normalizedTool = normalizeToolName(getOperationToolCandidate(operation));
     if (!normalizedTool) {
       return value;
     }

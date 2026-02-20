@@ -31,6 +31,7 @@ type GridContainerProps = {
   minCellHeight?: number;
   className?: string;
   cellClassName?: string;
+  containerColor?: string;
   containerTitle?: string;
   showCellColorPickers?: boolean;
   cellColors?: string[];
@@ -126,6 +127,7 @@ export function GridContainer({
   minCellHeight = 120,
   className,
   cellClassName,
+  containerColor,
   containerTitle,
   showCellColorPickers = true,
   cellColors,
@@ -382,6 +384,9 @@ export function GridContainer({
         "flex h-full min-h-0 flex-col rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm",
         className,
       )}
+      style={{
+        backgroundColor: containerColor ?? "rgba(255,255,255,0.8)",
+      }}
     >
       <div className="mb-3">
         <div className="relative min-h-8">
@@ -579,7 +584,7 @@ export function GridContainer({
             >
               <div className="relative mb-2 min-h-12">
                 {showCellColorPickers ? (
-                  <div className="absolute right-0 top-0 grid grid-cols-5 gap-1 pl-2">
+                  <div className="absolute right-0 top-0 flex flex-nowrap gap-1 pl-2">
                     {GRID_SWATCHES.map((swatch) => {
                       const isSelected =
                         resolvedColors[cellIndex]?.toLowerCase() ===

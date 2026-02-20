@@ -815,7 +815,7 @@ function getRenderLayerRank(type: BoardObjectKind): number {
  * Returns whether object supports selection hud color updates.
  */
 function canUseSelectionHudColor(objectItem: BoardObject): boolean {
-  return objectItem.type !== "gridContainer";
+  return objectItem.type !== "line";
 }
 
 /**
@@ -1940,9 +1940,10 @@ function ColorSwatchPicker({
   return (
     <div
       style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(5, 18px)",
+        display: "flex",
+        flexWrap: "nowrap",
         gap: 6,
+        alignItems: "center",
       }}
       onPointerDown={(event) => event.stopPropagation()}
     >
@@ -7253,8 +7254,9 @@ export default function RealtimeBoardCanvas({
                           cols={gridCols}
                           gap={gridGap}
                           minCellHeight={0}
-                          className="h-full w-full rounded-[10px] border-2 border-slate-600/55 bg-transparent p-2 shadow-none"
+                          className="h-full w-full rounded-[10px] border-2 border-slate-600/55 p-2 shadow-none"
                           cellClassName="rounded-lg border-2 border-slate-700/65 p-2"
+                          containerColor={objectItem.color}
                           containerTitle={gridContainerTitle}
                           cellColors={Array.from(
                             { length: gridTotalCells },

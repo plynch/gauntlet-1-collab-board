@@ -7593,6 +7593,32 @@ export default function RealtimeBoardCanvas({
             : "height 220ms cubic-bezier(0.22, 1, 0.36, 1), min-height 220ms cubic-bezier(0.22, 1, 0.36, 1), max-height 220ms cubic-bezier(0.22, 1, 0.36, 1)",
         }}
       >
+        {!isAiFooterCollapsed ? (
+          <div
+            onPointerDown={handleAiFooterResizeStart}
+            style={{
+              height: 18,
+              borderBottom: "1px solid #e2e8f0",
+              cursor: "ns-resize",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "#f8fafc",
+              touchAction: "none",
+              flexShrink: 0,
+            }}
+          >
+            <span
+              style={{
+                width: 38,
+                height: 3,
+                borderRadius: 999,
+                background: "#cbd5e1",
+              }}
+            />
+          </div>
+        ) : null}
+
         <button
           type="button"
           onClick={() => {
@@ -7674,29 +7700,6 @@ export default function RealtimeBoardCanvas({
           </div>
         ) : (
           <>
-            <div
-              onPointerDown={handleAiFooterResizeStart}
-              style={{
-                height: 18,
-                borderBottom: "1px solid #e2e8f0",
-                cursor: "ns-resize",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                background: "#f8fafc",
-                touchAction: "none",
-              }}
-            >
-              <span
-                style={{
-                  width: 38,
-                  height: 3,
-                  borderRadius: 999,
-                  background: "#cbd5e1",
-                }}
-              />
-            </div>
-
             <div
               style={{
                 display: "grid",

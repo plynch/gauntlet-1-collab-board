@@ -88,4 +88,32 @@ describe("parseOpenAiPlannerOutput", () => {
     expect(parsed.planned).toBe(false);
     expect(parsed.operations).toEqual([]);
   });
+
+  it("accepts valid output wrapped in markdown code fences", () => {
+    const parsed = parseOpenAiPlannerOutput(
+      [
+        "```json",
+        JSON.stringify({
+          intent: "create-sticky",
+          planned: true,
+          assistantMessage: "Created sticky note.",
+          operations: [
+            {
+              tool: "createStickyNote",
+              args: {
+                text: "Hello",
+                x: 120,
+                y: 160,
+                color: "#fde68a",
+              },
+            },
+          ],
+        }),
+        "```",
+      ].join("\n"),
+    );
+
+    expect(parsed.planned).toBe(true);
+    expect(parsed.operations).toHaveLength(1);
+  });
 });

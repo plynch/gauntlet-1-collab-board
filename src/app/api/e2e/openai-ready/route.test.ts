@@ -9,6 +9,7 @@ import { GET } from "./route";
 const originalAiEnableOpenAi = process.env.AI_ENABLE_OPENAI;
 const originalOpenAiApiKey = process.env.OPENAI_API_KEY;
 const originalOpenAiModel = process.env.OPENAI_MODEL;
+const originalOpenAiReadyValidate = process.env.OPENAI_READY_VALIDATE;
 
 afterEach(() => {
   if (originalAiEnableOpenAi === undefined) {
@@ -28,11 +29,18 @@ afterEach(() => {
   } else {
     process.env.OPENAI_MODEL = originalOpenAiModel;
   }
+
+  if (originalOpenAiReadyValidate === undefined) {
+    delete process.env.OPENAI_READY_VALIDATE;
+  } else {
+    process.env.OPENAI_READY_VALIDATE = originalOpenAiReadyValidate;
+  }
 });
 
 describe("GET /api/e2e/openai-ready", () => {
   it("returns ready false when key is missing", async () => {
     process.env.AI_ENABLE_OPENAI = "true";
+    process.env.OPENAI_READY_VALIDATE = "false";
     delete process.env.OPENAI_API_KEY;
 
     const response = await GET();
@@ -50,6 +58,7 @@ describe("GET /api/e2e/openai-ready", () => {
 
   it("returns ready true when openai is enabled and configured", async () => {
     process.env.AI_ENABLE_OPENAI = "true";
+    process.env.OPENAI_READY_VALIDATE = "false";
     process.env.OPENAI_API_KEY = "test-openai-key";
     process.env.OPENAI_MODEL = "gpt-4.1-nano";
 

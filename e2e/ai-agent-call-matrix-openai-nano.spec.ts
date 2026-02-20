@@ -194,20 +194,42 @@ async function sendAiCommand(
   await page.getByRole("button", { name: "Send" }).click();
 
   const response = await responsePromise;
-  expect(response.ok()).toBeTruthy();
-
   const payload = (await response.json()) as {
+    error?: unknown;
     traceId?: unknown;
     provider?: unknown;
     mode?: unknown;
+    assistantMessage?: unknown;
+    execution?: unknown;
   };
+
+  if (!response.ok()) {
+    const errorMessage =
+      typeof payload.error === "string" && payload.error.length > 0
+        ? payload.error
+        : `HTTP ${response.status()} with non-OK AI response.`;
+    throw new Error(
+      `AI command failed for ${caseId} (${response.status()}): ${errorMessage}`,
+    );
+  }
+
   const traceId = typeof payload.traceId === "string" ? payload.traceId : "";
   const provider = typeof payload.provider === "string" ? payload.provider : "";
   const mode = typeof payload.mode === "string" ? payload.mode : "";
+  const assistantMessage =
+    typeof payload.assistantMessage === "string" ? payload.assistantMessage : "";
 
   expect(traceId.length).toBeGreaterThan(0);
-  expect(provider).toBe("openai");
-  expect(mode).toBe("llm");
+  if (provider !== "openai" || mode !== "llm") {
+    throw new Error(
+      [
+        `Expected OpenAI llm response for ${caseId}, got provider=${provider || "(missing)"} mode=${mode || "(missing)"}.`,
+        `assistantMessage=${assistantMessage || "(missing)"}`,
+        `execution=${JSON.stringify(payload.execution ?? null)}`,
+        `traceId=${traceId || "(missing)"}`,
+      ].join("\n"),
+    );
+  }
 
   traceIds.push(traceId);
   console.log(
@@ -230,7 +252,7 @@ test("case 01: openai creates sticky", async ({ page }) => {
   await sendAiCommand(
     page,
     "openai-case-01",
-    "Create one yellow sticky note at x 140 y 180 with text OpenAI smoke case one.",
+    "Place one yellow sticky note at x 140 y 180 saying OpenAI smoke case one.",
   );
 
   await expect(objects).toHaveCount(initialCount + 1);

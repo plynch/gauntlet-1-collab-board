@@ -182,6 +182,24 @@ function toBoardContextObject(objectItem: BoardObjectSnapshot) {
 }
 
 /**
+ * Extracts json candidate from text.
+ */
+function extractJsonCandidate(content: string): string {
+  const fencedMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fencedMatch?.[1]) {
+    return fencedMatch[1].trim();
+  }
+
+  const firstBraceIndex = content.indexOf("{");
+  const lastBraceIndex = content.lastIndexOf("}");
+  if (firstBraceIndex >= 0 && lastBraceIndex > firstBraceIndex) {
+    return content.slice(firstBraceIndex, lastBraceIndex + 1).trim();
+  }
+
+  return content.trim();
+}
+
+/**
  * Parses openai planner output.
  */
 export function parseOpenAiPlannerOutput(content: string): {
@@ -190,7 +208,7 @@ export function parseOpenAiPlannerOutput(content: string): {
   assistantMessage: string;
   operations: BoardToolCall[];
 } {
-  const parsedJson = JSON.parse(content) as unknown;
+  const parsedJson = JSON.parse(extractJsonCandidate(content)) as unknown;
   const parsed = openAiPlannerOutputSchema.parse(parsedJson);
   return {
     intent: parsed.intent,

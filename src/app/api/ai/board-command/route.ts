@@ -225,6 +225,54 @@ type OpenAiPlanAttempt =
     };
 
 /**
+ * Returns whether openai is required for stub commands is true.
+ */
+function isOpenAiRequiredForStubCommands(): boolean {
+  return process.env.AI_REQUIRE_OPENAI === "true";
+}
+
+/**
+ * Gets openai required error response.
+ */
+function getOpenAiRequiredErrorResponse(openAiAttempt: OpenAiPlanAttempt): {
+  status: number;
+  message: string;
+} {
+  if (openAiAttempt.status === "disabled") {
+    return {
+      status: 503,
+      message: `OpenAI-required mode is enabled, but OpenAI planner is disabled. ${openAiAttempt.reason}`,
+    };
+  }
+
+  if (openAiAttempt.status === "budget-blocked") {
+    return {
+      status: 429,
+      message: `OpenAI-required mode blocked by budget policy. ${openAiAttempt.assistantMessage}`,
+    };
+  }
+
+  if (openAiAttempt.status === "not-planned") {
+    return {
+      status: 422,
+      message: `OpenAI-required mode received planned=false for intent "${openAiAttempt.intent}". ${openAiAttempt.assistantMessage}`,
+    };
+  }
+
+  if (openAiAttempt.status === "error") {
+    return {
+      status: 502,
+      message: `OpenAI-required mode failed during planner call. ${openAiAttempt.reason}`,
+    };
+  }
+
+  return {
+    status: 500,
+    message: "OpenAI-required mode received an unsupported planner status.",
+  };
+}
+
+/**
  * Handles attempt openai planner.
  */
 async function attemptOpenAiPlanner(options: {
@@ -668,6 +716,7 @@ export async function POST(request: NextRequest) {
           let mcpUsed = true;
           let llmUsed = false;
           const selectedObjectIds = parsedPayload.selectedObjectIds ?? [];
+          const requireOpenAi = isOpenAiRequiredForStubCommands();
 
           const openAiAttempt = await attemptOpenAiPlanner({
             message: parsedPayload.message,
@@ -689,6 +738,11 @@ export async function POST(request: NextRequest) {
             openAiAttempt.status === "error"
           ) {
             fallbackUsed = true;
+          }
+
+          if (requireOpenAi && openAiAttempt.status !== "planned") {
+            const failure = getOpenAiRequiredErrorResponse(openAiAttempt);
+            throw createHttpError(failure.status, failure.message);
           }
 
           if (!plannerResult) {

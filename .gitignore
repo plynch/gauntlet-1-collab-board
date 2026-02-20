@@ -28,7 +28,7 @@ ui-debug.log
 *.p12
 *service-account*.json
 
-# Local agent planning artifacts
+# Agent artifacts
 .agents/
 
 # Playwright artifacts

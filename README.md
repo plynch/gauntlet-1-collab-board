@@ -229,6 +229,7 @@ OpenAI smoke suite behavior:
   - non-empty `traceId`
   - `provider=openai`
   - `mode=llm`
+  - `execution.openAi` metadata with planner status/model/cost
 
 ## In Progress Features
 

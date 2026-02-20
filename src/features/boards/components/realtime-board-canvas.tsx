@@ -131,6 +131,10 @@ type ChatMessage = {
   execution?: BoardCommandExecutionSummary;
 };
 
+type OpenAiExecutionStatus = NonNullable<
+  BoardCommandExecutionSummary["openAi"]
+>["status"];
+
 type AiQuickAction = {
   id: string;
   label: string;
@@ -537,6 +541,7 @@ function parseBoardCommandExecutionSummary(
     fallbackUsed?: unknown;
     toolCalls?: unknown;
     objectsCreated?: unknown;
+    openAi?: unknown;
   };
 
   if (
@@ -554,6 +559,45 @@ function parseBoardCommandExecutionSummary(
     return undefined;
   }
 
+  const openAiCandidate =
+    candidate.openAi && typeof candidate.openAi === "object"
+      ? (candidate.openAi as {
+          attempted?: unknown;
+          status?: unknown;
+          model?: unknown;
+          estimatedCostUsd?: unknown;
+          totalSpentUsd?: unknown;
+        })
+      : null;
+  const openAiStatus: OpenAiExecutionStatus | null =
+    openAiCandidate?.status === "disabled" ||
+    openAiCandidate?.status === "budget-blocked" ||
+    openAiCandidate?.status === "planned" ||
+    openAiCandidate?.status === "not-planned" ||
+    openAiCandidate?.status === "error"
+      ? openAiCandidate.status
+      : null;
+  const parsedOpenAi =
+    openAiCandidate &&
+    typeof openAiCandidate.attempted === "boolean" &&
+    openAiStatus !== null &&
+    typeof openAiCandidate.model === "string" &&
+    typeof openAiCandidate.estimatedCostUsd === "number" &&
+    Number.isFinite(openAiCandidate.estimatedCostUsd) &&
+    (openAiCandidate.totalSpentUsd === undefined ||
+      (typeof openAiCandidate.totalSpentUsd === "number" &&
+        Number.isFinite(openAiCandidate.totalSpentUsd)))
+      ? {
+          attempted: openAiCandidate.attempted,
+          status: openAiStatus,
+          model: openAiCandidate.model,
+          estimatedCostUsd: Math.max(0, openAiCandidate.estimatedCostUsd),
+          ...(typeof openAiCandidate.totalSpentUsd === "number"
+            ? { totalSpentUsd: Math.max(0, openAiCandidate.totalSpentUsd) }
+            : {}),
+        }
+      : undefined;
+
   return {
     intent: candidate.intent,
     mode: candidate.mode,
@@ -561,7 +605,23 @@ function parseBoardCommandExecutionSummary(
     fallbackUsed: candidate.fallbackUsed,
     toolCalls: Math.max(0, Math.floor(candidate.toolCalls)),
     objectsCreated: Math.max(0, Math.floor(candidate.objectsCreated)),
+    ...(parsedOpenAi ? { openAi: parsedOpenAi } : {}),
   };
+}
+
+/**
+ * Formats usd for compact AI metadata.
+ */
+function formatUsdCompact(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "$0.00";
+  }
+
+  if (value < 0.01) {
+    return `$${value.toFixed(4)}`;
+  }
+
+  return `$${value.toFixed(2)}`;
 }
 
 /**
@@ -8086,6 +8146,31 @@ export default function RealtimeBoardCanvas({
                                 </span>
                                 {message.execution.fallbackUsed ? (
                                   <span>fallback: yes</span>
+                                ) : null}
+                                {message.execution.openAi ? (
+                                  <>
+                                    <span>
+                                      openai: {message.execution.openAi.status}
+                                    </span>
+                                    <span>
+                                      model: {message.execution.openAi.model}
+                                    </span>
+                                    <span>
+                                      est:{" "}
+                                      {formatUsdCompact(
+                                        message.execution.openAi.estimatedCostUsd,
+                                      )}
+                                    </span>
+                                    {typeof message.execution.openAi.totalSpentUsd ===
+                                    "number" ? (
+                                      <span>
+                                        total:{" "}
+                                        {formatUsdCompact(
+                                          message.execution.openAi.totalSpentUsd,
+                                        )}
+                                      </span>
+                                    ) : null}
+                                  </>
                                 ) : null}
                               </>
                             ) : null}

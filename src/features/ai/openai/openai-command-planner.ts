@@ -578,6 +578,8 @@ const OPENAI_PLANNER_SYSTEM_PROMPT = [
   "Use only allowed tools with exact case-sensitive names from the provided tools list.",
   "Do not invent aliases (for example createSticky/addSticky/move/resize/delete).",
   "For line commands, always use tool=createShape with args.type='line'.",
+  "When selectedObjectIds is non-empty and the user says selected, use those IDs exactly for objectIds/objectId references.",
+  "For requests like create N [color] stickies, emit exactly N createStickyNote operations.",
   `If you cannot safely map a command, set planned=false with a helpful assistantMessage and operations=[].`,
   `When planned=true, keep operations to ${MAX_TOOL_CALLS} or fewer and do not invent unknown object ids.`,
   "Prefer deterministic direct edits over verbose multi-step plans.",

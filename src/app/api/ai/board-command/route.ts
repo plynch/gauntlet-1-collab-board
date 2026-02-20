@@ -188,15 +188,18 @@ function createsObject(toolCall: BoardToolCall): boolean {
 type OpenAiPlanAttempt =
   | {
       status: "disabled";
+      model: string;
       reason: string;
     }
   | {
       status: "budget-blocked";
+      model: string;
       assistantMessage: string;
       totalSpentUsd: number;
     }
   | {
       status: "planned";
+      model: string;
       intent: string;
       assistantMessage: string;
       plan: TemplatePlan;
@@ -211,6 +214,7 @@ type OpenAiPlanAttempt =
     }
   | {
       status: "not-planned";
+      model: string;
       intent: string;
       assistantMessage: string;
       totalSpentUsd: number;
@@ -224,6 +228,7 @@ type OpenAiPlanAttempt =
     }
   | {
       status: "error";
+      model: string;
       reason: string;
       totalSpentUsd?: number;
       usage?: {
@@ -234,6 +239,66 @@ type OpenAiPlanAttempt =
         estimatedCostUsd: number;
       };
     };
+
+/**
+ * Builds openai execution summary.
+ */
+function buildOpenAiExecutionSummary(openAiAttempt: OpenAiPlanAttempt): {
+  attempted: boolean;
+  status: "disabled" | "budget-blocked" | "planned" | "not-planned" | "error";
+  model: string;
+  estimatedCostUsd: number;
+  totalSpentUsd?: number;
+} {
+  if (openAiAttempt.status === "disabled") {
+    return {
+      attempted: false,
+      status: "disabled",
+      model: openAiAttempt.model,
+      estimatedCostUsd: 0,
+    };
+  }
+
+  if (openAiAttempt.status === "budget-blocked") {
+    return {
+      attempted: true,
+      status: "budget-blocked",
+      model: openAiAttempt.model,
+      estimatedCostUsd: 0,
+      totalSpentUsd: openAiAttempt.totalSpentUsd,
+    };
+  }
+
+  if (openAiAttempt.status === "planned") {
+    return {
+      attempted: true,
+      status: "planned",
+      model: openAiAttempt.model,
+      estimatedCostUsd: openAiAttempt.usage.estimatedCostUsd,
+      totalSpentUsd: openAiAttempt.totalSpentUsd,
+    };
+  }
+
+  if (openAiAttempt.status === "not-planned") {
+    return {
+      attempted: true,
+      status: "not-planned",
+      model: openAiAttempt.model,
+      estimatedCostUsd: openAiAttempt.usage.estimatedCostUsd,
+      totalSpentUsd: openAiAttempt.totalSpentUsd,
+    };
+  }
+
+  return {
+    attempted: true,
+    status: "error",
+    model: openAiAttempt.model,
+    estimatedCostUsd: openAiAttempt.usage?.estimatedCostUsd ?? 0,
+    ...(typeof openAiAttempt.totalSpentUsd === "number"
+      ? { totalSpentUsd: openAiAttempt.totalSpentUsd }
+      : {}),
+  };
+}
 
 /**
  * Gets openai usage from planner error.
@@ -324,6 +389,7 @@ async function attemptOpenAiPlanner(options: {
   if (!config.enabled) {
     return {
       status: "disabled",
+      model: config.model,
       reason: "OpenAI planner disabled.",
     };
   }
@@ -338,6 +404,7 @@ async function attemptOpenAiPlanner(options: {
     });
     return {
       status: "budget-blocked",
+      model: config.model,
       assistantMessage: budgetReservation.error,
       totalSpentUsd: budgetReservation.totalSpentUsd,
     };
@@ -381,6 +448,7 @@ async function attemptOpenAiPlanner(options: {
     if (!plannerResult.planned || !plannerResult.plan) {
       return {
         status: "not-planned",
+        model: config.model,
         intent: plannerResult.intent,
         assistantMessage: plannerResult.assistantMessage,
         totalSpentUsd: finalized.totalSpentUsd,
@@ -390,6 +458,7 @@ async function attemptOpenAiPlanner(options: {
 
     return {
       status: "planned",
+      model: config.model,
       intent: plannerResult.intent,
       assistantMessage: plannerResult.assistantMessage,
       plan: plannerResult.plan,
@@ -430,6 +499,7 @@ async function attemptOpenAiPlanner(options: {
     });
     return {
       status: "error",
+      model: config.model,
       reason,
       ...(usage ? { usage } : {}),
       ...(typeof totalSpentUsd === "number" ? { totalSpentUsd } : {}),
@@ -788,6 +858,7 @@ export async function POST(request: NextRequest) {
             selectedObjectIds,
             trace: activeTrace,
           });
+          const openAiExecution = buildOpenAiExecutionSummary(openAiAttempt);
           if (openAiAttempt.status === "planned") {
             plannerResult = {
               planned: true,
@@ -798,6 +869,7 @@ export async function POST(request: NextRequest) {
             llmUsed = true;
             mcpUsed = false;
           } else if (
+            openAiAttempt.status === "not-planned" ||
             openAiAttempt.status === "budget-blocked" ||
             openAiAttempt.status === "error"
           ) {
@@ -876,6 +948,7 @@ export async function POST(request: NextRequest) {
               fallbackUsed,
               toolCalls: 0,
               objectsCreated: 0,
+              openAi: openAiExecution,
             };
             const payload = llmUsed
               ? buildOpenAiBoardCommandResponse({
@@ -968,6 +1041,7 @@ export async function POST(request: NextRequest) {
             fallbackUsed,
             toolCalls: executionResult.results.length,
             objectsCreated: executionResult.createdObjectIds.length,
+            openAi: openAiExecution,
           };
           const payload = llmUsed
             ? buildOpenAiBoardCommandResponse({

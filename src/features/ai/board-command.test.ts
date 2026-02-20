@@ -164,6 +164,13 @@ describe("buildOpenAiBoardCommandResponse", () => {
         fallbackUsed: false,
         toolCalls: 3,
         objectsCreated: 2,
+        openAi: {
+          attempted: true,
+          status: "planned",
+          model: "gpt-4.1-nano",
+          estimatedCostUsd: 0.0004,
+          totalSpentUsd: 0.0021,
+        },
       },
     });
 
@@ -171,6 +178,8 @@ describe("buildOpenAiBoardCommandResponse", () => {
     expect(response.provider).toBe("openai");
     expect(response.mode).toBe("llm");
     expect(response.traceId).toBe("trace-openai-1");
+    expect(response.execution?.openAi?.status).toBe("planned");
+    expect(response.execution?.openAi?.model).toBe("gpt-4.1-nano");
   });
 });
 

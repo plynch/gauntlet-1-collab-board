@@ -169,7 +169,10 @@ Tool execution tracing is emitted via a LangChain callback bridge:
 - chain run maps to `tool.execute`
 - each tool call maps to `tool.execute.call`
 
-The assistant response bubble also shows `traceId` for each successful command so you can find the exact run in Langfuse quickly.
+The assistant response bubble also shows:
+- `traceId` for each successful command
+- execution metadata (intent/tool counts/fallback)
+- OpenAI planner metadata when used (`status`, `model`, estimated and total spend)
 
 Required env vars:
 

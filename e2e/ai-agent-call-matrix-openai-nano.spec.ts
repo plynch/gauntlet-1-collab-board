@@ -15,6 +15,9 @@ type AiCommandResult = {
   traceId: string;
   provider: string;
   mode: string;
+  openAiStatus: string;
+  openAiModel: string;
+  openAiEstimatedCostUsd: number;
 };
 
 test.skip(
@@ -200,7 +203,13 @@ async function sendAiCommand(
     provider?: unknown;
     mode?: unknown;
     assistantMessage?: unknown;
-    execution?: unknown;
+    execution?: {
+      openAi?: {
+        status?: unknown;
+        model?: unknown;
+        estimatedCostUsd?: unknown;
+      };
+    };
   };
 
   if (!response.ok()) {
@@ -218,6 +227,19 @@ async function sendAiCommand(
   const mode = typeof payload.mode === "string" ? payload.mode : "";
   const assistantMessage =
     typeof payload.assistantMessage === "string" ? payload.assistantMessage : "";
+  const openAiStatus =
+    typeof payload.execution?.openAi?.status === "string"
+      ? payload.execution.openAi.status
+      : "";
+  const openAiModel =
+    typeof payload.execution?.openAi?.model === "string"
+      ? payload.execution.openAi.model
+      : "";
+  const openAiEstimatedCostUsd =
+    typeof payload.execution?.openAi?.estimatedCostUsd === "number" &&
+    Number.isFinite(payload.execution.openAi.estimatedCostUsd)
+      ? payload.execution.openAi.estimatedCostUsd
+      : -1;
 
   expect(traceId.length).toBeGreaterThan(0);
   if (provider !== "openai" || mode !== "llm") {
@@ -230,13 +252,23 @@ async function sendAiCommand(
       ].join("\n"),
     );
   }
+  expect(openAiStatus).toBe("planned");
+  expect(openAiModel).toBe("gpt-4.1-nano");
+  expect(openAiEstimatedCostUsd).toBeGreaterThanOrEqual(0);
 
   traceIds.push(traceId);
   console.log(
     `[langfuse-trace] case=${caseId} traceId=${traceId} dashboard=${LANGFUSE_DASHBOARD_URL}`,
   );
 
-  return { traceId, provider, mode };
+  return {
+    traceId,
+    provider,
+    mode,
+    openAiStatus,
+    openAiModel,
+    openAiEstimatedCostUsd,
+  };
 }
 
 test("case 01: openai creates sticky", async ({ page }) => {

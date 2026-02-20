@@ -225,6 +225,13 @@ export type BoardCommandExecutionSummary = {
   fallbackUsed: boolean;
   toolCalls: number;
   objectsCreated: number;
+  openAi?: {
+    attempted: boolean;
+    status: "disabled" | "budget-blocked" | "planned" | "not-planned" | "error";
+    model: string;
+    estimatedCostUsd: number;
+    totalSpentUsd?: number;
+  };
 };
 
 export type BoardCommandResponse = {

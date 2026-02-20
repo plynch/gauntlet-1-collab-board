@@ -110,6 +110,7 @@ Langfuse spans:
 OpenAI tracing:
 
 - enabled by `OPENAI_AGENTS_TRACING` (default `true`)
+- optional tracing API key override: `OPENAI_AGENTS_TRACING_API_KEY`
 - workflow name from `OPENAI_AGENTS_WORKFLOW_NAME`
 - trace metadata includes `langfuseTraceId`, `boardId`, `userId`, planner mode, runtime backend
 - Langfuse `openai.call` span includes runtime and OpenAI response ID when available

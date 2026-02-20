@@ -86,11 +86,13 @@ describe("GET /api/e2e/openai-ready", () => {
       model?: unknown;
       reason?: unknown;
       runtime?: unknown;
+      hasAgentsTracingApiKey?: unknown;
     };
     expect(payload.ready).toBe(true);
     expect(payload.model).toBe("gpt-4.1-nano");
     expect(payload.runtime).toBe("agents-sdk");
     expect(payload.reason).toBeNull();
+    expect(payload.hasAgentsTracingApiKey).toBe(true);
   });
 
   it("returns deterministic-only reason when planner mode disables openai", async () => {

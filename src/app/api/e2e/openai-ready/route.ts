@@ -82,6 +82,7 @@ export async function GET() {
     ready,
     configured: config.enabled,
     validated,
+    hasAgentsTracingApiKey: Boolean(config.agentsTracingApiKey),
     validationMode: shouldValidate ? "live" : "config-only",
     model: config.model,
     plannerMode: config.plannerMode,

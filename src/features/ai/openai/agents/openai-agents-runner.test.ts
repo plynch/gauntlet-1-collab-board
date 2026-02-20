@@ -45,12 +45,15 @@ const originalAiEnableOpenAi = process.env.AI_ENABLE_OPENAI;
 const originalAiPlannerMode = process.env.AI_PLANNER_MODE;
 const originalOpenAiApiKey = process.env.OPENAI_API_KEY;
 const originalOpenAiRuntime = process.env.OPENAI_RUNTIME;
+const originalOpenAiAgentsTracingApiKey =
+  process.env.OPENAI_AGENTS_TRACING_API_KEY;
 
 beforeEach(() => {
   process.env.AI_ENABLE_OPENAI = "true";
   process.env.AI_PLANNER_MODE = "openai-strict";
   process.env.OPENAI_API_KEY = "test-openai-key";
   process.env.OPENAI_RUNTIME = "agents-sdk";
+  process.env.OPENAI_AGENTS_TRACING_API_KEY = "test-openai-tracing-key";
   runMock.mockReset();
   runnerCtorMock.mockClear();
   createBoardAgentToolsMock.mockReset();
@@ -81,6 +84,12 @@ afterEach(() => {
     delete process.env.OPENAI_RUNTIME;
   } else {
     process.env.OPENAI_RUNTIME = originalOpenAiRuntime;
+  }
+  if (originalOpenAiAgentsTracingApiKey === undefined) {
+    delete process.env.OPENAI_AGENTS_TRACING_API_KEY;
+  } else {
+    process.env.OPENAI_AGENTS_TRACING_API_KEY =
+      originalOpenAiAgentsTracingApiKey;
   }
 });
 
@@ -142,6 +151,31 @@ describe("runBoardCommandWithOpenAiAgents", () => {
     expect(result.responseId).toBe("resp_123");
     expect(result.usage.totalTokens).toBe(168);
     expect(setDefaultOpenAIClientMock).toHaveBeenCalledTimes(1);
+    expect(runnerCtorMock).toHaveBeenCalledTimes(1);
+    expect(runnerCtorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tracingDisabled: false,
+        workflowName: "collabboard-command",
+        traceId: "lf-trace-1",
+        traceMetadata: {
+          langfuseTraceId: "lf-trace-1",
+          boardId: "board-1",
+          userId: "user-1",
+          plannerMode: "openai-strict",
+          runtimeBackend: "agents-sdk",
+        },
+      }),
+    );
+    expect(runMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.stringContaining("Create a sticky"),
+      expect.objectContaining({
+        maxTurns: 8,
+        tracing: {
+          apiKey: "test-openai-tracing-key",
+        },
+      }),
+    );
   });
 
   it("returns not-planned when final output is planned=false", async () => {

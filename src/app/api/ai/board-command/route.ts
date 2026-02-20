@@ -38,7 +38,10 @@ import { getOpenAiPlannerConfig } from "@/features/ai/openai/openai-client";
 import {
   planBoardCommandWithOpenAi,
 } from "@/features/ai/openai/openai-command-planner";
-import { runBoardCommandWithOpenAiAgents } from "@/features/ai/openai/agents/openai-agents-runner";
+import {
+  flushOpenAiTraces,
+  runBoardCommandWithOpenAiAgents,
+} from "@/features/ai/openai/agents/openai-agents-runner";
 import { getOpenAiRequiredErrorResponse } from "@/features/ai/openai/openai-required-response";
 import { BoardToolExecutor } from "@/features/ai/tools/board-tools";
 import type {
@@ -1412,6 +1415,17 @@ export async function POST(request: NextRequest) {
     if (boardLockId) {
       await releaseBoardCommandLock(boardLockId);
     }
-    await flushLangfuseClient();
+
+    try {
+      await flushLangfuseClient();
+    } catch (error) {
+      console.warn("Failed to flush langfuse traces.", error);
+    }
+
+    try {
+      await flushOpenAiTraces();
+    } catch (error) {
+      console.warn("Failed to flush openai traces.", error);
+    }
   }
 }

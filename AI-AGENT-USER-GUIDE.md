@@ -102,6 +102,7 @@ Required env vars:
 - `LANGFUSE_PUBLIC_KEY`
 - `LANGFUSE_SECRET_KEY`
 - optional: `LANGFUSE_BASE_URL`
+- optional: `OPENAI_AGENTS_TRACING_API_KEY` (defaults to `OPENAI_API_KEY`)
 
 Project dashboard:
 

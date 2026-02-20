@@ -20,6 +20,7 @@ type OpenAiPlannerConfig = {
   maxContextObjects: number;
   agentsMaxTurns: number;
   agentsTracing: boolean;
+  agentsTracingApiKey: string | null;
   agentsWorkflowName: string;
 };
 
@@ -87,10 +88,15 @@ function parseBooleanEnv(value: string | undefined, fallback: boolean): boolean 
   }
 
   const normalized = value.trim().toLowerCase();
-  if (normalized === "true") {
+  if (normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on") {
     return true;
   }
-  if (normalized === "false") {
+  if (
+    normalized === "false" ||
+    normalized === "0" ||
+    normalized === "no" ||
+    normalized === "off"
+  ) {
     return false;
   }
   return fallback;
@@ -103,6 +109,11 @@ export function getOpenAiPlannerConfig(): OpenAiPlannerConfig {
   const apiKey = process.env.OPENAI_API_KEY?.trim() || null;
   const baseUrl = process.env.OPENAI_BASE_URL?.trim() || null;
   const model = process.env.OPENAI_MODEL?.trim() || "gpt-4.1-nano";
+  const agentsTracingApiKey =
+    process.env.OPENAI_AGENTS_TRACING_API_KEY?.trim() ||
+    process.env.OPENAI_TRACING_API_KEY?.trim() ||
+    apiKey ||
+    null;
   const plannerMode = parsePlannerModeEnv(process.env.AI_PLANNER_MODE);
   const runtime = parseOpenAiRuntimeEnv(process.env.OPENAI_RUNTIME);
   const enabled =
@@ -142,6 +153,7 @@ export function getOpenAiPlannerConfig(): OpenAiPlannerConfig {
       8,
     ),
     agentsTracing: parseBooleanEnv(process.env.OPENAI_AGENTS_TRACING, true),
+    agentsTracingApiKey,
     agentsWorkflowName:
       process.env.OPENAI_AGENTS_WORKFLOW_NAME?.trim() || "collabboard-command",
   };

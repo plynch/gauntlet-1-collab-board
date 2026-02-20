@@ -35,6 +35,7 @@ Langfuse project:
 - `OPENAI_MODEL=gpt-4.1-nano`
 - optional:
   - `OPENAI_AGENTS_MAX_TURNS=8`
+  - `OPENAI_AGENTS_TRACING_API_KEY` (defaults to `OPENAI_API_KEY`)
   - `OPENAI_AGENTS_TRACING=true`
   - `OPENAI_AGENTS_WORKFLOW_NAME=collabboard-command`
 

@@ -4,6 +4,7 @@ import {
   extractAllTextOutput,
   setDefaultOpenAIClient,
 } from "@openai/agents";
+import { getGlobalTraceProvider } from "@openai/agents-core";
 import { z } from "zod";
 
 import { BOARD_AI_TOOLS } from "@/features/ai/board-tool-schema";
@@ -192,6 +193,7 @@ export async function runBoardCommandWithOpenAiAgents(
     tracingDisabled: !config.agentsTracing,
     traceIncludeSensitiveData: true,
     workflowName: config.agentsWorkflowName,
+    traceId: input.trace.traceId,
     traceMetadata: {
       langfuseTraceId: input.trace.traceId,
       boardId: input.boardId,
@@ -203,6 +205,13 @@ export async function runBoardCommandWithOpenAiAgents(
 
   const runResult = await runner.run(agent, JSON.stringify(payload), {
     maxTurns: config.agentsMaxTurns,
+    ...(config.agentsTracingApiKey
+      ? {
+          tracing: {
+            apiKey: config.agentsTracingApiKey,
+          },
+        }
+      : {}),
   });
   const usage = toOpenAiUsage({
     model: config.model,
@@ -248,4 +257,11 @@ export async function runBoardCommandWithOpenAiAgents(
     usage,
     responseId: runResult.lastResponseId,
   };
+}
+
+/**
+ * Flushes queued OpenAI traces.
+ */
+export async function flushOpenAiTraces(): Promise<void> {
+  await getGlobalTraceProvider().forceFlush();
 }

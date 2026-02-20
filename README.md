@@ -191,6 +191,7 @@ Env notes:
   - `OPENAI_API_KEY=...`
   - optional `OPENAI_MODEL=gpt-4.1-nano`
   - optional `OPENAI_AGENTS_MAX_TURNS=8`
+  - optional `OPENAI_AGENTS_TRACING_API_KEY` (defaults to `OPENAI_API_KEY`)
   - optional `OPENAI_AGENTS_TRACING=true`
   - optional `OPENAI_AGENTS_WORKFLOW_NAME=collabboard-command`
   - optional `OPENAI_RESERVE_USD_PER_CALL=0.003`

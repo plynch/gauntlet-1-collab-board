@@ -19,7 +19,7 @@ export default defineConfig({
     ? {
         command: `npm run build && ENABLE_E2E_LAB=1 npm run start -- --port ${port} --hostname 127.0.0.1`,
         url: baseURL,
-        reuseExistingServer: true,
+        reuseExistingServer: false,
         timeout: 120_000,
       }
     : undefined,

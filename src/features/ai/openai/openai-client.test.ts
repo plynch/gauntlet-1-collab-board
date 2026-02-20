@@ -9,6 +9,9 @@ const originalOpenAiApiKey = process.env.OPENAI_API_KEY;
 const originalOpenAiModel = process.env.OPENAI_MODEL;
 const originalOpenAiAgentsMaxTurns = process.env.OPENAI_AGENTS_MAX_TURNS;
 const originalOpenAiAgentsTracing = process.env.OPENAI_AGENTS_TRACING;
+const originalOpenAiAgentsTracingApiKey =
+  process.env.OPENAI_AGENTS_TRACING_API_KEY;
+const originalOpenAiTracingApiKey = process.env.OPENAI_TRACING_API_KEY;
 const originalOpenAiAgentsWorkflowName =
   process.env.OPENAI_AGENTS_WORKFLOW_NAME;
 
@@ -55,6 +58,19 @@ afterEach(() => {
     delete process.env.OPENAI_AGENTS_TRACING;
   } else {
     process.env.OPENAI_AGENTS_TRACING = originalOpenAiAgentsTracing;
+  }
+
+  if (originalOpenAiAgentsTracingApiKey === undefined) {
+    delete process.env.OPENAI_AGENTS_TRACING_API_KEY;
+  } else {
+    process.env.OPENAI_AGENTS_TRACING_API_KEY =
+      originalOpenAiAgentsTracingApiKey;
+  }
+
+  if (originalOpenAiTracingApiKey === undefined) {
+    delete process.env.OPENAI_TRACING_API_KEY;
+  } else {
+    process.env.OPENAI_TRACING_API_KEY = originalOpenAiTracingApiKey;
   }
 
   if (originalOpenAiAgentsWorkflowName === undefined) {
@@ -115,16 +131,46 @@ describe("getOpenAiPlannerConfig", () => {
     expect(config.runtime).toBe("chat-completions");
   });
 
+  it("parses boolean tracing env values flexibly", () => {
+    process.env.OPENAI_API_KEY = "test-openai-key";
+    process.env.AI_ENABLE_OPENAI = "true";
+    process.env.OPENAI_AGENTS_TRACING = "off";
+    process.env.AI_PLANNER_MODE = "openai-strict";
+    expect(getOpenAiPlannerConfig().agentsTracing).toBe(false);
+
+    process.env.OPENAI_AGENTS_TRACING = "1";
+    expect(getOpenAiPlannerConfig().agentsTracing).toBe(true);
+  });
+
   it("parses agents runtime tuning envs", () => {
     process.env.OPENAI_API_KEY = "test-openai-key";
     process.env.AI_ENABLE_OPENAI = "true";
     process.env.OPENAI_AGENTS_MAX_TURNS = "12";
     process.env.OPENAI_AGENTS_TRACING = "false";
     process.env.OPENAI_AGENTS_WORKFLOW_NAME = "custom-workflow";
+    process.env.OPENAI_AGENTS_TRACING_API_KEY = "test-tracing-key";
 
     const config = getOpenAiPlannerConfig();
     expect(config.agentsMaxTurns).toBe(12);
     expect(config.agentsTracing).toBe(false);
     expect(config.agentsWorkflowName).toBe("custom-workflow");
+    expect(config.agentsTracingApiKey).toBe("test-tracing-key");
+  });
+
+  it("falls back to legacy OPENAI_TRACING_API_KEY for tracing override", () => {
+    process.env.OPENAI_API_KEY = "test-openai-key";
+    process.env.AI_ENABLE_OPENAI = "true";
+    process.env.OPENAI_TRACING_API_KEY = "legacy-tracing-key";
+
+    const config = getOpenAiPlannerConfig();
+    expect(config.agentsTracingApiKey).toBe("legacy-tracing-key");
+  });
+
+  it("falls back to OPENAI_API_KEY for tracing override", () => {
+    process.env.OPENAI_API_KEY = "test-openai-key";
+    process.env.AI_ENABLE_OPENAI = "true";
+
+    const config = getOpenAiPlannerConfig();
+    expect(config.agentsTracingApiKey).toBe("test-openai-key");
   });
 });

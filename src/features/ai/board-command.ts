@@ -7,7 +7,6 @@ import type {
 
 export const MAX_BOARD_COMMAND_CHARS = 500;
 export const MAX_BOARD_COMMAND_SELECTION_IDS = 100;
-export const AI_COMMAND_REQUEST_TIMEOUT_MS = 8_000;
 export const MCP_TEMPLATE_TIMEOUT_MS = 1_200;
 
 export type BoardCommandIntent = "swot-template" | "stub";
@@ -260,7 +259,7 @@ export function getBoardCommandErrorMessage(options: {
   timedOut?: boolean;
 }): string {
   if (options.timedOut) {
-    return "AI assistant request timed out. Please try again.";
+    return "AI request took longer than expected. It may still finish; check the board before retrying.";
   }
 
   if (options.status === 401) {
@@ -273,6 +272,10 @@ export function getBoardCommandErrorMessage(options: {
 
   if (options.status === 404) {
     return "This board could not be found. Refresh and try again.";
+  }
+
+  if (options.status === 504) {
+    return "AI request took longer than expected. It may still finish; check the board before retrying.";
   }
 
   if (options.status !== null && options.status >= 500) {

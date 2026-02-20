@@ -187,7 +187,10 @@ describe("getBoardCommandErrorMessage", () => {
   it("maps timeout and HTTP status codes to user-facing fallback text", () => {
     expect(
       getBoardCommandErrorMessage({ status: null, timedOut: true }),
-    ).toContain("timed out");
+    ).toContain("longer than expected");
+    expect(getBoardCommandErrorMessage({ status: 504 })).toContain(
+      "longer than expected",
+    );
     expect(getBoardCommandErrorMessage({ status: 401 })).toContain(
       "session expired",
     );

@@ -34,10 +34,7 @@ import type {
   BoardCommandExecutionSummary,
   BoardCommandResponse,
 } from "@/features/ai/types";
-import {
-  AI_COMMAND_REQUEST_TIMEOUT_MS,
-  getBoardCommandErrorMessage,
-} from "@/features/ai/board-command";
+import { getBoardCommandErrorMessage } from "@/features/ai/board-command";
 import {
   getPathLength,
   getPathMidPoint,
@@ -134,13 +131,6 @@ type ChatMessage = {
 type OpenAiExecutionStatus = NonNullable<
   BoardCommandExecutionSummary["openAi"]
 >["status"];
-
-type AiQuickAction = {
-  id: string;
-  label: string;
-  prompt: string;
-  requiresSelection?: boolean;
-};
 
 type AiFooterResizeState = {
   startClientY: number;
@@ -297,46 +287,6 @@ const AI_FOOTER_MAX_HEIGHT = 460;
 const AI_FOOTER_COLLAPSED_HEIGHT = 34;
 const AI_FOOTER_HEIGHT_STORAGE_KEY = "collabboard-ai-footer-height-v1";
 const STICKY_TEXT_HOLD_DRAG_DELAY_MS = 120;
-const AI_QUICK_ACTIONS: AiQuickAction[] = [
-  {
-    id: "quick-stickies",
-    label: "Brainstorm 10",
-    prompt: "Create 10 yellow stickies for brainstorming ideas.",
-  },
-  {
-    id: "quick-arrange-grid",
-    label: "Arrange Grid",
-    prompt: "Arrange selected objects in a grid with 3 columns.",
-    requiresSelection: true,
-  },
-  {
-    id: "quick-align-top",
-    label: "Align Top",
-    prompt: "Align selected objects top.",
-    requiresSelection: true,
-  },
-  {
-    id: "quick-distribute-h",
-    label: "Distribute H",
-    prompt: "Distribute selected objects horizontally.",
-    requiresSelection: true,
-  },
-  {
-    id: "quick-summarize",
-    label: "Summarize",
-    prompt: "Summarize selected notes.",
-  },
-  {
-    id: "quick-actions",
-    label: "Action Items",
-    prompt: "Create action items from selected notes.",
-  },
-  {
-    id: "quick-swot",
-    label: "SWOT",
-    prompt: "Create a SWOT analysis template.",
-  },
-];
 const BOARD_COLOR_SWATCHES: ColorSwatch[] = [
   { name: "Yellow", value: "#fde68a" },
   { name: "Orange", value: "#fdba74" },
@@ -2420,9 +2370,6 @@ export default function RealtimeBoardCanvas({
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [isAiSubmitting, setIsAiSubmitting] = useState(false);
-  const [aiSelectionScope, setAiSelectionScope] = useState<"selected" | "board">(
-    "selected",
-  );
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [selectionHudSize, setSelectionHudSize] = useState({
     width: 0,
@@ -5032,10 +4979,6 @@ export default function RealtimeBoardCanvas({
       }
 
       setIsAiSubmitting(true);
-      const requestController = new AbortController();
-      const timeoutId = window.setTimeout(() => {
-        requestController.abort();
-      }, AI_COMMAND_REQUEST_TIMEOUT_MS);
 
       try {
         const idToken = idTokenRef.current ?? (await user.getIdToken());
@@ -5056,14 +4999,10 @@ export default function RealtimeBoardCanvas({
             Authorization: `Bearer ${idToken}`,
             "Content-Type": "application/json",
           },
-          signal: requestController.signal,
           body: JSON.stringify({
             boardId,
             message: nextMessage,
-            selectedObjectIds:
-              aiSelectionScope === "selected"
-                ? Array.from(selectedObjectIdsRef.current)
-                : [],
+            selectedObjectIds: Array.from(selectedObjectIdsRef.current),
             viewportBounds,
           }),
         });
@@ -5084,12 +5023,16 @@ export default function RealtimeBoardCanvas({
           const assistantMessage = getBoardCommandErrorMessage({
             status: response.status,
           });
+          const chatErrorText =
+            response.status === 504
+              ? assistantMessage
+              : apiErrorMessage ?? assistantMessage;
           setChatMessages((previous) => [
             ...previous,
             {
               id: createChatMessageId("a"),
               role: "assistant",
-              text: apiErrorMessage ?? assistantMessage,
+              text: chatErrorText,
             },
           ]);
           return;
@@ -5137,12 +5080,9 @@ export default function RealtimeBoardCanvas({
             ...(execution ? { execution } : {}),
           },
         ]);
-      } catch (error) {
-        const timedOut =
-          error instanceof DOMException && error.name === "AbortError";
+      } catch {
         const assistantMessage = getBoardCommandErrorMessage({
           status: null,
-          timedOut,
         });
 
         setChatMessages((previous) => [
@@ -5154,11 +5094,10 @@ export default function RealtimeBoardCanvas({
           },
         ]);
       } finally {
-        window.clearTimeout(timeoutId);
         setIsAiSubmitting(false);
       }
     },
-    [aiSelectionScope, boardId, isAiSubmitting, user],
+    [boardId, isAiSubmitting, user],
   );
 
   const handleAiChatSubmit = useCallback(
@@ -5174,44 +5113,6 @@ export default function RealtimeBoardCanvas({
       });
     },
     [chatInput, isAiSubmitting, submitAiCommandMessage],
-  );
-
-  const handleAiQuickActionClick = useCallback(
-    (action: AiQuickAction) => {
-      if (isAiSubmitting) {
-        return;
-      }
-
-      const selectedCount = selectedObjectIdsRef.current.size;
-      if (
-        action.requiresSelection &&
-        aiSelectionScope === "selected" &&
-        selectedCount === 0
-      ) {
-        setChatMessages((previous) => [
-          ...previous,
-          {
-            id: createChatMessageId("a"),
-            role: "assistant",
-            text: "Select objects first, then run this quick action.",
-          },
-        ]);
-        return;
-      }
-
-      let prompt = action.prompt;
-      if (aiSelectionScope === "board" && action.id === "quick-summarize") {
-        prompt = "Summarize the board notes.";
-      } else if (aiSelectionScope === "board" && action.id === "quick-actions") {
-        prompt = "Create action items for the board notes.";
-      }
-
-      void submitAiCommandMessage(prompt, {
-        appendUserMessage: true,
-        clearInput: true,
-      });
-    },
-    [aiSelectionScope, isAiSubmitting, submitAiCommandMessage],
   );
 
   const handleCreateSwotButtonClick = useCallback(() => {
@@ -7955,106 +7856,9 @@ export default function RealtimeBoardCanvas({
                 <strong style={{ fontSize: 13, color: "#0f172a" }}>
                   AI Assistant
                 </strong>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.45rem",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <span style={{ fontSize: 12, color: "#475569" }}>
-                    Selected: {selectedObjectIds.length}
-                  </span>
-                  <div
-                    style={{
-                      display: "inline-flex",
-                      border: "1px solid #cbd5e1",
-                      borderRadius: 999,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setAiSelectionScope("selected")}
-                      disabled={isAiSubmitting}
-                      style={{
-                        border: "none",
-                        padding: "0.24rem 0.5rem",
-                        fontSize: 11,
-                        cursor: "pointer",
-                        background:
-                          aiSelectionScope === "selected"
-                            ? "#dbeafe"
-                            : "#f8fafc",
-                        color:
-                          aiSelectionScope === "selected"
-                            ? "#1d4ed8"
-                            : "#334155",
-                        fontWeight: aiSelectionScope === "selected" ? 700 : 500,
-                      }}
-                    >
-                      Selected only
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAiSelectionScope("board")}
-                      disabled={isAiSubmitting}
-                      style={{
-                        border: "none",
-                        padding: "0.24rem 0.5rem",
-                        fontSize: 11,
-                        cursor: "pointer",
-                        background:
-                          aiSelectionScope === "board" ? "#dbeafe" : "#f8fafc",
-                        color:
-                          aiSelectionScope === "board" ? "#1d4ed8" : "#334155",
-                        fontWeight: aiSelectionScope === "board" ? 700 : 500,
-                      }}
-                    >
-                      Whole board
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div
-                style={{
-                  width: "min(100%, 800px)",
-                  margin: "0 auto",
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: "0.35rem",
-                }}
-              >
-                {AI_QUICK_ACTIONS.map((action) => {
-                  const disableForSelection =
-                    action.requiresSelection && selectedObjectIds.length === 0;
-                  return (
-                    <button
-                      key={action.id}
-                      type="button"
-                      onClick={() => handleAiQuickActionClick(action)}
-                      disabled={isAiSubmitting || disableForSelection}
-                      style={{
-                        border: "1px solid #cbd5e1",
-                        background: "#f8fafc",
-                        color: "#0f172a",
-                        borderRadius: 999,
-                        padding: "0.24rem 0.58rem",
-                        fontSize: 11,
-                        cursor: disableForSelection ? "not-allowed" : "pointer",
-                        opacity: disableForSelection ? 0.55 : 1,
-                      }}
-                      title={
-                        disableForSelection
-                          ? "Select objects first to use this quick action."
-                          : action.prompt
-                      }
-                    >
-                      {action.label}
-                    </button>
-                  );
-                })}
+                <span style={{ fontSize: 12, color: "#475569" }}>
+                  Selected: {selectedObjectIds.length}
+                </span>
               </div>
             </div>
 

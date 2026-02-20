@@ -83,7 +83,38 @@ async function createBoardAndOpen(
   const identity = createUserIdentity(caseId);
   const loginUrl = `/e2e/emulator-login?uid=${encodeURIComponent(identity.uid)}&email=${encodeURIComponent(identity.email)}`;
   await page.goto(loginUrl);
-  await page.getByTestId("emulator-login-button").click();
+
+  let signedIn = false;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const tokenResponsePromise = page
+      .waitForResponse(
+        (response) =>
+          response.url().includes("/api/e2e/custom-token") &&
+          response.request().method() === "POST",
+        { timeout: 5_000 },
+      )
+      .catch(() => null);
+
+    await page.getByTestId("emulator-login-button").click();
+    await tokenResponsePromise;
+
+    const landed = await page
+      .waitForURL(/\/$/, { timeout: 5_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (landed) {
+      signedIn = true;
+      break;
+    }
+
+    if (attempt < 2) {
+      await page.waitForTimeout(350);
+    }
+  }
+
+  if (!signedIn) {
+    throw new Error(`Emulator login did not complete for ${identity.uid}.`);
+  }
 
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByText(/Signed in as/i)).toBeVisible();
@@ -259,7 +290,9 @@ async function selectFirstObjectCount(page: Page, count: number): Promise<void> 
     });
   }
 
-  await expect(page.getByText(new RegExp(`Selected:\\s*${count}`, "i"))).toBeVisible();
+  await expect(
+    page.getByText(new RegExp(`Selected:\\s*${count}`, "i")).first(),
+  ).toBeVisible();
 }
 
 /**

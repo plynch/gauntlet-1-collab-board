@@ -7,6 +7,7 @@ import {
 import { z } from "zod";
 
 import { BOARD_AI_TOOLS } from "@/features/ai/board-tool-schema";
+import { parseCoordinateHintsFromMessage } from "@/features/ai/commands/coordinate-hints";
 import { estimateOpenAiCostUsd } from "@/features/ai/openai/openai-cost-controls";
 import {
   getOpenAiClient,
@@ -164,12 +165,14 @@ export async function runBoardCommandWithOpenAiAgents(
     boardObjectCount: input.boardState.length,
     boardObjects: contextObjects,
   };
+  const coordinateHints = parseCoordinateHintsFromMessage(input.message);
 
   const boardAgentTools = createBoardAgentTools({
     executor: input.executor,
     trace: input.trace,
     selectedObjectIds: input.selectedObjectIds,
     viewportBounds: input.viewportBounds,
+    coordinateHints,
   });
 
   const agent = new Agent({

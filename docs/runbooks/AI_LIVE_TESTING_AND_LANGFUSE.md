@@ -38,6 +38,21 @@ Langfuse project:
   - `OPENAI_AGENTS_TRACING=true`
   - `OPENAI_AGENTS_WORKFLOW_NAME=collabboard-command`
 
+## Live Readiness Check
+
+Run this against deployed app:
+
+```bash
+curl -s https://<your-app-host>/api/ai/tracing-ready | jq
+```
+
+Expected:
+
+- `langfuse.ready: true`
+- `openai.ready: true`
+- `openai.runtime: "agents-sdk"`
+- `openai.plannerMode: "openai-strict"`
+
 ## Commands
 
 ### Free fallback matrix (20 calls)
@@ -103,6 +118,8 @@ For each tested command:
 ## OpenAI Trace Correlation
 
 With Agents tracing enabled:
+
+OpenAI traces are in OpenAI Platform under **Logs → Traces**.
 
 1. OpenAI tracing should include metadata fields:
    - `langfuseTraceId`

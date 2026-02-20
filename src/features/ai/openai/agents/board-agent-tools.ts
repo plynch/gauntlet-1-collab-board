@@ -2,6 +2,7 @@ import { tool, type Tool } from "@openai/agents";
 import { z } from "zod";
 
 import { BOARD_AI_TOOLS } from "@/features/ai/board-tool-schema";
+import type { CoordinateHints } from "@/features/ai/commands/coordinate-hints";
 import { validateTemplatePlan } from "@/features/ai/guardrails";
 import type { AiTraceRun } from "@/features/ai/observability/trace-run";
 import { BoardToolExecutor } from "@/features/ai/tools/board-tools";
@@ -44,6 +45,7 @@ type CreateBoardAgentToolsOptions = {
   trace: AiTraceRun;
   selectedObjectIds: string[];
   viewportBounds: ViewportBounds | null;
+  coordinateHints?: CoordinateHints | null;
 };
 
 type BoardAgentToolFactoryResult = {
@@ -110,6 +112,20 @@ function getDefaultPlacementPoint(
     x: DEFAULT_X,
     y: DEFAULT_Y,
   };
+}
+
+/**
+ * Returns whether coordinate hints contain explicit x/y.
+ */
+function hasExplicitCoordinateHints(
+  hints: CoordinateHints | null | undefined,
+): hints is { hintedX: number; hintedY: number } {
+  return (
+    typeof hints?.hintedX === "number" &&
+    Number.isFinite(hints.hintedX) &&
+    typeof hints?.hintedY === "number" &&
+    Number.isFinite(hints.hintedY)
+  );
 }
 
 /**
@@ -244,6 +260,9 @@ export function createBoardAgentTools(
   }
 
   const defaultPoint = getDefaultPlacementPoint(options.viewportBounds);
+  const explicitCoordinateHints = hasExplicitCoordinateHints(options.coordinateHints)
+    ? options.coordinateHints
+    : null;
 
   const tools: Tool[] = [
     tool({
@@ -317,8 +336,8 @@ export function createBoardAgentTools(
           tool: "createStickyNote",
           args: {
             text: args.text,
-            x: args.x ?? defaultPoint.x,
-            y: args.y ?? defaultPoint.y,
+            x: explicitCoordinateHints?.hintedX ?? args.x ?? defaultPoint.x,
+            y: explicitCoordinateHints?.hintedY ?? args.y ?? defaultPoint.y,
             color: args.color ?? DEFAULT_STICKY_COLOR,
           },
         }),
@@ -345,8 +364,10 @@ export function createBoardAgentTools(
           args: {
             count: args.count,
             color: args.color ?? DEFAULT_STICKY_COLOR,
-            originX: args.originX ?? defaultPoint.x,
-            originY: args.originY ?? defaultPoint.y,
+            originX:
+              explicitCoordinateHints?.hintedX ?? args.originX ?? defaultPoint.x,
+            originY:
+              explicitCoordinateHints?.hintedY ?? args.originY ?? defaultPoint.y,
             columns: args.columns ?? DEFAULT_BATCH_COLUMNS,
             gapX: args.gapX ?? DEFAULT_BATCH_GAP_X,
             gapY: args.gapY ?? DEFAULT_BATCH_GAP_Y,
@@ -373,8 +394,8 @@ export function createBoardAgentTools(
           tool: "createShape",
           args: {
             type: args.type,
-            x: args.x ?? defaultPoint.x,
-            y: args.y ?? defaultPoint.y,
+            x: explicitCoordinateHints?.hintedX ?? args.x ?? defaultPoint.x,
+            y: explicitCoordinateHints?.hintedY ?? args.y ?? defaultPoint.y,
             width:
               args.width ??
               (args.type === "line" ? DEFAULT_LINE_WIDTH : DEFAULT_SHAPE_WIDTH),
@@ -408,8 +429,8 @@ export function createBoardAgentTools(
         executeToolCallWithGuardrails({
           tool: "createGridContainer",
           args: {
-            x: args.x ?? defaultPoint.x,
-            y: args.y ?? defaultPoint.y,
+            x: explicitCoordinateHints?.hintedX ?? args.x ?? defaultPoint.x,
+            y: explicitCoordinateHints?.hintedY ?? args.y ?? defaultPoint.y,
             width: args.width ?? DEFAULT_GRID_CONTAINER_WIDTH,
             height: args.height ?? DEFAULT_GRID_CONTAINER_HEIGHT,
             rows: args.rows ?? 2,
@@ -440,8 +461,8 @@ export function createBoardAgentTools(
           tool: "createFrame",
           args: {
             title: args.title ?? DEFAULT_FRAME_TITLE,
-            x: args.x ?? defaultPoint.x,
-            y: args.y ?? defaultPoint.y,
+            x: explicitCoordinateHints?.hintedX ?? args.x ?? defaultPoint.x,
+            y: explicitCoordinateHints?.hintedY ?? args.y ?? defaultPoint.y,
             width: args.width ?? DEFAULT_FRAME_WIDTH,
             height: args.height ?? DEFAULT_FRAME_HEIGHT,
           },

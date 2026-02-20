@@ -111,4 +111,49 @@ describe("createBoardAgentTools", () => {
       },
     });
   });
+
+  it("uses explicit coordinate hints for createShape placement", async () => {
+    const executeToolCall = vi.fn().mockResolvedValue({
+      tool: "createShape",
+      objectId: "shape-1",
+    });
+    const session = createBoardAgentTools({
+      executor: {
+        executeToolCall,
+        getBoardState: vi.fn().mockResolvedValue([]),
+      } as never,
+      trace: createTraceStub() as never,
+      selectedObjectIds: [],
+      viewportBounds: null,
+      coordinateHints: {
+        hintedX: 100,
+        hintedY: 200,
+      },
+    });
+
+    const createShapeTool = session.tools.find(
+      (toolItem): toolItem is FunctionTool =>
+        toolItem.type === "function" && toolItem.name === "createShape",
+    );
+    if (!createShapeTool) {
+      throw new Error("createShape tool missing.");
+    }
+
+    await createShapeTool.invoke(
+      {} as never,
+      JSON.stringify({ type: "rect", color: "#93c5fd" }),
+    );
+
+    expect(executeToolCall).toHaveBeenCalledWith({
+      tool: "createShape",
+      args: {
+        type: "rect",
+        x: 100,
+        y: 200,
+        width: 220,
+        height: 160,
+        color: "#93c5fd",
+      },
+    });
+  });
 });

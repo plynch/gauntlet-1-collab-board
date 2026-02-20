@@ -6656,6 +6656,32 @@ export default function RealtimeBoardCanvas({
                   {label.value}
                 </span>
               ))}
+              {viewport.x >= -1 && viewport.x <= stageSize.width + 1 ? (
+                <span
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    left: Math.round(viewport.x),
+                    top: 0,
+                    bottom: 0,
+                    width: 1,
+                    background: "rgba(244, 114, 182, 0.55)",
+                  }}
+                />
+              ) : null}
+              {viewport.y >= -1 && viewport.y <= stageSize.height + 1 ? (
+                <span
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    top: Math.round(viewport.y),
+                    height: 1,
+                    background: "rgba(244, 114, 182, 0.55)",
+                  }}
+                />
+              ) : null}
               {gridAxisLabels.yLabels.map((label) => (
                 <span
                   key={`y-${label.value}`}

@@ -28,6 +28,7 @@ import { LangChainLangfuseCallbackHandler } from "@/features/ai/observability/la
 import { flushLangfuseClient } from "@/features/ai/observability/langfuse-client";
 import { createAiTraceRun } from "@/features/ai/observability/trace-run";
 import { planDeterministicCommand } from "@/features/ai/commands/deterministic-command-planner";
+import { parseCoordinateHintsFromMessage } from "@/features/ai/commands/coordinate-hints";
 import {
   finalizeOpenAiBudgetReservation,
   releaseOpenAiBudgetReservation,
@@ -311,31 +312,6 @@ function buildOperationCountsByTool(
   });
 
   return JSON.stringify(Object.fromEntries(counts));
-}
-
-/**
- * Parses coordinate hints from message.
- */
-function parseCoordinateHintsFromMessage(message: string): {
-  hintedX: number | null;
-  hintedY: number | null;
-} {
-  const match = message.match(
-    /\b(?:x\s*=?\s*(-?\d+(?:\.\d+)?)\s*y\s*=?\s*(-?\d+(?:\.\d+)?)|(?:at|to)\s*(?:position\s*)?(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?))/i,
-  );
-  if (!match) {
-    return {
-      hintedX: null,
-      hintedY: null,
-    };
-  }
-
-  const xValue = Number(match[1] ?? match[3]);
-  const yValue = Number(match[2] ?? match[4]);
-  return {
-    hintedX: Number.isFinite(xValue) ? xValue : null,
-    hintedY: Number.isFinite(yValue) ? yValue : null,
-  };
 }
 
 /**

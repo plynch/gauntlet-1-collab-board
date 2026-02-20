@@ -614,10 +614,7 @@ export async function planBoardCommandWithOpenAi(input: {
     selectedObjects: selectedContext,
     boardObjectCount: input.boardState.length,
     boardObjects: contextObjects,
-    tools: BOARD_AI_TOOLS.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-    })),
+    tools: BOARD_AI_TOOLS,
   };
 
   const completion = await client.chat.completions.create({

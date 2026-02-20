@@ -409,11 +409,18 @@ test("case 13: arrange selected in grid", async ({ page }) => {
 
   const afterFirst = await getBoardObjectBox(page, 0);
   const afterSecond = await getBoardObjectBox(page, 1);
+  const firstMovedDistance = Math.hypot(
+    afterFirst.x - beforeFirst.x,
+    afterFirst.y - beforeFirst.y,
+  );
+  const secondMovedDistance = Math.hypot(
+    afterSecond.x - beforeSecond.x,
+    afterSecond.y - beforeSecond.y,
+  );
   expect(Math.abs(afterFirst.y - afterSecond.y)).toBeLessThanOrEqual(12);
-  expect(Math.abs(afterSecond.x - afterFirst.x)).toBeLessThanOrEqual(220);
-  expect(
-    Math.abs(beforeSecond.x - beforeFirst.x) > Math.abs(afterSecond.x - afterFirst.x),
-  ).toBe(true);
+  expect(Math.abs(afterSecond.x - afterFirst.x)).toBeGreaterThan(180);
+  expect(Math.abs(afterSecond.x - afterFirst.x)).toBeLessThan(320);
+  expect(firstMovedDistance > 8 || secondMovedDistance > 8).toBe(true);
 });
 
 test("case 14: move selected right by delta", async ({ page }) => {

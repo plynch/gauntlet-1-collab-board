@@ -86,11 +86,49 @@ async function createBoardAndOpen(
   await page.getByTestId("emulator-login-button").click();
 
   await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByText(/Signed in as/i)).toBeVisible();
   await expect(page.getByRole("heading", { name: /My Boards/ })).toBeVisible();
 
   await page.getByRole("button", { name: "Create New Board" }).click();
   await page.getByPlaceholder("Board title").fill(boardTitle);
-  await page.getByRole("button", { name: "Create board" }).click();
+  const createBoardButton = page.getByRole("button", { name: "Create board" });
+
+  let boardCreated = false;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const createResponsePromise = page
+      .waitForResponse(
+        (response) =>
+          response.url().includes("/api/boards") &&
+          response.request().method() === "POST",
+        {
+          timeout: 4_000,
+        },
+      )
+      .catch(() => null);
+
+    await createBoardButton.click();
+    const createResponse = await createResponsePromise;
+    if (!createResponse) {
+      await page.waitForTimeout(250);
+      continue;
+    }
+
+    if (createResponse.ok()) {
+      boardCreated = true;
+      break;
+    }
+
+    if (createResponse.status() === 401 && attempt < 2) {
+      await page.waitForTimeout(350);
+      continue;
+    }
+
+    throw new Error(
+      `Create board failed with status ${createResponse.status()} for ${boardTitle}.`,
+    );
+  }
+
+  expect(boardCreated).toBe(true);
 
   await expect(page.getByText(boardTitle)).toBeVisible();
   await page.getByRole("link", { name: `Open board ${boardTitle}` }).click();

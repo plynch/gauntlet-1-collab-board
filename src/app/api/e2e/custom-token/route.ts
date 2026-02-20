@@ -57,9 +57,23 @@ export async function GET(request: NextRequest) {
 
   const uid = sanitizeUid(request.nextUrl.searchParams.get("uid"));
   const email = toEmail(uid, request.nextUrl.searchParams.get("email"));
+  const auth = getFirebaseAdminAuth();
 
   try {
-    const token = await getFirebaseAdminAuth().createCustomToken(uid);
+    const existingUser = await auth.getUser(uid).catch(async () =>
+      auth.createUser({
+        uid,
+        email,
+        emailVerified: true,
+        displayName: "E2E User",
+      }),
+    );
+
+    if (!existingUser.email || existingUser.email !== email) {
+      await auth.updateUser(uid, { email, emailVerified: true });
+    }
+
+    const token = await auth.createCustomToken(uid);
     return NextResponse.json({ token, uid, email });
   } catch (error) {
     console.error("Failed to mint e2e custom token", error);

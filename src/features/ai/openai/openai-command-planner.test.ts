@@ -147,4 +147,72 @@ describe("parseOpenAiPlannerOutput", () => {
     expect(parsed.operations[0]?.tool).toBe("alignObjects");
     expect(parsed.operations[1]?.tool).toBe("distributeObjects");
   });
+
+  it("normalizes sticky aliases and alternate arg fields", () => {
+    const parsed = parseOpenAiPlannerOutput(
+      JSON.stringify({
+        intent: "create-sticky",
+        planned: true,
+        assistantMessage: "Created sticky note.",
+        operations: [
+          {
+            tool: "createSticky",
+            parameters: {
+              content: "Hello from alias",
+              position: { x: 140, y: 180 },
+              colour: "yellow",
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(parsed.planned).toBe(true);
+    expect(parsed.operations).toEqual([
+      {
+        tool: "createStickyNote",
+        args: {
+          text: "Hello from alias",
+          x: 140,
+          y: 180,
+          color: "yellow",
+        },
+      },
+    ]);
+  });
+
+  it("normalizes line tool aliases into createShape line", () => {
+    const parsed = parseOpenAiPlannerOutput(
+      JSON.stringify({
+        intent: "create-line",
+        planned: true,
+        assistantMessage: "Created line shape.",
+        operations: [
+          {
+            tool: "createLine",
+            payload: {
+              position: { x: 220, y: 220 },
+              size: { width: 260, height: 24 },
+              color: "gray",
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(parsed.planned).toBe(true);
+    expect(parsed.operations).toEqual([
+      {
+        tool: "createShape",
+        args: {
+          type: "line",
+          x: 220,
+          y: 220,
+          width: 260,
+          height: 24,
+          color: "gray",
+        },
+      },
+    ]);
+  });
 });

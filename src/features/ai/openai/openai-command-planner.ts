@@ -10,6 +10,350 @@ import type { BoardObjectSnapshot, BoardToolCall, TemplatePlan } from "@/feature
 
 const MAX_TOOL_CALLS = 50;
 const MAX_TEXT_PREVIEW_CHARS = 120;
+const CANONICAL_TOOL_NAMES = BOARD_AI_TOOLS.map(
+  (tool) => tool.name,
+) as BoardToolCall["tool"][];
+
+const TOOL_NAME_ALIASES: Record<string, BoardToolCall["tool"]> = {
+  createSticky: "createStickyNote",
+  create_sticky: "createStickyNote",
+  sticky: "createStickyNote",
+  addSticky: "createStickyNote",
+  add_sticky: "createStickyNote",
+  createNote: "createStickyNote",
+  create_note: "createStickyNote",
+  createLine: "createShape",
+  create_line: "createShape",
+  line: "createShape",
+  move: "moveObject",
+  moveSelected: "moveObject",
+  resize: "resizeObject",
+  resizeSelected: "resizeObject",
+  setText: "updateText",
+  updateObjectText: "updateText",
+  setColor: "changeColor",
+  updateColor: "changeColor",
+  color: "changeColor",
+  delete: "deleteObjects",
+  deleteObject: "deleteObjects",
+  removeObject: "deleteObjects",
+  align: "alignObjects",
+  distribute: "distributeObjects",
+  arrangeGrid: "arrangeObjectsInGrid",
+  arrangeInGrid: "arrangeObjectsInGrid",
+};
+
+const SHAPE_TYPE_ALIASES: Record<string, "rect" | "circle" | "line" | "triangle" | "star"> = {
+  rectangle: "rect",
+  square: "rect",
+  oval: "circle",
+  arrow: "line",
+};
+
+/**
+ * Converts to plain object record.
+ */
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+/**
+ * Handles parse number value.
+ */
+function parseNumberValue(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Handles normalize tool name.
+ */
+function normalizeToolName(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  const aliasMatch = TOOL_NAME_ALIASES[trimmed];
+  if (aliasMatch) {
+    return aliasMatch;
+  }
+
+  const compact = trimmed.replace(/[\s_-]/g, "");
+  const canonicalMatch = CANONICAL_TOOL_NAMES.find(
+    (toolName) =>
+      toolName.replace(/[\s_-]/g, "").toLowerCase() === compact.toLowerCase(),
+  );
+  if (canonicalMatch) {
+    return canonicalMatch;
+  }
+
+  for (const [alias, canonical] of Object.entries(TOOL_NAME_ALIASES)) {
+    if (alias.toLowerCase() === compact.toLowerCase()) {
+      return canonical;
+    }
+  }
+
+  return trimmed;
+}
+
+/**
+ * Handles normalize operation args.
+ */
+function normalizeOperationArgs(
+  tool: string,
+  operation: Record<string, unknown>,
+): Record<string, unknown> {
+  const directArgs = asRecord(operation.args);
+  const parameterArgs = asRecord(operation.parameters);
+  const payloadArgs = asRecord(operation.payload);
+  const inputArgs = asRecord(operation.input);
+  const args: Record<string, unknown> = {
+    ...(directArgs ?? {}),
+    ...(parameterArgs ?? {}),
+    ...(payloadArgs ?? {}),
+    ...(inputArgs ?? {}),
+  };
+
+  // Support flat operation objects with no nested args.
+  if (Object.keys(args).length === 0) {
+    for (const [key, value] of Object.entries(operation)) {
+      if (key === "tool") {
+        continue;
+      }
+      args[key] = value;
+    }
+  }
+
+  const position = asRecord(args.position);
+  const size = asRecord(args.size);
+
+  if (tool === "createStickyNote") {
+    if (typeof args.text !== "string") {
+      const textCandidate = args.content ?? args.message ?? args.label;
+      if (typeof textCandidate === "string") {
+        args.text = textCandidate;
+      }
+    }
+
+    if (args.x === undefined && position) {
+      args.x = position.x;
+    }
+    if (args.y === undefined && position) {
+      args.y = position.y;
+    }
+
+    if (typeof args.color !== "string") {
+      const colorCandidate = args.colour ?? args.fill;
+      if (typeof colorCandidate === "string") {
+        args.color = colorCandidate;
+      }
+    }
+  }
+
+  if (tool === "createShape") {
+    if (args.x === undefined && position) {
+      args.x = position.x;
+    }
+    if (args.y === undefined && position) {
+      args.y = position.y;
+    }
+    if (args.width === undefined && size) {
+      args.width = size.width;
+    }
+    if (args.height === undefined && size) {
+      args.height = size.height;
+    }
+
+    if (typeof args.type === "string") {
+      const normalizedShapeType =
+        SHAPE_TYPE_ALIASES[args.type.toLowerCase()] ?? args.type.toLowerCase();
+      args.type = normalizedShapeType;
+    }
+
+    const rawTool = String(operation.tool ?? "").toLowerCase();
+    if (rawTool.includes("line") && typeof args.type !== "string") {
+      args.type = "line";
+    }
+  }
+
+  if (tool === "moveObject") {
+    if (typeof args.objectId !== "string") {
+      const idCandidate = args.id ?? args.targetId;
+      if (typeof idCandidate === "string") {
+        args.objectId = idCandidate;
+      }
+    }
+    if (args.x === undefined && position) {
+      args.x = position.x;
+    }
+    if (args.y === undefined && position) {
+      args.y = position.y;
+    }
+  }
+
+  if (tool === "resizeObject") {
+    if (typeof args.objectId !== "string") {
+      const idCandidate = args.id ?? args.targetId;
+      if (typeof idCandidate === "string") {
+        args.objectId = idCandidate;
+      }
+    }
+
+    if (args.width === undefined && size) {
+      args.width = size.width;
+    }
+    if (args.height === undefined && size) {
+      args.height = size.height;
+    }
+  }
+
+  if (tool === "updateText") {
+    if (typeof args.objectId !== "string") {
+      const idCandidate = args.id ?? args.targetId;
+      if (typeof idCandidate === "string") {
+        args.objectId = idCandidate;
+      }
+    }
+
+    if (typeof args.newText !== "string") {
+      const textCandidate = args.text ?? args.value ?? args.content;
+      if (typeof textCandidate === "string") {
+        args.newText = textCandidate;
+      }
+    }
+  }
+
+  if (tool === "changeColor") {
+    if (typeof args.objectId !== "string") {
+      const idCandidate = args.id ?? args.targetId;
+      if (typeof idCandidate === "string") {
+        args.objectId = idCandidate;
+      }
+    }
+
+    if (typeof args.color !== "string") {
+      const colorCandidate = args.colour ?? args.fill;
+      if (typeof colorCandidate === "string") {
+        args.color = colorCandidate;
+      }
+    }
+  }
+
+  if (tool === "deleteObjects") {
+    if (!Array.isArray(args.objectIds)) {
+      const objectId = args.objectId ?? args.id ?? args.targetId;
+      if (typeof objectId === "string") {
+        args.objectIds = [objectId];
+      }
+    }
+  }
+
+  if (tool === "arrangeObjectsInGrid") {
+    if (!Array.isArray(args.objectIds)) {
+      const ids = args.ids ?? args.selectedObjectIds;
+      if (Array.isArray(ids)) {
+        args.objectIds = ids;
+      }
+    }
+
+    if (args.columns === undefined) {
+      const colCandidate =
+        parseNumberValue(args.cols) ?? parseNumberValue(args.columnCount);
+      if (colCandidate !== null) {
+        args.columns = colCandidate;
+      }
+    }
+  }
+
+  if (tool === "alignObjects") {
+    if (!Array.isArray(args.objectIds)) {
+      const ids = args.ids ?? args.selectedObjectIds;
+      if (Array.isArray(ids)) {
+        args.objectIds = ids;
+      }
+    }
+
+    if (typeof args.alignment !== "string") {
+      const alignmentCandidate = args.align ?? args.mode;
+      if (typeof alignmentCandidate === "string") {
+        args.alignment = alignmentCandidate.toLowerCase();
+      }
+    }
+  }
+
+  if (tool === "distributeObjects") {
+    if (!Array.isArray(args.objectIds)) {
+      const ids = args.ids ?? args.selectedObjectIds;
+      if (Array.isArray(ids)) {
+        args.objectIds = ids;
+      }
+    }
+
+    if (typeof args.axis !== "string") {
+      const axisCandidate = args.direction ?? args.distribution;
+      if (typeof axisCandidate === "string") {
+        args.axis = axisCandidate.toLowerCase();
+      }
+    }
+  }
+
+  return args;
+}
+
+/**
+ * Normalizes openai planner output object.
+ */
+function normalizeOpenAiPlannerOutput(raw: unknown): unknown {
+  const plannerOutput = asRecord(raw);
+  if (!plannerOutput) {
+    return raw;
+  }
+
+  const rawOperations = Array.isArray(plannerOutput.operations)
+    ? plannerOutput.operations
+    : [];
+
+  const operations = rawOperations.map((value) => {
+    const operation = asRecord(value);
+    if (!operation) {
+      return value;
+    }
+
+    const normalizedTool = normalizeToolName(operation.tool);
+    if (!normalizedTool) {
+      return value;
+    }
+
+    return {
+      tool: normalizedTool,
+      args: normalizeOperationArgs(normalizedTool, operation),
+    };
+  });
+
+  return {
+    ...plannerOutput,
+    operations,
+  };
+}
 
 const boardToolCallSchema: z.ZodType<BoardToolCall> = z.discriminatedUnion(
   "tool",
@@ -164,7 +508,9 @@ const OPENAI_PLANNER_SYSTEM_PROMPT = [
   "You are the CollabBoard operation planner.",
   "Convert user commands into structured board tool operations.",
   "Return strict JSON with keys: intent, planned, assistantMessage, operations.",
-  "Use only allowed tools.",
+  "Use only allowed tools with exact case-sensitive names from the provided tools list.",
+  "Do not invent aliases (for example createSticky/addSticky/move/resize/delete).",
+  "For line commands, always use tool=createShape with args.type='line'.",
   `If you cannot safely map a command, set planned=false with a helpful assistantMessage and operations=[].`,
   `When planned=true, keep operations to ${MAX_TOOL_CALLS} or fewer and do not invent unknown object ids.`,
   "Prefer deterministic direct edits over verbose multi-step plans.",
@@ -230,7 +576,8 @@ export function parseOpenAiPlannerOutput(content: string): {
   operations: BoardToolCall[];
 } {
   const parsedJson = JSON.parse(extractJsonCandidate(content)) as unknown;
-  const parsed = openAiPlannerOutputSchema.parse(parsedJson);
+  const normalizedOutput = normalizeOpenAiPlannerOutput(parsedJson);
+  const parsed = openAiPlannerOutputSchema.parse(normalizedOutput);
   return {
     intent: parsed.intent,
     planned: parsed.planned,

@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useRef, useMemo, useState } from "react";
+import {
+  useCallback,
+  useRef,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from "react";
 
 import { useAuthSession } from "@/features/auth/hooks/use-auth-session";
 import { useBoardLive } from "@/features/boards/hooks/use-board-live";
@@ -13,6 +19,43 @@ import AppHeader, {
 type BoardWorkspaceProps = {
   boardId: string;
 };
+
+type UpdateBoardResponse = {
+  board: {
+    id: string;
+    title: string;
+  };
+};
+
+const titleActionButtonStyle: CSSProperties = {
+  width: 34,
+  height: 34,
+  border: "1px solid #d1d5db",
+  borderRadius: 9,
+  background: "white",
+  color: "#0f172a",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  textDecoration: "none",
+  lineHeight: 0,
+  cursor: "pointer",
+  flexShrink: 0,
+};
+
+/**
+ * Gets error message from API response payload.
+ */
+function getErrorMessage(payload: unknown, fallback: string): string {
+  if (typeof payload === "object" && payload !== null && "error" in payload) {
+    const message = (payload as { error?: unknown }).error;
+    if (typeof message === "string" && message.length > 0) {
+      return message;
+    }
+  }
+
+  return fallback;
+}
 
 /**
  * Handles google brand icon.
@@ -59,16 +102,43 @@ function ShareBoardIcon() {
 }
 
 /**
+ * Handles edit icon.
+ */
+function EditIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M3 11.8 3.6 9.3l6.8-6.8a1.2 1.2 0 0 1 1.7 0l1.4 1.4a1.2 1.2 0 0 1 0 1.7L6.7 12.4 4.2 13z"
+        stroke="#0f172a"
+        strokeWidth="1.25"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8.8 3.9 12.1 7.2"
+        stroke="#0f172a"
+        strokeWidth="1.25"
+        fill="none"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/**
  * Handles board workspace.
  */
 export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [renamingBoard, setRenamingBoard] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const shareFeedbackTimeoutRef = useRef<number | null>(null);
   const {
     firebaseIsConfigured,
     user,
+    idToken,
     authLoading,
     signInWithGoogle,
     signOutCurrentUser,
@@ -131,6 +201,60 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
     }
   }, [boardId]);
 
+  const handleRenameBoard = useCallback(async () => {
+    if (!idToken || !board) {
+      return;
+    }
+
+    const nextTitleRaw = window.prompt("Rename board", board.title);
+    if (nextTitleRaw === null) {
+      return;
+    }
+
+    const nextTitle = nextTitleRaw.trim();
+    if (nextTitle.length === 0) {
+      setErrorMessage("Board title is required.");
+      return;
+    }
+
+    if (nextTitle === board.title) {
+      return;
+    }
+
+    setErrorMessage(null);
+    setRenamingBoard(true);
+
+    try {
+      const response = await fetch(`/api/boards/${boardId}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: nextTitle,
+        }),
+      });
+
+      const payload = (await response.json()) as
+        | UpdateBoardResponse
+        | { error?: string };
+      if (!response.ok) {
+        throw new Error(getErrorMessage(payload, "Failed to rename board."));
+      }
+
+      if (!("board" in payload)) {
+        throw new Error("Malformed rename board response.");
+      }
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Failed to rename board.",
+      );
+    } finally {
+      setRenamingBoard(false);
+    }
+  }, [board, boardId, idToken]);
+
   if (!firebaseIsConfigured) {
     return (
       <main
@@ -172,15 +296,30 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
         title={board?.title ?? "CollabBoard"}
         titleAction={
           user && board && permissions?.canRead ? (
-            <button
-              type="button"
-              onClick={() => void handleShareBoard()}
-              title={shareCopied ? "Copied board URL" : "Share board"}
-              aria-label={shareCopied ? "Copied board URL" : "Share board"}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-900"
-            >
-              <ShareBoardIcon />
-            </button>
+            <span className="inline-flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => void handleRenameBoard()}
+                title={renamingBoard ? "Renaming..." : "Rename board"}
+                aria-label={`Rename board ${board.title}`}
+                disabled={renamingBoard}
+                style={{
+                  ...titleActionButtonStyle,
+                  opacity: renamingBoard ? 0.75 : 1,
+                }}
+              >
+                <EditIcon />
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleShareBoard()}
+                title={shareCopied ? "Copied board URL" : "Share board"}
+                aria-label={shareCopied ? "Copied board URL" : "Share board"}
+                style={titleActionButtonStyle}
+              >
+                <ShareBoardIcon />
+              </button>
+            </span>
           ) : undefined
         }
         leftSlot={

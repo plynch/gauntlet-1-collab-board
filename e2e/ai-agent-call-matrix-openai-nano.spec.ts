@@ -1,9 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const emulatorMode = process.env.PLAYWRIGHT_EMULATOR_MODE === "1";
-const hasOpenAiKey =
-  typeof process.env.OPENAI_API_KEY === "string" &&
-  process.env.OPENAI_API_KEY.trim().length > 0;
 const LANGFUSE_DASHBOARD_URL =
   "https://us.cloud.langfuse.com/project/cmlu0vcd501siad07glqj49kv";
 const traceIds: string[] = [];
@@ -28,15 +25,6 @@ test.skip(
 test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async ({ request }) => {
-  if (!hasOpenAiKey) {
-    throw new Error([
-      "OPENAI_API_KEY is missing or empty.",
-      "This suite makes paid LLM calls and requires a working OpenAI API key.",
-      "Set OPENAI_API_KEY in your environment or .env.local, then rerun:",
-      "npm run test:e2e:ai-openai-smoke:nano:PAID",
-    ].join("\n"));
-  }
-
   const langfuseResponse = await request.get("/api/e2e/langfuse-ready");
   expect(langfuseResponse.ok()).toBeTruthy();
   const langfusePayload = (await langfuseResponse.json()) as {
@@ -49,8 +37,22 @@ test.beforeAll(async ({ request }) => {
   const openAiPayload = (await openAiResponse.json()) as {
     ready?: unknown;
     model?: unknown;
+    reason?: unknown;
   };
-  expect(openAiPayload.ready).toBe(true);
+
+  if (openAiPayload.ready !== true) {
+    const reason =
+      typeof openAiPayload.reason === "string" && openAiPayload.reason.length > 0
+        ? openAiPayload.reason
+        : "OpenAI planner is not ready server-side.";
+    throw new Error([
+      reason,
+      "Set OPENAI_API_KEY in .env.local and ensure AI_ENABLE_OPENAI=true.",
+      "Restart the dev server, then rerun:",
+      "npm run test:e2e:ai-openai-smoke:nano:PAID",
+    ].join("\n"));
+  }
+
   expect(openAiPayload.model).toBe("gpt-4.1-nano");
 });
 

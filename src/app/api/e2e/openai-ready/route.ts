@@ -20,9 +20,21 @@ export async function GET() {
   }
 
   const config = getOpenAiPlannerConfig();
+  let reason: string | null = null;
+  if (!config.enabled) {
+    const hasApiKey = Boolean(config.apiKey && config.apiKey.length > 0);
+    if (!hasApiKey) {
+      reason = "OPENAI_API_KEY is missing or empty server-side.";
+    } else if (process.env.AI_ENABLE_OPENAI === "false") {
+      reason = "AI_ENABLE_OPENAI=false disables OpenAI planner.";
+    } else {
+      reason = "OpenAI planner is disabled by configuration.";
+    }
+  }
   return NextResponse.json({
     ready: config.enabled,
     model: config.model,
     baseUrl: config.baseUrl,
+    reason,
   });
 }

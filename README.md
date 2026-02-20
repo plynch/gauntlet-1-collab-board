@@ -218,7 +218,7 @@ Expected trace log pattern in output:
 
 OpenAI smoke suite behavior:
 
-- Runs only in emulator mode and fails fast when `OPENAI_API_KEY` is missing.
+- Runs only in emulator mode and fails fast when server-side OpenAI config is not ready.
 - Validates `/api/e2e/langfuse-ready` and `/api/e2e/openai-ready` before paid calls.
 - Executes two paid calls and asserts:
   - non-empty `traceId`

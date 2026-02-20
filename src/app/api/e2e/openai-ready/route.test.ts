@@ -41,9 +41,11 @@ describe("GET /api/e2e/openai-ready", () => {
     const payload = (await response.json()) as {
       ready?: unknown;
       model?: unknown;
+      reason?: unknown;
     };
     expect(payload.ready).toBe(false);
     expect(payload.model).toBe("gpt-4.1-nano");
+    expect(payload.reason).toBe("OPENAI_API_KEY is missing or empty server-side.");
   });
 
   it("returns ready true when openai is enabled and configured", async () => {
@@ -57,8 +59,10 @@ describe("GET /api/e2e/openai-ready", () => {
     const payload = (await response.json()) as {
       ready?: unknown;
       model?: unknown;
+      reason?: unknown;
     };
     expect(payload.ready).toBe(true);
     expect(payload.model).toBe("gpt-4.1-nano");
+    expect(payload.reason).toBeNull();
   });
 });

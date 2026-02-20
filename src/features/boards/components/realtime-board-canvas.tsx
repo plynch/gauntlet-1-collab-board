@@ -6786,6 +6786,8 @@ export default function RealtimeBoardCanvas({
                         top: objectY,
                         width: objectWidth,
                         height: objectHeight,
+                        zIndex: 0,
+                        isolation: "isolate",
                         borderRadius: 10,
                         border: isSelected
                           ? "2px solid #2563eb"
@@ -7061,6 +7063,8 @@ export default function RealtimeBoardCanvas({
                       top: objectY,
                       width: objectWidth,
                       height: objectHeight,
+                      zIndex: 0,
+                      isolation: "isolate",
                       overflow: "visible",
                       boxShadow: isSelected
                         ? objectItem.type === "line"

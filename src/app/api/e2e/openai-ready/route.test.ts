@@ -10,6 +10,7 @@ const originalAiEnableOpenAi = process.env.AI_ENABLE_OPENAI;
 const originalOpenAiApiKey = process.env.OPENAI_API_KEY;
 const originalOpenAiModel = process.env.OPENAI_MODEL;
 const originalOpenAiReadyValidate = process.env.OPENAI_READY_VALIDATE;
+const originalAiPlannerMode = process.env.AI_PLANNER_MODE;
 
 afterEach(() => {
   if (originalAiEnableOpenAi === undefined) {
@@ -34,6 +35,12 @@ afterEach(() => {
     delete process.env.OPENAI_READY_VALIDATE;
   } else {
     process.env.OPENAI_READY_VALIDATE = originalOpenAiReadyValidate;
+  }
+
+  if (originalAiPlannerMode === undefined) {
+    delete process.env.AI_PLANNER_MODE;
+  } else {
+    process.env.AI_PLANNER_MODE = originalAiPlannerMode;
   }
 });
 
@@ -73,5 +80,26 @@ describe("GET /api/e2e/openai-ready", () => {
     expect(payload.ready).toBe(true);
     expect(payload.model).toBe("gpt-4.1-nano");
     expect(payload.reason).toBeNull();
+  });
+
+  it("returns deterministic-only reason when planner mode disables openai", async () => {
+    process.env.AI_ENABLE_OPENAI = "true";
+    process.env.AI_PLANNER_MODE = "deterministic-only";
+    process.env.OPENAI_READY_VALIDATE = "false";
+    process.env.OPENAI_API_KEY = "test-openai-key";
+
+    const response = await GET();
+    expect(response.status).toBe(200);
+
+    const payload = (await response.json()) as {
+      ready?: unknown;
+      reason?: unknown;
+      plannerMode?: unknown;
+    };
+    expect(payload.ready).toBe(false);
+    expect(payload.plannerMode).toBe("deterministic-only");
+    expect(payload.reason).toBe(
+      "AI_PLANNER_MODE=deterministic-only disables OpenAI planner.",
+    );
   });
 });

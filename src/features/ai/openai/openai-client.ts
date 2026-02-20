@@ -1,10 +1,16 @@
 import OpenAI from "openai";
 
+export type AiPlannerMode =
+  | "openai-strict"
+  | "openai-with-fallback"
+  | "deterministic-only";
+
 type OpenAiPlannerConfig = {
   enabled: boolean;
   apiKey: string | null;
   baseUrl: string | null;
   model: string;
+  plannerMode: AiPlannerMode;
   maxOutputTokens: number;
   reserveUsdPerCall: number;
   inputCostPerMillionUsd: number;
@@ -43,20 +49,38 @@ function parsePositiveIntegerEnv(
 }
 
 /**
+ * Parses planner mode env.
+ */
+function parsePlannerModeEnv(value: string | undefined): AiPlannerMode {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "openai-strict") {
+    return "openai-strict";
+  }
+  if (normalized === "deterministic-only") {
+    return "deterministic-only";
+  }
+  return "openai-with-fallback";
+}
+
+/**
  * Gets openai planner config.
  */
 export function getOpenAiPlannerConfig(): OpenAiPlannerConfig {
   const apiKey = process.env.OPENAI_API_KEY?.trim() || null;
   const baseUrl = process.env.OPENAI_BASE_URL?.trim() || null;
   const model = process.env.OPENAI_MODEL?.trim() || "gpt-4.1-nano";
+  const plannerMode = parsePlannerModeEnv(process.env.AI_PLANNER_MODE);
   const enabled =
-    process.env.AI_ENABLE_OPENAI !== "false" && Boolean(apiKey && model);
+    plannerMode !== "deterministic-only" &&
+    process.env.AI_ENABLE_OPENAI !== "false" &&
+    Boolean(apiKey && model);
 
   return {
     enabled,
     apiKey,
     baseUrl,
     model,
+    plannerMode,
     maxOutputTokens: parsePositiveIntegerEnv(
       process.env.OPENAI_MAX_OUTPUT_TOKENS,
       700,

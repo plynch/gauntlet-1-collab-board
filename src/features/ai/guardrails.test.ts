@@ -59,6 +59,53 @@ describe("validateTemplatePlan", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("accepts createStickyBatch when count is within limit", () => {
+    const result = validateTemplatePlan({
+      templateId: SWOT_TEMPLATE_ID,
+      templateName: "Create sticky batch",
+      operations: [
+        {
+          tool: "createStickyBatch",
+          args: {
+            count: 25,
+            color: "#fde68a",
+            originX: 100,
+            originY: 140,
+          },
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.objectsCreated).toBe(25);
+    }
+  });
+
+  it("rejects oversized createStickyBatch calls", () => {
+    const result = validateTemplatePlan({
+      templateId: SWOT_TEMPLATE_ID,
+      templateName: "Create sticky batch",
+      operations: [
+        {
+          tool: "createStickyBatch",
+          args: {
+            count: 51,
+            color: "#fde68a",
+            originX: 100,
+            originY: 140,
+          },
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(400);
+      expect(result.error).toContain("createStickyBatch");
+    }
+  });
+
   it("rejects oversized deleteObjects calls", () => {
     const result = validateTemplatePlan({
       templateId: SWOT_TEMPLATE_ID,
@@ -154,6 +201,34 @@ describe("validateTemplatePlan", () => {
     if (!result.ok) {
       expect(result.status).toBe(400);
       expect(result.error).toContain("distributeObjects");
+    }
+  });
+
+  it("rejects oversized moveObjects calls", () => {
+    const result = validateTemplatePlan({
+      templateId: SWOT_TEMPLATE_ID,
+      templateName: "Move objects",
+      operations: [
+        {
+          tool: "moveObjects",
+          args: {
+            objectIds: Array.from(
+              { length: 501 },
+              (_, index) => `obj-${index}`,
+            ),
+            delta: {
+              dx: 120,
+              dy: 0,
+            },
+          },
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(400);
+      expect(result.error).toContain("moveObjects");
     }
   });
 });

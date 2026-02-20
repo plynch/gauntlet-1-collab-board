@@ -67,6 +67,13 @@ export type BoardBounds = {
   height: number;
 };
 
+export type ViewportBounds = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
 export type BoardToolCall =
   | {
       tool: "createStickyNote";
@@ -86,6 +93,19 @@ export type BoardToolCall =
         width: number;
         height: number;
         color: string;
+      };
+    }
+  | {
+      tool: "createStickyBatch";
+      args: {
+        count: number;
+        color: string;
+        originX: number;
+        originY: number;
+        columns?: number;
+        gapX?: number;
+        gapY?: number;
+        textPrefix?: string;
       };
     }
   | {
@@ -154,6 +174,25 @@ export type BoardToolCall =
       };
     }
   | {
+      tool: "moveObjects";
+      args: {
+        objectIds: string[];
+        delta?: {
+          dx: number;
+          dy: number;
+        };
+        toPoint?: {
+          x: number;
+          y: number;
+        };
+        toViewportSide?: {
+          side: "left" | "right" | "top" | "bottom";
+          viewportBounds?: ViewportBounds;
+          padding?: number;
+        };
+      };
+    }
+  | {
       tool: "moveObject";
       args: {
         objectId: string;
@@ -187,6 +226,13 @@ export type BoardToolCall =
       tool: "deleteObjects";
       args: {
         objectIds: string[];
+      };
+    }
+  | {
+      tool: "fitFrameToContents";
+      args: {
+        frameId: string;
+        padding?: number;
       };
     }
   | {

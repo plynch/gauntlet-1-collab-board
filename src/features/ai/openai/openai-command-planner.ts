@@ -22,9 +22,20 @@ const TOOL_NAME_ALIASES: Record<string, BoardToolCall["tool"]> = {
   add_sticky: "createStickyNote",
   createNote: "createStickyNote",
   create_note: "createStickyNote",
+  createStickyBatch: "createStickyBatch",
+  create_sticky_batch: "createStickyBatch",
+  createStickies: "createStickyBatch",
+  batchStickies: "createStickyBatch",
+  batch_stickies: "createStickyBatch",
   createLine: "createShape",
   create_line: "createShape",
   line: "createShape",
+  moveObjects: "moveObjects",
+  move_objects: "moveObjects",
+  moveAll: "moveObjects",
+  move_all: "moveObjects",
+  moveSelection: "moveObjects",
+  move_selection: "moveObjects",
   move: "moveObject",
   moveSelected: "moveObject",
   resize: "resizeObject",
@@ -41,6 +52,9 @@ const TOOL_NAME_ALIASES: Record<string, BoardToolCall["tool"]> = {
   distribute: "distributeObjects",
   arrangeGrid: "arrangeObjectsInGrid",
   arrangeInGrid: "arrangeObjectsInGrid",
+  fitFrame: "fitFrameToContents",
+  fitFrameToContents: "fitFrameToContents",
+  fit_frame_to_contents: "fitFrameToContents",
 };
 
 const SHAPE_TYPE_ALIASES: Record<string, "rect" | "circle" | "line" | "triangle" | "star"> = {
@@ -256,6 +270,60 @@ function normalizeOperationArgs(
     }
   }
 
+  if (tool === "createStickyBatch") {
+    if (args.count === undefined) {
+      const countCandidate =
+        parseNumberValue(args.n) ??
+        parseNumberValue(args.quantity) ??
+        parseNumberValue(args.total);
+      if (countCandidate !== null) {
+        args.count = countCandidate;
+      }
+    }
+
+    if (args.originX === undefined && position) {
+      args.originX = position.x;
+    }
+    if (args.originY === undefined && position) {
+      args.originY = position.y;
+    }
+    if (args.originX === undefined && args.x !== undefined) {
+      args.originX = args.x;
+    }
+    if (args.originY === undefined && args.y !== undefined) {
+      args.originY = args.y;
+    }
+
+    if (typeof args.color !== "string") {
+      const colorCandidate = args.colour ?? args.fill;
+      if (typeof colorCandidate === "string") {
+        args.color = colorCandidate;
+      }
+    }
+
+    if (args.columns === undefined) {
+      const colCandidate =
+        parseNumberValue(args.cols) ?? parseNumberValue(args.columnCount);
+      if (colCandidate !== null) {
+        args.columns = colCandidate;
+      }
+    }
+
+    if (args.gapX === undefined && args.gapY === undefined) {
+      const uniformGapCandidate = parseNumberValue(args.gap);
+      if (uniformGapCandidate !== null) {
+        args.gapX = uniformGapCandidate;
+        args.gapY = uniformGapCandidate;
+      }
+    }
+    if (typeof args.textPrefix !== "string") {
+      const textPrefixCandidate = args.text ?? args.prefix;
+      if (typeof textPrefixCandidate === "string") {
+        args.textPrefix = textPrefixCandidate;
+      }
+    }
+  }
+
   if (tool === "moveObject") {
     if (typeof args.objectId !== "string") {
       const idCandidate = args.id ?? args.targetId;
@@ -377,6 +445,83 @@ function normalizeOperationArgs(
     }
   }
 
+  if (tool === "moveObjects") {
+    if (!Array.isArray(args.objectIds)) {
+      const ids = args.ids ?? args.selectedObjectIds;
+      if (Array.isArray(ids)) {
+        args.objectIds = ids;
+      } else if (typeof args.objectId === "string") {
+        args.objectIds = [args.objectId];
+      }
+    }
+
+    if (!asRecord(args.delta)) {
+      const dx = parseNumberValue(args.dx);
+      const dy = parseNumberValue(args.dy);
+      if (dx !== null || dy !== null) {
+        args.delta = {
+          dx: dx ?? 0,
+          dy: dy ?? 0,
+        };
+      }
+    }
+
+    if (!asRecord(args.toPoint) && position) {
+      args.toPoint = {
+        x: position.x,
+        y: position.y,
+      };
+    } else if (!asRecord(args.toPoint)) {
+      const xValue = parseNumberValue(args.x);
+      const yValue = parseNumberValue(args.y);
+      if (xValue !== null && yValue !== null) {
+      args.toPoint = {
+        x: xValue,
+        y: yValue,
+      };
+      }
+    }
+
+    if (!asRecord(args.toViewportSide)) {
+      const sideCandidate =
+        typeof args.side === "string"
+          ? args.side
+          : typeof args.viewportSide === "string"
+            ? args.viewportSide
+            : typeof args.targetSide === "string"
+              ? args.targetSide
+              : null;
+      if (sideCandidate) {
+        args.toViewportSide = {
+          side: sideCandidate.toLowerCase(),
+        };
+      }
+    }
+
+    const toViewportSide = asRecord(args.toViewportSide);
+    if (toViewportSide) {
+      if (typeof toViewportSide.side === "string") {
+        toViewportSide.side = toViewportSide.side.toLowerCase();
+      }
+
+      if (!asRecord(toViewportSide.viewportBounds)) {
+        const viewportBoundsCandidate = asRecord(args.viewportBounds);
+        if (viewportBoundsCandidate) {
+          toViewportSide.viewportBounds = viewportBoundsCandidate;
+        }
+      }
+    }
+  }
+
+  if (tool === "fitFrameToContents") {
+    if (typeof args.frameId !== "string") {
+      const frameIdCandidate = args.objectId ?? args.id ?? args.targetId;
+      if (typeof frameIdCandidate === "string") {
+        args.frameId = frameIdCandidate;
+      }
+    }
+  }
+
   return args;
 }
 
@@ -432,6 +577,19 @@ const boardToolCallSchema: z.ZodType<BoardToolCall> = z.discriminatedUnion(
         x: z.number(),
         y: z.number(),
         color: z.string(),
+      }),
+    }),
+    z.object({
+      tool: z.literal("createStickyBatch"),
+      args: z.object({
+        count: z.number(),
+        color: z.string(),
+        originX: z.number(),
+        originY: z.number(),
+        columns: z.number().optional(),
+        gapX: z.number().optional(),
+        gapY: z.number().optional(),
+        textPrefix: z.string().max(1_000).optional(),
       }),
     }),
     z.object({
@@ -520,6 +678,49 @@ const boardToolCallSchema: z.ZodType<BoardToolCall> = z.discriminatedUnion(
       }),
     }),
     z.object({
+      tool: z.literal("moveObjects"),
+      args: z
+        .object({
+          objectIds: z.array(z.string()),
+          delta: z
+            .object({
+              dx: z.number(),
+              dy: z.number(),
+            })
+            .optional(),
+          toPoint: z
+            .object({
+              x: z.number(),
+              y: z.number(),
+            })
+            .optional(),
+          toViewportSide: z
+            .object({
+              side: z.enum(["left", "right", "top", "bottom"]),
+              viewportBounds: z
+                .object({
+                  left: z.number(),
+                  top: z.number(),
+                  width: z.number(),
+                  height: z.number(),
+                })
+                .optional(),
+              padding: z.number().optional(),
+            })
+            .optional(),
+        })
+        .superRefine((value, context) => {
+          if (!value.delta && !value.toPoint && !value.toViewportSide) {
+            context.addIssue({
+              code: z.ZodIssueCode.custom,
+              message:
+                "moveObjects requires one of delta, toPoint, or toViewportSide.",
+              path: ["delta"],
+            });
+          }
+        }),
+    }),
+    z.object({
       tool: z.literal("resizeObject"),
       args: z.object({
         objectId: z.string(),
@@ -548,6 +749,13 @@ const boardToolCallSchema: z.ZodType<BoardToolCall> = z.discriminatedUnion(
       }),
     }),
     z.object({
+      tool: z.literal("fitFrameToContents"),
+      args: z.object({
+        frameId: z.string(),
+        padding: z.number().optional(),
+      }),
+    }),
+    z.object({
       tool: z.literal("getBoardState"),
       args: z.object({}).optional(),
     }),
@@ -573,17 +781,26 @@ const openAiPlannerOutputSchema = z
 
 const OPENAI_PLANNER_SYSTEM_PROMPT = [
   "You are the CollabBoard operation planner.",
-  "Convert user commands into structured board tool operations.",
+  "Convert user commands into compact, high-confidence board tool operations.",
   "Return strict JSON with keys: intent, planned, assistantMessage, operations.",
   "Use only allowed tools with exact case-sensitive names from the provided tools list.",
   "Do not invent aliases (for example createSticky/addSticky/move/resize/delete).",
+  "Prefer higher-level tools for happy path reliability: createStickyBatch for many stickies, moveObjects for group moves, fitFrameToContents for frame-fit requests.",
   "For line commands, always use tool=createShape with args.type='line'.",
   "When the user gives explicit coordinates (for example x=140 y=180 or at 140,180), include numeric args.x and args.y in the relevant operation.",
+  "If using createStickyBatch, carry coordinates in originX/originY.",
+  "If moving multiple items, use moveObjects with one of delta or toPoint or toViewportSide.",
   "When selectedObjectIds is non-empty and the user says selected, use those IDs exactly for objectIds/objectId references.",
-  "For requests like create N [color] stickies, emit exactly N createStickyNote operations.",
+  "For requests like create N [color] stickies, use one createStickyBatch operation with count=N.",
+  "For 'move ... to right/left/top/bottom side of screen', use moveObjects.toViewportSide and include viewportBounds when provided.",
+  "For 'resize frame to fit contents', use fitFrameToContents with frameId from selected rect when possible.",
   `If you cannot safely map a command, set planned=false with a helpful assistantMessage and operations=[].`,
   `When planned=true, keep operations to ${MAX_TOOL_CALLS} or fewer and do not invent unknown object ids.`,
-  "Prefer deterministic direct edits over verbose multi-step plans.",
+  "Examples:",
+  "- create 25 red stickies -> createStickyBatch(count=25,color='red',originX,originY,columns,gapX,gapY,textPrefix)",
+  "- move all red sticky notes to the right side of the screen -> moveObjects(objectIds,toViewportSide.side='right')",
+  "- resize frame to fit contents -> fitFrameToContents(frameId,padding)",
+  "Keep assistantMessage short, user-facing, and outcome-oriented.",
 ].join("\n");
 
 export type OpenAiPlannerUsage = {

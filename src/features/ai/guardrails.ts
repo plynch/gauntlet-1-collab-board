@@ -5,8 +5,10 @@ import { createMemoryGuardrailStore } from "@/features/ai/guardrail-store.memory
 
 export const MAX_AI_OPERATIONS_PER_COMMAND = 50;
 export const MAX_AI_CREATED_OBJECTS_PER_COMMAND = 50;
+export const MAX_AI_STICKY_BATCH_COUNT_PER_TOOL_CALL = 50;
 export const MAX_AI_DELETIONS_PER_TOOL_CALL = 2_000;
 export const MAX_AI_LAYOUT_OBJECTS_PER_TOOL_CALL = 50;
+export const MAX_AI_MOVE_OBJECTS_PER_TOOL_CALL = 500;
 export const MAX_AI_COMMANDS_PER_USER_PER_WINDOW = 20;
 export const AI_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1_000;
 export const AI_BOARD_LOCK_TTL_MS = 15_000;
@@ -49,6 +51,7 @@ export function setGuardrailStoreForTests(store: GuardrailStore | null): void {
 function isCreateTool(toolCall: BoardToolCall): boolean {
   return (
     toolCall.tool === "createStickyNote" ||
+    toolCall.tool === "createStickyBatch" ||
     toolCall.tool === "createShape" ||
     toolCall.tool === "createGridContainer" ||
     toolCall.tool === "createFrame" ||
@@ -71,10 +74,13 @@ function isLayoutTool(toolCall: BoardToolCall): toolCall is LayoutToolCall {
  * Handles count created objects.
  */
 export function countCreatedObjects(operations: BoardToolCall[]): number {
-  return operations.reduce(
-    (total, operation) => total + (isCreateTool(operation) ? 1 : 0),
-    0,
-  );
+  return operations.reduce((total, operation) => {
+    if (operation.tool === "createStickyBatch") {
+      return total + Math.max(0, Math.floor(operation.args.count));
+    }
+
+    return total + (isCreateTool(operation) ? 1 : 0);
+  }, 0);
 }
 
 /**
@@ -95,6 +101,20 @@ export function validateTemplatePlan(plan: TemplatePlan):
       ok: false,
       status: 400,
       error: `Template exceeds max operations (${MAX_AI_OPERATIONS_PER_COMMAND}).`,
+    };
+  }
+
+  const oversizedStickyBatch = plan.operations.find(
+    (operation) =>
+      operation.tool === "createStickyBatch" &&
+      Math.max(0, Math.floor(operation.args.count)) >
+        MAX_AI_STICKY_BATCH_COUNT_PER_TOOL_CALL,
+  );
+  if (oversizedStickyBatch && oversizedStickyBatch.tool === "createStickyBatch") {
+    return {
+      ok: false,
+      status: 400,
+      error: `createStickyBatch exceeds max count (${MAX_AI_STICKY_BATCH_COUNT_PER_TOOL_CALL}).`,
     };
   }
 
@@ -130,6 +150,19 @@ export function validateTemplatePlan(plan: TemplatePlan):
       ok: false,
       status: 400,
       error: `${oversizedLayout.tool} exceeds max object ids (${MAX_AI_LAYOUT_OBJECTS_PER_TOOL_CALL}).`,
+    };
+  }
+
+  const oversizedMove = plan.operations.find(
+    (operation) =>
+      operation.tool === "moveObjects" &&
+      operation.args.objectIds.length > MAX_AI_MOVE_OBJECTS_PER_TOOL_CALL,
+  );
+  if (oversizedMove && oversizedMove.tool === "moveObjects") {
+    return {
+      ok: false,
+      status: 400,
+      error: `moveObjects exceeds max object ids (${MAX_AI_MOVE_OBJECTS_PER_TOOL_CALL}).`,
     };
   }
 

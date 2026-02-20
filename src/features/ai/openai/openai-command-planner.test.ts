@@ -251,4 +251,105 @@ describe("parseOpenAiPlannerOutput", () => {
       },
     ]);
   });
+
+  it("accepts createStickyBatch output", () => {
+    const parsed = parseOpenAiPlannerOutput(
+      JSON.stringify({
+        intent: "create-sticky-batch",
+        planned: true,
+        assistantMessage: "Created 25 stickies.",
+        operations: [
+          {
+            tool: "createStickyBatch",
+            args: {
+              count: 25,
+              color: "#fca5a5",
+              originX: 120,
+              originY: 160,
+              columns: 5,
+              gapX: 240,
+              gapY: 190,
+              textPrefix: "Sticky",
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(parsed.planned).toBe(true);
+    expect(parsed.operations[0]?.tool).toBe("createStickyBatch");
+  });
+
+  it("normalizes moveObjects aliases with viewport side", () => {
+    const parsed = parseOpenAiPlannerOutput(
+      JSON.stringify({
+        intent: "move-all",
+        planned: true,
+        assistantMessage: "Moved red stickies.",
+        operations: [
+          {
+            tool: "move_all",
+            args: {
+              ids: ["obj-1", "obj-2"],
+              targetSide: "RIGHT",
+              viewportBounds: {
+                left: 0,
+                top: 0,
+                width: 1200,
+                height: 800,
+              },
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(parsed.planned).toBe(true);
+    expect(parsed.operations).toEqual([
+      {
+        tool: "moveObjects",
+        args: {
+          objectIds: ["obj-1", "obj-2"],
+          toViewportSide: {
+            side: "right",
+            viewportBounds: {
+              left: 0,
+              top: 0,
+              width: 1200,
+              height: 800,
+            },
+          },
+        },
+      },
+    ]);
+  });
+
+  it("normalizes fit-frame aliases", () => {
+    const parsed = parseOpenAiPlannerOutput(
+      JSON.stringify({
+        intent: "fit-frame",
+        planned: true,
+        assistantMessage: "Resized frame.",
+        operations: [
+          {
+            tool: "fitFrame",
+            args: {
+              id: "frame-1",
+              padding: 20,
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(parsed.operations).toEqual([
+      {
+        tool: "fitFrameToContents",
+        args: {
+          frameId: "frame-1",
+          padding: 20,
+        },
+      },
+    ]);
+  });
 });

@@ -84,6 +84,8 @@ const JOURNEY_MIN_STAGES = 3;
 const JOURNEY_MAX_STAGES = 8;
 const JOURNEY_STAGE_SPACING_X = 230;
 const RETRO_COLUMN_SPACING_X = 320;
+const MAX_MOVE_OBJECTS = 500;
+const DEFAULT_FRAME_FIT_PADDING = 40;
 
 /**
  * Handles normalize message.
@@ -249,6 +251,18 @@ function parseSize(message: string): Size | null {
 }
 
 /**
+ * Parses padding value.
+ */
+function parsePadding(message: string): number | null {
+  const paddingMatch = message.match(/\bpadding\s*(-?\d+(?:\.\d+)?)\b/i);
+  if (!paddingMatch) {
+    return null;
+  }
+
+  return Math.max(0, Number(paddingMatch[1]));
+}
+
+/**
  * Handles to positive integer.
  */
 function toPositiveInteger(value: string): number {
@@ -411,27 +425,6 @@ function getBoardBounds(boardState: BoardObjectSnapshot[]): {
       ...boardState.map((objectItem) => objectItem.y + objectItem.height),
     ),
   };
-}
-
-/**
- * Gets target area bounds.
- */
-function getTargetAreaBounds(input: PlannerInput): {
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
-} | null {
-  if (input.viewportBounds) {
-    return {
-      left: input.viewportBounds.left,
-      right: input.viewportBounds.left + input.viewportBounds.width,
-      top: input.viewportBounds.top,
-      bottom: input.viewportBounds.top + input.viewportBounds.height,
-    };
-  }
-
-  return getBoardBounds(input.boardState);
 }
 
 /**
@@ -1046,25 +1039,6 @@ function planCreateStickyGrid(
     };
   }
 
-  const operations: BoardToolCall[] = [];
-  for (let row = 0; row < dimensions.rows; row += 1) {
-    for (let column = 0; column < dimensions.columns; column += 1) {
-      const index = row * dimensions.columns + column;
-      const baseText = textSeed
-        ? `${textSeed} ${index + 1}`
-        : `Sticky ${index + 1}`;
-      operations.push({
-        tool: "createStickyNote",
-        args: {
-          text: baseText.slice(0, 1_000),
-          x: point.x + column * STICKY_GRID_SPACING_X,
-          y: point.y + row * STICKY_GRID_SPACING_Y,
-          color,
-        },
-      });
-    }
-  }
-
   return {
     planned: true,
     intent: "create-sticky-grid",
@@ -1072,7 +1046,21 @@ function planCreateStickyGrid(
     plan: toPlan({
       id: "command.create-sticky-grid",
       name: "Create Sticky Note Grid",
-      operations,
+      operations: [
+        {
+          tool: "createStickyBatch",
+          args: {
+            count: total,
+            color,
+            originX: point.x,
+            originY: point.y,
+            columns: dimensions.columns,
+            gapX: STICKY_GRID_SPACING_X,
+            gapY: STICKY_GRID_SPACING_Y,
+            textPrefix: textSeed ?? "Sticky",
+          },
+        },
+      ],
     }),
   };
 }
@@ -1293,21 +1281,6 @@ function planCreateStickyBatch(
   const textSeed = hasExplicitText ? parseStickyText(input.message) : "Sticky";
   const columns = Math.min(STICKY_BATCH_DEFAULT_COLUMNS, count);
 
-  const operations: BoardToolCall[] = [];
-  for (let index = 0; index < count; index += 1) {
-    const row = Math.floor(index / columns);
-    const column = index % columns;
-    operations.push({
-      tool: "createStickyNote",
-      args: {
-        text: `${textSeed} ${index + 1}`.slice(0, 1_000),
-        x: point.x + column * STICKY_GRID_SPACING_X,
-        y: point.y + row * STICKY_GRID_SPACING_Y,
-        color,
-      },
-    });
-  }
-
   return {
     planned: true,
     intent: "create-sticky-batch",
@@ -1315,7 +1288,21 @@ function planCreateStickyBatch(
     plan: toPlan({
       id: "command.create-sticky-batch",
       name: "Create Sticky Notes",
-      operations,
+      operations: [
+        {
+          tool: "createStickyBatch",
+          args: {
+            count,
+            color,
+            originX: point.x,
+            originY: point.y,
+            columns,
+            gapX: STICKY_GRID_SPACING_X,
+            gapY: STICKY_GRID_SPACING_Y,
+            textPrefix: textSeed,
+          },
+        },
+      ],
     }),
   };
 }
@@ -1430,46 +1417,74 @@ function planMoveSelected(
         "Select one or more objects first, then run the move command again.",
     };
   }
+  if (selectedObjects.length > MAX_MOVE_OBJECTS) {
+    return {
+      planned: false,
+      intent: "move-selected",
+      assistantMessage: `Move up to ${MAX_MOVE_OBJECTS} selected objects per command.`,
+    };
+  }
 
   const targetPoint = parseCoordinatePoint(input.message);
-  const operations: BoardToolCall[] = [];
-
+  const sideTarget = parseSideTarget(input.message);
   if (targetPoint) {
-    const anchor = selectedObjects[0];
-    const dx = targetPoint.x - anchor.x;
-    const dy = targetPoint.y - anchor.y;
+    return {
+      planned: true,
+      intent: "move-selected",
+      assistantMessage: `Moved ${selectedObjects.length} selected object${selectedObjects.length === 1 ? "" : "s"}.`,
+      plan: toPlan({
+        id: "command.move-selected",
+        name: "Move Selected Objects",
+        operations: [
+          {
+            tool: "moveObjects",
+            args: {
+              objectIds: selectedObjects.map((objectItem) => objectItem.id),
+              toPoint: {
+                x: targetPoint.x,
+                y: targetPoint.y,
+              },
+            },
+          },
+        ],
+      }),
+    };
+  }
 
-    selectedObjects.forEach((objectItem) => {
-      operations.push({
-        tool: "moveObject",
-        args: {
-          objectId: objectItem.id,
-          x: objectItem.x + dx,
-          y: objectItem.y + dy,
-        },
-      });
-    });
-  } else {
-    const delta = parseDirectionDelta(input.message);
-    if (!delta) {
-      return {
-        planned: false,
-        intent: "move-selected",
-        assistantMessage:
-          "Specify where to move selected objects, for example: right by 120, or to 400, 300.",
-      };
-    }
+  if (sideTarget) {
+    return {
+      planned: true,
+      intent: "move-selected",
+      assistantMessage: `Moved ${selectedObjects.length} selected object${selectedObjects.length === 1 ? "" : "s"} to ${sideTarget} side.`,
+      plan: toPlan({
+        id: "command.move-selected",
+        name: "Move Selected Objects",
+        operations: [
+          {
+            tool: "moveObjects",
+            args: {
+              objectIds: selectedObjects.map((objectItem) => objectItem.id),
+              toViewportSide: {
+                side: sideTarget,
+                ...(input.viewportBounds
+                  ? { viewportBounds: input.viewportBounds }
+                  : {}),
+              },
+            },
+          },
+        ],
+      }),
+    };
+  }
 
-    selectedObjects.forEach((objectItem) => {
-      operations.push({
-        tool: "moveObject",
-        args: {
-          objectId: objectItem.id,
-          x: objectItem.x + delta.x,
-          y: objectItem.y + delta.y,
-        },
-      });
-    });
+  const delta = parseDirectionDelta(input.message);
+  if (!delta) {
+    return {
+      planned: false,
+      intent: "move-selected",
+      assistantMessage:
+        "Specify where to move selected objects, for example: right by 120, or to 400, 300.",
+    };
   }
 
   return {
@@ -1479,7 +1494,18 @@ function planMoveSelected(
     plan: toPlan({
       id: "command.move-selected",
       name: "Move Selected Objects",
-      operations,
+      operations: [
+        {
+          tool: "moveObjects",
+          args: {
+            objectIds: selectedObjects.map((objectItem) => objectItem.id),
+            delta: {
+              dx: delta.x,
+              dy: delta.y,
+            },
+          },
+        },
+      ],
     }),
   };
 }
@@ -1489,7 +1515,7 @@ function planMoveSelected(
  */
 function parseMoveAllType(message: string): BoardObjectToolKind | null {
   const match = message.match(
-    /\b(?:all|every|each|the)\b(?:\s+\w+){0,3}\s+(sticky\s+notes|stickies|rectangles|circles|lines|triangles|stars|connectors)\b/i,
+    /\b(?:(?:all|every|each|the)\b(?:\s+\w+){0,3}|\w+\s+){0,1}(sticky\s+notes|stickies|rectangles|circles|lines|triangles|stars|connectors)\b/i,
   );
   if (!match) {
     return null;
@@ -1563,102 +1589,75 @@ function planMoveAll(
       assistantMessage: "No matching objects found to move.",
     };
   }
+  if (candidates.length > MAX_MOVE_OBJECTS) {
+    return {
+      planned: false,
+      intent: "move-all",
+      assistantMessage: `Move up to ${MAX_MOVE_OBJECTS} objects per command.`,
+    };
+  }
 
   const targetPoint = parseCoordinatePoint(input.message);
   const sideTarget = parseSideTarget(input.message);
-  const operations: BoardToolCall[] = [];
 
   if (targetPoint) {
-    const anchor = candidates[0];
-    const dx = targetPoint.x - anchor.x;
-    const dy = targetPoint.y - anchor.y;
+    return {
+      planned: true,
+      intent: "move-all",
+      assistantMessage: `Moved ${candidates.length} ${objectType} object${candidates.length === 1 ? "" : "s"}.`,
+      plan: toPlan({
+        id: "command.move-all",
+        name: "Move Matching Objects",
+        operations: [
+          {
+            tool: "moveObjects",
+            args: {
+              objectIds: candidates.map((objectItem) => objectItem.id),
+              toPoint: {
+                x: targetPoint.x,
+                y: targetPoint.y,
+              },
+            },
+          },
+        ],
+      }),
+    };
+  }
 
-    candidates.forEach((objectItem) => {
-      operations.push({
-        tool: "moveObject",
-        args: {
-          objectId: objectItem.id,
-          x: objectItem.x + dx,
-          y: objectItem.y + dy,
-        },
-      });
-    });
-  } else if (sideTarget) {
-    const candidateBounds = getBoardBounds(candidates);
-    const targetBounds = getTargetAreaBounds(input);
-    if (!candidateBounds || !targetBounds) {
-      return {
-        planned: false,
-        intent: "move-all",
-        assistantMessage:
-          "I could not determine the target area. Try using explicit coordinates like to 900, 300.",
-      };
-    }
+  if (sideTarget) {
+    return {
+      planned: true,
+      intent: "move-all",
+      assistantMessage: `Moved ${candidates.length} ${objectType} object${candidates.length === 1 ? "" : "s"} to ${sideTarget} side.`,
+      plan: toPlan({
+        id: "command.move-all",
+        name: "Move Matching Objects",
+        operations: [
+          {
+            tool: "moveObjects",
+            args: {
+              objectIds: candidates.map((objectItem) => objectItem.id),
+              toViewportSide: {
+                side: sideTarget,
+                ...(input.viewportBounds
+                  ? { viewportBounds: input.viewportBounds }
+                  : {}),
+              },
+            },
+          },
+        ],
+      }),
+    };
+  }
 
-    const groupWidth = Math.max(1, candidateBounds.right - candidateBounds.left);
-    const groupHeight = Math.max(1, candidateBounds.bottom - candidateBounds.top);
-    const padding = 48;
-    const targetLeftBase =
-      sideTarget === "left"
-        ? targetBounds.left + padding
-        : sideTarget === "right"
-          ? targetBounds.right - groupWidth - padding
-          : candidateBounds.left;
-    const targetTopBase =
-      sideTarget === "top"
-        ? targetBounds.top + padding
-        : sideTarget === "bottom"
-          ? targetBounds.bottom - groupHeight - padding
-          : candidateBounds.top;
-
-    const minLeft = targetBounds.left;
-    const maxLeft = targetBounds.right - groupWidth;
-    const minTop = targetBounds.top;
-    const maxTop = targetBounds.bottom - groupHeight;
-
-    const targetLeft =
-      minLeft <= maxLeft
-        ? Math.min(maxLeft, Math.max(minLeft, targetLeftBase))
-        : candidateBounds.left;
-    const targetTop =
-      minTop <= maxTop
-        ? Math.min(maxTop, Math.max(minTop, targetTopBase))
-        : candidateBounds.top;
-
-    const dx = targetLeft - candidateBounds.left;
-    const dy = targetTop - candidateBounds.top;
-
-    candidates.forEach((objectItem) => {
-      operations.push({
-        tool: "moveObject",
-        args: {
-          objectId: objectItem.id,
-          x: objectItem.x + dx,
-          y: objectItem.y + dy,
-        },
-      });
-    });
-  } else {
-    const delta = parseDirectionDelta(input.message);
-    if (!delta) {
-      return {
-        planned: false,
-        intent: "move-all",
-        assistantMessage:
-          "Specify a move direction or target position for matching objects.",
-      };
-    }
-
-    candidates.forEach((objectItem) => {
-      operations.push({
-        tool: "moveObject",
-        args: {
-          objectId: objectItem.id,
-          x: objectItem.x + delta.x,
-          y: objectItem.y + delta.y,
-        },
-      });
-    });
+  const delta = parseDirectionDelta(input.message);
+  if (!delta) {
+    return {
+      planned: false,
+      intent: "move-all",
+      assistantMessage:
+        "Specify a move direction or target position for matching objects.",
+    };
   }
 
   return {
@@ -1668,7 +1667,94 @@ function planMoveAll(
     plan: toPlan({
       id: "command.move-all",
       name: "Move Matching Objects",
-      operations,
+      operations: [
+        {
+          tool: "moveObjects",
+          args: {
+            objectIds: candidates.map((objectItem) => objectItem.id),
+            delta: {
+              dx: delta.x,
+              dy: delta.y,
+            },
+          },
+        },
+      ],
+    }),
+  };
+}
+
+/**
+ * Returns whether fit-frame command is true.
+ */
+function isFitFrameToContentsCommand(message: string): boolean {
+  const lower = normalizeMessage(message);
+  return (
+    /\bfit\b[\w\s]{0,20}\bframe\b[\w\s]{0,20}\bcontents?\b/.test(lower) ||
+    /\bresize\b[\w\s]{0,20}\bframe\b[\w\s]{0,20}\bfit\b[\w\s]{0,20}\bcontents?\b/.test(
+      lower,
+    )
+  );
+}
+
+/**
+ * Finds frame candidate id.
+ */
+function findFrameCandidateId(input: PlannerInput): string | null {
+  const selectedObjects = getSelectedObjects(
+    input.boardState,
+    input.selectedObjectIds,
+  );
+  const selectedRectangles = selectedObjects.filter(
+    (objectItem) => objectItem.type === "rect",
+  );
+  if (selectedRectangles.length > 0) {
+    return selectedRectangles[0].id;
+  }
+
+  const rectangles = input.boardState.filter((objectItem) => objectItem.type === "rect");
+  if (rectangles.length === 1) {
+    return rectangles[0].id;
+  }
+
+  return null;
+}
+
+/**
+ * Handles plan fit frame to contents.
+ */
+function planFitFrameToContents(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
+  if (!isFitFrameToContentsCommand(input.message)) {
+    return null;
+  }
+
+  const frameId = findFrameCandidateId(input);
+  if (!frameId) {
+    return {
+      planned: false,
+      intent: "fit-frame-to-contents",
+      assistantMessage:
+        "Select a frame first, then run resize frame to fit contents.",
+    };
+  }
+
+  return {
+    planned: true,
+    intent: "fit-frame-to-contents",
+    assistantMessage: "Resized frame to fit its contents.",
+    plan: toPlan({
+      id: "command.fit-frame-to-contents",
+      name: "Fit Frame To Contents",
+      operations: [
+        {
+          tool: "fitFrameToContents",
+          args: {
+            frameId,
+            padding: parsePadding(input.message) ?? DEFAULT_FRAME_FIT_PADDING,
+          },
+        },
+      ],
     }),
   };
 }
@@ -1855,6 +1941,7 @@ export function planDeterministicCommand(
     planCreateShape,
     planMoveSelected,
     planMoveAll,
+    planFitFrameToContents,
     planResizeSelected,
     planChangeColorSelected,
     planUpdateSelectedText,
@@ -1871,6 +1958,6 @@ export function planDeterministicCommand(
     planned: false,
     intent: "unsupported-command",
     assistantMessage:
-      "I could not map that command yet. Try creating shapes/stickies, arranging selected objects in a grid, aligning/distributing selected objects, summarizing selected notes, extracting action items, moving/resizing selected objects, deleting selected, clearing the board, changing selected color, or creating SWOT, retrospective, and journey-map templates.",
+      "I could not map that command yet. Try creating stickies/shapes/frames, arranging or aligning or distributing selected objects, moving object groups, resizing selected or fitting a frame to contents, summarizing notes, extracting action items, deleting selected, clearing the board, changing selected color, or creating SWOT, retrospective, and journey-map templates.",
   };
 }

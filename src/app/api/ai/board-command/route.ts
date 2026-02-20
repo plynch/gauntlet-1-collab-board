@@ -40,6 +40,7 @@ import {
   type OpenAiPlannerFailureError,
   planBoardCommandWithOpenAi,
 } from "@/features/ai/openai/openai-command-planner";
+import { getOpenAiRequiredErrorResponse } from "@/features/ai/openai/openai-required-response";
 import { instantiateLocalTemplate } from "@/features/ai/templates/local-template-provider";
 import { SWOT_TEMPLATE_ID } from "@/features/ai/templates/template-types";
 import { BoardToolExecutor } from "@/features/ai/tools/board-tools";
@@ -194,6 +195,7 @@ function toSerializedTool(toolName: BoardToolCall["tool"]): Serialized {
 function createsObject(toolCall: BoardToolCall): boolean {
   return (
     toolCall.tool === "createStickyNote" ||
+    toolCall.tool === "createStickyBatch" ||
     toolCall.tool === "createShape" ||
     toolCall.tool === "createGridContainer" ||
     toolCall.tool === "createFrame" ||
@@ -302,6 +304,89 @@ function buildOpenAiPlanTraceFields(
 }
 
 /**
+ * Handles build operation counts by tool.
+ */
+function buildOperationCountsByTool(
+  plan: TemplatePlan | null | undefined,
+): string {
+  const counts = new Map<string, number>();
+  (plan?.operations ?? []).forEach((operation) => {
+    counts.set(operation.tool, (counts.get(operation.tool) ?? 0) + 1);
+  });
+
+  return JSON.stringify(Object.fromEntries(counts));
+}
+
+/**
+ * Parses coordinate hints from message.
+ */
+function parseCoordinateHintsFromMessage(message: string): {
+  hintedX: number | null;
+  hintedY: number | null;
+} {
+  const match = message.match(
+    /\b(?:x\s*=?\s*(-?\d+(?:\.\d+)?)\s*y\s*=?\s*(-?\d+(?:\.\d+)?)|(?:at|to)\s*(?:position\s*)?(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?))/i,
+  );
+  if (!match) {
+    return {
+      hintedX: null,
+      hintedY: null,
+    };
+  }
+
+  const xValue = Number(match[1] ?? match[3]);
+  const yValue = Number(match[2] ?? match[4]);
+  return {
+    hintedX: Number.isFinite(xValue) ? xValue : null,
+    hintedY: Number.isFinite(yValue) ? yValue : null,
+  };
+}
+
+/**
+ * Handles build tool call arg trace fields.
+ */
+function buildToolCallArgTraceFields(toolCall: BoardToolCall): {
+  argKeysJson: string;
+  argsPreviewJson: string;
+  x: number | null;
+  y: number | null;
+  objectIdsCount: number;
+} {
+  const argsRecord =
+    (toolCall.args as Record<string, unknown> | undefined) ?? {};
+  const argsPreviewJson = JSON.stringify(argsRecord).slice(0, 500);
+  const xCandidates = [
+    argsRecord.x,
+    (argsRecord.originX as unknown) ?? null,
+    (argsRecord.toPoint as { x?: unknown } | undefined)?.x,
+  ];
+  const yCandidates = [
+    argsRecord.y,
+    (argsRecord.originY as unknown) ?? null,
+    (argsRecord.toPoint as { y?: unknown } | undefined)?.y,
+  ];
+  const objectIds = Array.isArray(argsRecord.objectIds)
+    ? argsRecord.objectIds
+    : [];
+
+  const findFiniteNumber = (values: unknown[]): number | null => {
+    const match = values.find(
+      (value): value is number =>
+        typeof value === "number" && Number.isFinite(value),
+    );
+    return typeof match === "number" ? match : null;
+  };
+
+  return {
+    argKeysJson: JSON.stringify(Object.keys(argsRecord)),
+    argsPreviewJson,
+    x: findFiniteNumber(xCandidates),
+    y: findFiniteNumber(yCandidates),
+    objectIdsCount: objectIds.length,
+  };
+}
+
+/**
  * Builds openai execution summary.
  */
 function buildOpenAiExecutionSummary(openAiAttempt: OpenAiPlanAttempt): {
@@ -397,47 +482,6 @@ function isOpenAiRequiredForStubCommands(): boolean {
 }
 
 /**
- * Gets openai required error response.
- */
-function getOpenAiRequiredErrorResponse(openAiAttempt: OpenAiPlanAttempt): {
-  status: number;
-  message: string;
-} {
-  if (openAiAttempt.status === "disabled") {
-    return {
-      status: 503,
-      message: `OpenAI-required mode is enabled, but OpenAI planner is disabled. ${openAiAttempt.reason}`,
-    };
-  }
-
-  if (openAiAttempt.status === "budget-blocked") {
-    return {
-      status: 429,
-      message: `OpenAI-required mode blocked by budget policy. ${openAiAttempt.assistantMessage}`,
-    };
-  }
-
-  if (openAiAttempt.status === "not-planned") {
-    return {
-      status: 422,
-      message: `OpenAI-required mode received planned=false for intent "${openAiAttempt.intent}". ${openAiAttempt.assistantMessage}`,
-    };
-  }
-
-  if (openAiAttempt.status === "error") {
-    return {
-      status: 502,
-      message: `OpenAI-required mode failed during planner call. ${openAiAttempt.reason}`,
-    };
-  }
-
-  return {
-    status: 500,
-    message: "OpenAI-required mode received an unsupported planner status.",
-  };
-}
-
-/**
  * Handles attempt openai planner.
  */
 async function attemptOpenAiPlanner(options: {
@@ -475,9 +519,12 @@ async function attemptOpenAiPlanner(options: {
   });
 
   let reservationOpen = true;
+  const coordinateHints = parseCoordinateHintsFromMessage(options.message);
   const openAiSpan = options.trace.startSpan("openai.call", {
     model: config.model,
     messagePreview: options.message.slice(0, 240),
+    hintedX: coordinateHints.hintedX,
+    hintedY: coordinateHints.hintedY,
   });
 
   try {
@@ -487,6 +534,9 @@ async function attemptOpenAiPlanner(options: {
       selectedObjectIds: options.selectedObjectIds,
     });
     const planTraceFields = buildOpenAiPlanTraceFields(plannerResult.plan);
+    const operationCountsByToolJson = buildOperationCountsByTool(
+      plannerResult.plan,
+    );
 
     const actualUsd =
       plannerResult.usage.estimatedCostUsd > 0
@@ -507,6 +557,7 @@ async function attemptOpenAiPlanner(options: {
       estimatedCostUsd: plannerResult.usage.estimatedCostUsd,
       totalSpentUsd: finalized.totalSpentUsd,
       operationCount: planTraceFields.operationCount,
+      operationCountsByToolJson,
       operationsPreviewJson: planTraceFields.operationsPreviewJson,
       firstOperationTool: planTraceFields.firstOperationTool,
       firstOperationX: planTraceFields.firstOperationX,
@@ -588,7 +639,7 @@ async function executePlanWithTracing(options: {
 }> {
   const results: Awaited<ReturnType<BoardToolExecutor["executeToolCall"]>>[] =
     [];
-  const createdObjectIds: string[] = [];
+  const createdObjectIdSet = new Set<string>();
   const callbackManager = new CallbackManager();
   callbackManager.addHandler(
     new LangChainLangfuseCallbackHandler(options.trace),
@@ -613,6 +664,7 @@ async function executePlanWithTracing(options: {
 
     for (let index = 0; index < options.operations.length; index += 1) {
       const operation = options.operations[index];
+      const argTraceFields = buildToolCallArgTraceFields(operation);
       const toolRun = await toolManager.handleToolStart(
         toSerializedTool(operation.tool),
         JSON.stringify(operation.args ?? {}),
@@ -622,6 +674,11 @@ async function executePlanWithTracing(options: {
         {
           operationIndex: index,
           tool: operation.tool,
+          argKeysJson: argTraceFields.argKeysJson,
+          argsPreviewJson: argTraceFields.argsPreviewJson,
+          x: argTraceFields.x,
+          y: argTraceFields.y,
+          objectIdsCount: argTraceFields.objectIdsCount,
         },
         operation.tool,
       );
@@ -631,12 +688,20 @@ async function executePlanWithTracing(options: {
         results.push(result);
 
         if (result.objectId && createsObject(operation)) {
-          createdObjectIds.push(result.objectId);
+          createdObjectIdSet.add(result.objectId);
+        }
+        if (Array.isArray(result.createdObjectIds)) {
+          result.createdObjectIds.forEach((createdObjectId) => {
+            if (typeof createdObjectId === "string" && createdObjectId.length > 0) {
+              createdObjectIdSet.add(createdObjectId);
+            }
+          });
         }
 
         await toolRun.handleToolEnd({
           objectId: result.objectId ?? null,
           deletedCount: result.deletedCount ?? 0,
+          createdCount: result.createdObjectIds?.length ?? 0,
           tool: operation.tool,
         });
       } catch (error) {
@@ -651,7 +716,7 @@ async function executePlanWithTracing(options: {
 
     return {
       results,
-      createdObjectIds,
+      createdObjectIds: Array.from(createdObjectIdSet),
     };
   } catch (error) {
     await chainRun.handleChainError(error, undefined, undefined, undefined, {
@@ -918,23 +983,32 @@ export async function POST(request: NextRequest) {
           let mcpUsed = true;
           let llmUsed = false;
           const selectedObjectIds = parsedPayload.selectedObjectIds ?? [];
-          const requireOpenAi = isOpenAiRequiredForStubCommands();
+          const openAiConfig = getOpenAiPlannerConfig();
+          const plannerMode = openAiConfig.plannerMode;
+          const requireOpenAi =
+            plannerMode === "openai-strict" || isOpenAiRequiredForStubCommands();
           const shouldForceDeterministicClearBoard = isClearBoardRequestMessage(
             parsedPayload.message,
-          );
+          ) && !requireOpenAi;
+          const shouldAttemptOpenAi =
+            !shouldForceDeterministicClearBoard &&
+            plannerMode !== "deterministic-only";
 
-          const openAiAttempt = shouldForceDeterministicClearBoard
-            ? {
-                status: "disabled" as const,
-                model: getOpenAiPlannerConfig().model,
-                reason: "Skipped for deterministic clear-board policy.",
-              }
-            : await attemptOpenAiPlanner({
+          const openAiAttempt = shouldAttemptOpenAi
+            ? await attemptOpenAiPlanner({
                 message: parsedPayload.message,
                 boardState: boardObjects,
                 selectedObjectIds,
                 trace: activeTrace,
-              });
+              })
+            : {
+                status: "disabled" as const,
+                model: openAiConfig.model,
+                reason:
+                  plannerMode === "deterministic-only"
+                    ? "Skipped because AI_PLANNER_MODE=deterministic-only."
+                    : "Skipped for deterministic clear-board policy.",
+              };
           const openAiExecution = buildOpenAiExecutionSummary(openAiAttempt);
           if (openAiAttempt.status === "planned") {
             plannerResult = {
@@ -946,9 +1020,10 @@ export async function POST(request: NextRequest) {
             llmUsed = true;
             mcpUsed = false;
           } else if (
-            openAiAttempt.status === "not-planned" ||
-            openAiAttempt.status === "budget-blocked" ||
-            openAiAttempt.status === "error"
+            shouldAttemptOpenAi &&
+            (openAiAttempt.status === "not-planned" ||
+              openAiAttempt.status === "budget-blocked" ||
+              openAiAttempt.status === "error")
           ) {
             fallbackUsed = true;
           }

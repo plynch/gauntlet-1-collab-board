@@ -51,7 +51,10 @@ export async function GET() {
   const shouldValidate = shouldValidateOpenAiReadiness();
   let reason: string | null = null;
   let validated = false;
-  if (!config.enabled) {
+  if (config.plannerMode === "deterministic-only") {
+    reason = "AI_PLANNER_MODE=deterministic-only disables OpenAI planner.";
+  }
+  if (!config.enabled && !reason) {
     const hasApiKey = Boolean(config.apiKey && config.apiKey.length > 0);
     if (!hasApiKey) {
       reason = "OPENAI_API_KEY is missing or empty server-side.";
@@ -81,6 +84,7 @@ export async function GET() {
     validated,
     validationMode: shouldValidate ? "live" : "config-only",
     model: config.model,
+    plannerMode: config.plannerMode,
     baseUrl: config.baseUrl,
     reason,
   });

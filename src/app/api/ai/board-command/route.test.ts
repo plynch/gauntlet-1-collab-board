@@ -9,7 +9,7 @@ import {
   MAX_BOARD_COMMAND_CHARS,
   MAX_BOARD_COMMAND_SELECTION_IDS,
 } from "@/features/ai/board-command";
-
+import { getOpenAiRequiredErrorResponse } from "@/features/ai/openai/openai-required-response";
 import { POST } from "./route";
 
 /**
@@ -83,5 +83,36 @@ describe("POST /api/ai/board-command", () => {
 
     expect(response.status).toBe(400);
     expect(payload.error).toBe("Invalid board command payload.");
+  });
+
+  it("maps strict-mode openai planned=false to 422", () => {
+    const failure = getOpenAiRequiredErrorResponse({
+      status: "not-planned",
+      model: "gpt-4.1-nano",
+      intent: "unsupported-command",
+      assistantMessage: "I could not map that command.",
+      totalSpentUsd: 0.003,
+      usage: {
+        model: "gpt-4.1-nano",
+        inputTokens: 120,
+        outputTokens: 42,
+        totalTokens: 162,
+        estimatedCostUsd: 0.0001,
+      },
+    });
+
+    expect(failure.status).toBe(422);
+    expect(failure.message).toContain("OpenAI-required mode");
+  });
+
+  it("maps strict-mode disabled planner to 503", () => {
+    const failure = getOpenAiRequiredErrorResponse({
+      status: "disabled",
+      model: "gpt-4.1-nano",
+      reason: "Skipped because AI_PLANNER_MODE=deterministic-only.",
+    });
+
+    expect(failure.status).toBe(503);
+    expect(failure.message).toContain("OpenAI-required mode is enabled");
   });
 });

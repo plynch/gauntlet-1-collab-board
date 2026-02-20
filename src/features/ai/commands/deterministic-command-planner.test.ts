@@ -132,14 +132,12 @@ describe("planDeterministicCommand", () => {
     expect(result.planned).toBe(true);
     if (result.planned) {
       expect(result.intent).toBe("create-sticky-batch");
-      expect(result.plan.operations).toHaveLength(25);
-      expect(result.plan.operations.every((op) => op.tool === "createStickyNote")).toBe(
-        true,
-      );
+      expect(result.plan.operations).toHaveLength(1);
       const first = result.plan.operations[0];
-      if (first?.tool === "createStickyNote") {
+      if (first?.tool === "createStickyBatch") {
+        expect(first.args.count).toBe(25);
         expect(first.args.color).toBe("#fca5a5");
-        expect(first.args.text).toBe("Sticky 1");
+        expect(first.args.textPrefix).toBe("Sticky");
       }
     }
   });
@@ -287,10 +285,12 @@ describe("planDeterministicCommand", () => {
     expect(result.planned).toBe(true);
     if (result.planned) {
       expect(result.intent).toBe("create-sticky-grid");
-      expect(result.plan.operations).toHaveLength(6);
-      expect(result.plan.operations.every((op) => op.tool === "createStickyNote")).toBe(
-        true,
-      );
+      expect(result.plan.operations).toHaveLength(1);
+      expect(result.plan.operations[0]?.tool).toBe("createStickyBatch");
+      if (result.plan.operations[0]?.tool === "createStickyBatch") {
+        expect(result.plan.operations[0].args.count).toBe(6);
+        expect(result.plan.operations[0].args.columns).toBe(3);
+      }
     }
   });
 
@@ -365,8 +365,8 @@ describe("planDeterministicCommand", () => {
     expect(result.planned).toBe(true);
     if (result.planned) {
       expect(result.intent).toBe("move-selected");
-      expect(result.plan.operations).toHaveLength(2);
-      expect(result.plan.operations[0]?.tool).toBe("moveObject");
+      expect(result.plan.operations).toHaveLength(1);
+      expect(result.plan.operations[0]?.tool).toBe("moveObjects");
     }
   });
 
@@ -414,7 +414,6 @@ describe("planDeterministicCommand", () => {
       },
     ];
 
-    const originalById = new Map(boardState.map((objectItem) => [objectItem.id, objectItem]));
     const result = planDeterministicCommand({
       message: "Move the red sticky notes to the right side of the screen",
       boardState,
@@ -430,20 +429,50 @@ describe("planDeterministicCommand", () => {
     expect(result.planned).toBe(true);
     if (result.planned) {
       expect(result.intent).toBe("move-all");
-      expect(result.plan.operations).toHaveLength(2);
-      expect(result.plan.operations.every((op) => op.tool === "moveObject")).toBe(
-        true,
-      );
+      expect(result.plan.operations).toHaveLength(1);
+      expect(result.plan.operations[0]?.tool).toBe("moveObjects");
+      if (result.plan.operations[0]?.tool === "moveObjects") {
+        expect(result.plan.operations[0].args.objectIds).toEqual([
+          "obj-3",
+          "obj-4",
+        ]);
+        expect(result.plan.operations[0].args.toViewportSide?.side).toBe("right");
+      }
+    }
+  });
 
-      result.plan.operations.forEach((operation) => {
-        if (operation.tool !== "moveObject") {
-          return;
-        }
+  it("plans fit frame to contents command", () => {
+    const boardState = [
+      {
+        id: "frame-1",
+        type: "rect" as const,
+        zIndex: 1,
+        x: 100,
+        y: 120,
+        width: 520,
+        height: 340,
+        rotationDeg: 0,
+        color: "#e2e8f0",
+        text: "Sprint planning",
+        updatedAt: null,
+      },
+      ...BOARD_STATE,
+    ];
+    const result = planDeterministicCommand({
+      message: "Resize the frame to fit its contents with padding 24",
+      boardState,
+      selectedObjectIds: ["frame-1"],
+    });
 
-        const original = originalById.get(operation.args.objectId);
-        expect(original).toBeDefined();
-        expect(operation.args.x).toBeGreaterThan((original?.x ?? 0) + 100);
-      });
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("fit-frame-to-contents");
+      expect(result.plan.operations).toHaveLength(1);
+      expect(result.plan.operations[0]?.tool).toBe("fitFrameToContents");
+      if (result.plan.operations[0]?.tool === "fitFrameToContents") {
+        expect(result.plan.operations[0].args.frameId).toBe("frame-1");
+        expect(result.plan.operations[0].args.padding).toBe(24);
+      }
     }
   });
 

@@ -17,6 +17,26 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
     },
   },
   {
+    name: "createStickyBatch",
+    description:
+      "Create many sticky notes in a grid-style batch from a single tool call.",
+    parameters: {
+      type: "object",
+      properties: {
+        count: { type: "number" },
+        color: { type: "string" },
+        originX: { type: "number" },
+        originY: { type: "number" },
+        columns: { type: "number" },
+        gapX: { type: "number" },
+        gapY: { type: "number" },
+        textPrefix: { type: "string" },
+      },
+      required: ["count", "color", "originX", "originY"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "createShape",
     description: "Create a shape object on the board.",
     parameters: {
@@ -176,6 +196,63 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
     },
   },
   {
+    name: "moveObjects",
+    description:
+      "Move many objects at once using a delta, absolute point, or viewport side target.",
+    parameters: {
+      type: "object",
+      properties: {
+        objectIds: {
+          type: "array",
+          items: { type: "string" },
+        },
+        delta: {
+          type: "object",
+          properties: {
+            dx: { type: "number" },
+            dy: { type: "number" },
+          },
+          required: ["dx", "dy"],
+          additionalProperties: false,
+        },
+        toPoint: {
+          type: "object",
+          properties: {
+            x: { type: "number" },
+            y: { type: "number" },
+          },
+          required: ["x", "y"],
+          additionalProperties: false,
+        },
+        toViewportSide: {
+          type: "object",
+          properties: {
+            side: {
+              type: "string",
+              enum: ["left", "right", "top", "bottom"],
+            },
+            viewportBounds: {
+              type: "object",
+              properties: {
+                left: { type: "number" },
+                top: { type: "number" },
+                width: { type: "number" },
+                height: { type: "number" },
+              },
+              required: ["left", "top", "width", "height"],
+              additionalProperties: false,
+            },
+            padding: { type: "number" },
+          },
+          required: ["side"],
+          additionalProperties: false,
+        },
+      },
+      required: ["objectIds"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "resizeObject",
     description: "Resize one object.",
     parameters: {
@@ -227,6 +304,20 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
         },
       },
       required: ["objectIds"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "fitFrameToContents",
+    description:
+      "Resize a frame rectangle so it tightly encloses overlapping board content with optional padding.",
+    parameters: {
+      type: "object",
+      properties: {
+        frameId: { type: "string" },
+        padding: { type: "number" },
+      },
+      required: ["frameId"],
       additionalProperties: false,
     },
   },

@@ -155,6 +155,8 @@ function createHttpError(
 }
 
 const DIRECT_DELETE_BATCH_CHUNK_SIZE = 400;
+const OPENAI_TRACE_OPERATIONS_PREVIEW_LIMIT = 3;
+const OPENAI_TRACE_OPERATIONS_PREVIEW_MAX_CHARS = 1_200;
 const LANGCHAIN_TOOL_PLAN_SERIALIZED: Serialized = {
   lc: 1,
   type: "not_implemented",
@@ -239,6 +241,51 @@ type OpenAiPlanAttempt =
         estimatedCostUsd: number;
       };
     };
+
+/**
+ * Handles build openai plan trace fields.
+ */
+function buildOpenAiPlanTraceFields(
+  plan: TemplatePlan | null | undefined,
+): {
+  operationCount: number;
+  operationsPreviewJson: string;
+  firstOperationTool: string | null;
+  firstOperationX: number | null;
+  firstOperationY: number | null;
+} {
+  const operations = plan?.operations ?? [];
+  const operationsPreview = operations
+    .slice(0, OPENAI_TRACE_OPERATIONS_PREVIEW_LIMIT)
+    .map((operation) => ({
+      tool: operation.tool,
+      args: operation.args ?? {},
+    }));
+
+  const previewJson = JSON.stringify(operationsPreview);
+  const operationsPreviewJson =
+    previewJson.length <= OPENAI_TRACE_OPERATIONS_PREVIEW_MAX_CHARS
+      ? previewJson
+      : `${previewJson.slice(0, OPENAI_TRACE_OPERATIONS_PREVIEW_MAX_CHARS)}…`;
+
+  const firstOperation = operationsPreview[0];
+  const firstArgs =
+    firstOperation && firstOperation.args && typeof firstOperation.args === "object"
+      ? (firstOperation.args as Record<string, unknown>)
+      : null;
+  const firstOperationX =
+    firstArgs && typeof firstArgs.x === "number" ? firstArgs.x : null;
+  const firstOperationY =
+    firstArgs && typeof firstArgs.y === "number" ? firstArgs.y : null;
+
+  return {
+    operationCount: operations.length,
+    operationsPreviewJson,
+    firstOperationTool: firstOperation?.tool ?? null,
+    firstOperationX,
+    firstOperationY,
+  };
+}
 
 /**
  * Builds openai execution summary.
@@ -416,6 +463,7 @@ async function attemptOpenAiPlanner(options: {
   let reservationOpen = true;
   const openAiSpan = options.trace.startSpan("openai.call", {
     model: config.model,
+    messagePreview: options.message.slice(0, 240),
   });
 
   try {
@@ -424,6 +472,7 @@ async function attemptOpenAiPlanner(options: {
       boardState: options.boardState,
       selectedObjectIds: options.selectedObjectIds,
     });
+    const planTraceFields = buildOpenAiPlanTraceFields(plannerResult.plan);
 
     const actualUsd =
       plannerResult.usage.estimatedCostUsd > 0
@@ -443,6 +492,11 @@ async function attemptOpenAiPlanner(options: {
       totalTokens: plannerResult.usage.totalTokens,
       estimatedCostUsd: plannerResult.usage.estimatedCostUsd,
       totalSpentUsd: finalized.totalSpentUsd,
+      operationCount: planTraceFields.operationCount,
+      operationsPreviewJson: planTraceFields.operationsPreviewJson,
+      firstOperationTool: planTraceFields.firstOperationTool,
+      firstOperationX: planTraceFields.firstOperationX,
+      firstOperationY: planTraceFields.firstOperationY,
     });
 
     if (!plannerResult.planned || !plannerResult.plan) {

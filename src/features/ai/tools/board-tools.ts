@@ -41,6 +41,34 @@ const STICKY_BATCH_MIN_COLUMNS = 1;
 const STICKY_BATCH_MAX_COLUMNS = 10;
 const STICKY_BATCH_DEFAULT_GAP_X = 240;
 const STICKY_BATCH_DEFAULT_GAP_Y = 190;
+const STICKY_DEFAULT_COLOR = "#fde68a";
+const STICKY_PALETTE_COLORS = [
+  "#fde68a",
+  "#fdba74",
+  "#fca5a5",
+  "#f9a8d4",
+  "#c4b5fd",
+  "#93c5fd",
+  "#99f6e4",
+  "#86efac",
+  "#d1d5db",
+  "#d2b48c",
+] as const;
+const COLOR_KEYWORD_HEX: Record<string, string> = {
+  yellow: "#fde68a",
+  orange: "#fdba74",
+  red: "#fca5a5",
+  pink: "#f9a8d4",
+  purple: "#c4b5fd",
+  blue: "#93c5fd",
+  teal: "#99f6e4",
+  green: "#86efac",
+  gray: "#d1d5db",
+  grey: "#d1d5db",
+  tan: "#d2b48c",
+  black: "#1f2937",
+  white: "#ffffff",
+};
 const MOVE_OBJECTS_MIN_PADDING = 0;
 const MOVE_OBJECTS_MAX_PADDING = 400;
 const MOVE_OBJECTS_DEFAULT_PADDING = 48;
@@ -159,6 +187,98 @@ function toOptionalString(value: unknown, maxLength: number): string | null {
   }
 
   return trimmed.slice(0, maxLength);
+}
+
+/**
+ * Handles expand hex color.
+ */
+function expandHexColor(value: string): string | null {
+  const normalized = value.trim().toLowerCase();
+  const shortHexMatch = normalized.match(/^#([0-9a-f]{3})$/i);
+  if (shortHexMatch) {
+    const [r, g, b] = shortHexMatch[1].split("");
+    return `#${r}${r}${g}${g}${b}${b}`;
+  }
+
+  if (/^#[0-9a-f]{6}$/i.test(normalized)) {
+    return normalized;
+  }
+
+  return null;
+}
+
+/**
+ * Handles parse color rgb.
+ */
+function parseColorRgb(value: string): { r: number; g: number; b: number } | null {
+  const namedHex = COLOR_KEYWORD_HEX[value.trim().toLowerCase()];
+  const hex = expandHexColor(namedHex ?? value);
+  if (!hex) {
+    return null;
+  }
+
+  const r = Number.parseInt(hex.slice(1, 3), 16);
+  const g = Number.parseInt(hex.slice(3, 5), 16);
+  const b = Number.parseInt(hex.slice(5, 7), 16);
+  if (![r, g, b].every((channel) => Number.isFinite(channel))) {
+    return null;
+  }
+
+  return { r, g, b };
+}
+
+/**
+ * Returns whether color is bright yellow-like.
+ */
+function isBrightYellowLike(rgb: { r: number; g: number; b: number }): boolean {
+  return rgb.r >= 220 && rgb.g >= 220 && rgb.b <= 120;
+}
+
+/**
+ * Handles nearest sticky palette color.
+ */
+function toNearestStickyPaletteColor(value: unknown): string {
+  if (typeof value !== "string") {
+    return STICKY_DEFAULT_COLOR;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  const exactPaletteMatch = STICKY_PALETTE_COLORS.find(
+    (paletteColor) => paletteColor === normalized,
+  );
+  if (exactPaletteMatch) {
+    return exactPaletteMatch;
+  }
+
+  const rgb = parseColorRgb(normalized);
+  if (!rgb) {
+    return STICKY_DEFAULT_COLOR;
+  }
+
+  if (isBrightYellowLike(rgb)) {
+    return "#fde68a";
+  }
+
+  let nearestColor = STICKY_DEFAULT_COLOR;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  STICKY_PALETTE_COLORS.forEach((paletteColor) => {
+    const paletteRgb = parseColorRgb(paletteColor);
+    if (!paletteRgb) {
+      return;
+    }
+
+    const distance =
+      (rgb.r - paletteRgb.r) ** 2 +
+      (rgb.g - paletteRgb.g) ** 2 +
+      (rgb.b - paletteRgb.b) ** 2;
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestColor = paletteColor;
+    }
+  });
+
+  return nearestColor;
 }
 
 /**
@@ -715,6 +835,7 @@ export class BoardToolExecutor {
     y: number;
     color: string;
   }): Promise<ExecuteToolResult> {
+    const normalizedColor = toNearestStickyPaletteColor(args.color);
     const created = await this.createObject({
       type: "sticky",
       text: args.text.slice(0, 1_000),
@@ -722,7 +843,7 @@ export class BoardToolExecutor {
       y: args.y,
       width: 180,
       height: 140,
-      color: args.color,
+      color: normalizedColor,
     });
 
     return { tool: "createStickyNote", objectId: created.id };
@@ -767,6 +888,7 @@ export class BoardToolExecutor {
       LAYOUT_GRID_MIN_GAP,
       LAYOUT_GRID_MAX_GAP,
     );
+    const normalizedColor = toNearestStickyPaletteColor(args.color);
     const textPrefix = toOptionalString(args.textPrefix, 960) ?? "Sticky";
     const createdObjectIds: string[] = [];
 
@@ -780,6 +902,8 @@ export class BoardToolExecutor {
         const column = absoluteIndex % columns;
         const x = args.originX + column * gapX;
         const y = args.originY + row * gapY;
+        const stickyText =
+          count === 1 ? textPrefix : `${textPrefix} ${absoluteIndex + 1}`;
         const docRef = this.objectsCollection.doc();
         const payload = {
           type: "sticky",
@@ -789,8 +913,8 @@ export class BoardToolExecutor {
           width: 180,
           height: 140,
           rotationDeg: 0,
-          color: args.color,
-          text: `${textPrefix} ${absoluteIndex + 1}`.slice(0, 1_000),
+          color: normalizedColor,
+          text: stickyText.slice(0, 1_000),
           createdBy: this.userId,
           createdAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),

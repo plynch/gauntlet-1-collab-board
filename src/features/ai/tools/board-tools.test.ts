@@ -445,6 +445,29 @@ describe("BoardToolExecutor createShape", () => {
   });
 });
 
+describe("BoardToolExecutor createStickyNote", () => {
+  it("snaps non-palette sticky colors to nearest palette swatch", async () => {
+    const fakeDb = new FakeFirestore([]);
+    const executor = new BoardToolExecutor({
+      boardId: "board-1",
+      userId: "user-1",
+      db: fakeDb as unknown as Firestore,
+    });
+
+    await executor.createStickyNote({
+      text: "Research",
+      x: 140,
+      y: 180,
+      color: "#ffff00",
+    });
+    const state = await executor.getBoardState();
+
+    expect(state).toHaveLength(1);
+    expect(state[0]?.color).toBe("#fde68a");
+    expect(state[0]?.text).toBe("Research");
+  });
+});
+
 describe("BoardToolExecutor createStickyBatch", () => {
   it("creates 10 stickies in two rows with defaults", async () => {
     const fakeDb = new FakeFirestore([]);
@@ -472,6 +495,30 @@ describe("BoardToolExecutor createStickyBatch", () => {
     expect(state[5]?.y).toBe(310);
     expect(state[9]?.text).toBe("Idea 10");
     expect(fakeDb.batchCommitCount).toBe(1);
+  });
+
+  it("keeps single sticky batch text unsuffixed", async () => {
+    const fakeDb = new FakeFirestore([]);
+    const executor = new BoardToolExecutor({
+      boardId: "board-1",
+      userId: "user-1",
+      db: fakeDb as unknown as Firestore,
+    });
+
+    const result = await executor.createStickyBatch({
+      count: 1,
+      color: "yellow",
+      originX: 300,
+      originY: 220,
+      textPrefix: "user research",
+    });
+    const state = await executor.getBoardState();
+
+    expect(result.tool).toBe("createStickyBatch");
+    expect(result.createdObjectIds).toHaveLength(1);
+    expect(state).toHaveLength(1);
+    expect(state[0]?.text).toBe("user research");
+    expect(state[0]?.color).toBe("#fde68a");
   });
 });
 

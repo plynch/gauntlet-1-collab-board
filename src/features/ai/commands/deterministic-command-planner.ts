@@ -67,6 +67,12 @@ const STICKY_GRID_SPACING_X = 240;
 const STICKY_GRID_SPACING_Y = 190;
 const STICKY_BATCH_DEFAULT_COLUMNS = 5;
 const MAX_STICKY_BATCH_COUNT = 50;
+const MAX_SUMMARY_BULLETS = 5;
+const MAX_ACTION_ITEM_CANDIDATES = 8;
+const ACTION_ITEM_GRID_COLUMNS = 4;
+const ACTION_ITEM_SPACING_X = 240;
+const ACTION_ITEM_SPACING_Y = 190;
+const ACTION_ITEM_COLOR = COLOR_KEYWORDS.green;
 
 /**
  * Handles normalize message.
@@ -90,6 +96,100 @@ function getSelectedObjects(
     .filter((objectItem): objectItem is BoardObjectSnapshot =>
       Boolean(objectItem),
     );
+}
+
+/**
+ * Returns whether object has usable text is true.
+ */
+function hasUsableText(objectItem: BoardObjectSnapshot): boolean {
+  return objectItem.text.trim().length > 0;
+}
+
+/**
+ * Gets text-capable objects.
+ */
+function getTextObjects(boardState: BoardObjectSnapshot[]): BoardObjectSnapshot[] {
+  return boardState.filter(hasUsableText);
+}
+
+/**
+ * Handles to text snippet.
+ */
+function toTextSnippet(text: string, maxLength: number): string {
+  const compact = text.replace(/\s+/g, " ").trim();
+  if (compact.length <= maxLength) {
+    return compact;
+  }
+  return `${compact.slice(0, maxLength).trimEnd()}...`;
+}
+
+/**
+ * Gets analysis source objects.
+ */
+function getAnalysisSource(input: PlannerInput): {
+  sourceObjects: BoardObjectSnapshot[];
+  scope: "selected" | "board" | "none";
+} {
+  const selectedObjects = getSelectedObjects(
+    input.boardState,
+    input.selectedObjectIds,
+  ).filter(hasUsableText);
+  if (selectedObjects.length > 0) {
+    return {
+      sourceObjects: selectedObjects,
+      scope: "selected",
+    };
+  }
+
+  const normalized = normalizeMessage(input.message);
+  if (/\b(board|all)\b/.test(normalized)) {
+    const boardObjects = getTextObjects(input.boardState);
+    return {
+      sourceObjects: boardObjects,
+      scope: boardObjects.length > 0 ? "board" : "none",
+    };
+  }
+
+  return {
+    sourceObjects: [],
+    scope: "none",
+  };
+}
+
+/**
+ * Parses action-item candidates.
+ */
+function parseActionItemCandidates(
+  sourceObjects: BoardObjectSnapshot[],
+): string[] {
+  const seen = new Set<string>();
+  const candidates: string[] = [];
+
+  sourceObjects.forEach((objectItem) => {
+    objectItem.text
+      .split(/[\n.;]+/)
+      .map((segment) =>
+        segment
+          .replace(/^[-*\d)\].\s]+/, "")
+          .replace(/\s+/g, " ")
+          .trim(),
+      )
+      .filter((segment) => segment.length >= 4)
+      .forEach((segment) => {
+        if (candidates.length >= MAX_ACTION_ITEM_CANDIDATES) {
+          return;
+        }
+        const key = segment.toLowerCase();
+        if (seen.has(key)) {
+          return;
+        }
+
+        seen.add(key);
+        candidates.push(segment);
+      });
+  });
+
+  return candidates;
 }
 
 /**
@@ -711,6 +811,124 @@ function planDistributeSelected(
 }
 
 /**
+ * Returns whether summarize command is true.
+ */
+function isSummarizeCommand(message: string): boolean {
+  const lower = normalizeMessage(message);
+  return (
+    /\b(summarize|summarise|summary|recap)\b/.test(lower) &&
+    !/\b(action items?|next steps?|todo|to-do)\b/.test(lower)
+  );
+}
+
+/**
+ * Handles plan summarize source.
+ */
+function planSummarizeSource(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
+  if (!isSummarizeCommand(input.message)) {
+    return null;
+  }
+
+  const analysis = getAnalysisSource(input);
+  if (analysis.sourceObjects.length === 0) {
+    return {
+      planned: false,
+      intent: "summarize-selected",
+      assistantMessage:
+        "Select one or more text objects first, or say summarize the board.",
+    };
+  }
+
+  const bullets = analysis.sourceObjects
+    .slice(0, MAX_SUMMARY_BULLETS)
+    .map((objectItem) => `- ${toTextSnippet(objectItem.text, 120)}`);
+  const heading =
+    analysis.scope === "selected"
+      ? `Summary of selected notes (${analysis.sourceObjects.length}):`
+      : `Summary of board notes (${analysis.sourceObjects.length}):`;
+  const assistantMessage = [heading, ...bullets].join("\n").slice(0, 1_000);
+
+  return {
+    planned: false,
+    intent: "summarize-selected",
+    assistantMessage,
+  };
+}
+
+/**
+ * Returns whether action-item extraction command is true.
+ */
+function isActionItemExtractionCommand(message: string): boolean {
+  const lower = normalizeMessage(message);
+  const hasActionLanguage =
+    /\b(action items?|next steps?|todo|to-do)\b/.test(lower);
+  const hasExtractionLanguage =
+    /\b(extract|generate|create|make|convert|turn)\b/.test(lower);
+
+  return hasActionLanguage && hasExtractionLanguage;
+}
+
+/**
+ * Handles plan extract action items.
+ */
+function planExtractActionItems(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
+  if (!isActionItemExtractionCommand(input.message)) {
+    return null;
+  }
+
+  const analysis = getAnalysisSource(input);
+  if (analysis.sourceObjects.length === 0) {
+    return {
+      planned: false,
+      intent: "extract-action-items",
+      assistantMessage:
+        "Select one or more text objects first, or say create action items for the board.",
+    };
+  }
+
+  const candidates = parseActionItemCandidates(analysis.sourceObjects);
+  if (candidates.length === 0) {
+    return {
+      planned: false,
+      intent: "extract-action-items",
+      assistantMessage:
+        "I could not find clear action-item text. Try selecting notes with concrete tasks.",
+    };
+  }
+
+  const spawnPoint = getAutoSpawnPoint(input.boardState);
+  const columns = Math.min(ACTION_ITEM_GRID_COLUMNS, candidates.length);
+  const operations: BoardToolCall[] = candidates.map((candidate, index) => {
+    const row = Math.floor(index / columns);
+    const column = index % columns;
+    return {
+      tool: "createStickyNote",
+      args: {
+        text: `Action ${index + 1}: ${toTextSnippet(candidate, 110)}`.slice(0, 1_000),
+        x: spawnPoint.x + column * ACTION_ITEM_SPACING_X,
+        y: spawnPoint.y + row * ACTION_ITEM_SPACING_Y,
+        color: ACTION_ITEM_COLOR,
+      },
+    };
+  });
+
+  return {
+    planned: true,
+    intent: "extract-action-items",
+    assistantMessage: `Created ${operations.length} action-item sticky notes from ${analysis.scope === "selected" ? "selected notes" : "board notes"}.`,
+    plan: toPlan({
+      id: "command.extract-action-items",
+      name: "Extract Action Items",
+      operations,
+    }),
+  };
+}
+
+/**
  * Returns whether create sticky-grid command is true.
  */
 function isCreateStickyGridCommand(message: string): boolean {
@@ -1325,6 +1543,8 @@ export function planDeterministicCommand(
     planArrangeGrid,
     planAlignSelected,
     planDistributeSelected,
+    planSummarizeSource,
+    planExtractActionItems,
     planCreateStickyGrid,
     planCreateStickyBatch,
     planCreateSticky,
@@ -1348,6 +1568,6 @@ export function planDeterministicCommand(
     planned: false,
     intent: "unsupported-command",
     assistantMessage:
-      "I could not map that command yet. Try creating shapes/stickies, arranging selected objects in a grid, aligning/distributing selected objects, moving/resizing selected objects, deleting selected, clearing the board, changing selected color, or creating a SWOT template.",
+      "I could not map that command yet. Try creating shapes/stickies, arranging selected objects in a grid, aligning/distributing selected objects, summarizing selected notes, extracting action items, moving/resizing selected objects, deleting selected, clearing the board, changing selected color, or creating a SWOT template.",
   };
 }

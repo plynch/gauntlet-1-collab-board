@@ -132,6 +132,7 @@ Generated docs location:
 - ✅ Deterministic command routing for create/move/resize/color/text commands
 - ✅ Deterministic layout routing for arrange-grid, align-selected, and distribute-selected
 - ✅ Deterministic sticky batch/grid prompts (`create 25 red stickies`, `create 2x3 sticky grid`)
+- ✅ Deterministic insight prompts (`summarize selected notes`, `create action items from selected notes`)
 - ✅ Runtime MCP integration (in-app Streamable HTTP endpoint)
 - ✅ Local fallback template provider if MCP call fails/times out
 - ✅ Server-side board tool executor (create/move/resize/update/color/get state)

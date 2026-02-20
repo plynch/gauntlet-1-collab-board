@@ -51,6 +51,8 @@ Demo narration tip:
   - arrange selected objects into a grid (`arrange selected in a grid`, `arrange selected in 3 columns`)
   - align selected objects (`align selected left`, `align selected top`, `align selected center`)
   - distribute selected objects (`distribute selected objects horizontally`, `space selected evenly vertically`)
+  - summarize selected notes into concise bullets (`summarize selected notes`)
+  - extract action-item stickies from selected notes (`create action items from selected notes`)
   - move selected objects
   - move all objects of a type (optionally color-filtered)
   - resize selected objects
@@ -125,6 +127,8 @@ Use these as copy/paste starting points.
 - `Arrange selected objects in 3 columns`
 - `Align selected objects top`
 - `Distribute selected objects horizontally`
+- `Summarize selected notes`
+- `Create action items from selected notes`
 - `Create a 2x3 grid of sticky notes for pros and cons`
 - `Space selected elements evenly`
 

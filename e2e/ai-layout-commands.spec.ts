@@ -65,6 +65,40 @@ async function sendAiCommand(
 }
 
 /**
+ * Triggers ai quick action button.
+ */
+async function triggerAiQuickAction(
+  page: Page,
+  label: string,
+): Promise<AiCommandResult> {
+  await ensureAiInputVisible(page);
+
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/ai/board-command") &&
+      response.request().method() === "POST",
+  );
+
+  await page.getByRole("button", { name: label }).click();
+  const response = await responsePromise;
+  expect(response.ok()).toBeTruthy();
+
+  const payload = (await response.json()) as {
+    assistantMessage?: unknown;
+    traceId?: unknown;
+  };
+  const assistantMessage =
+    typeof payload.assistantMessage === "string" ? payload.assistantMessage : "";
+  const traceId = typeof payload.traceId === "string" ? payload.traceId : "";
+
+  expect(traceId.length).toBeGreaterThan(0);
+  return {
+    assistantMessage,
+    traceId,
+  };
+}
+
+/**
  * Handles create board and open.
  */
 async function createBoardAndOpen(page: Page, boardTitle: string): Promise<void> {
@@ -255,5 +289,71 @@ test("AI layout commands align and distribute selected objects with trace ids", 
   console.log(
     "Langfuse trace id (distribute selected):",
     distributeResult.traceId,
+  );
+});
+
+test("AI insight commands summarize notes and extract action items", async ({
+  page,
+}) => {
+  const boardTitle = `E2E AI Insight ${Date.now()}`;
+  await createBoardAndOpen(page, boardTitle);
+
+  await sendAiCommand(
+    page,
+    "Add a yellow sticky note at 120, 140 with text Interview top churn customers",
+  );
+  await sendAiCommand(
+    page,
+    "Add a yellow sticky note at 420, 140 with text Draft onboarding checklist",
+  );
+  await sendAiCommand(
+    page,
+    "Add a yellow sticky note at 720, 140 with text Run pricing experiment",
+  );
+
+  const noteA = page
+    .locator("article[data-board-object='true'] textarea")
+    .filter({ hasText: /Interview top churn customers/i })
+    .locator("xpath=ancestor::article[1]");
+  const noteB = page
+    .locator("article[data-board-object='true'] textarea")
+    .filter({ hasText: /Draft onboarding checklist/i })
+    .locator("xpath=ancestor::article[1]");
+  const noteC = page
+    .locator("article[data-board-object='true'] textarea")
+    .filter({ hasText: /Run pricing experiment/i })
+    .locator("xpath=ancestor::article[1]");
+
+  await noteA.click({ position: { x: 16, y: 10 } });
+  await noteB.click({ modifiers: ["Shift"], position: { x: 16, y: 10 } });
+  await noteC.click({ modifiers: ["Shift"], position: { x: 16, y: 10 } });
+  await expect(page.getByText(/Selected:\s*3/i)).toBeVisible();
+
+  const summarizeResult = await triggerAiQuickAction(page, "Summarize");
+  expect(summarizeResult.assistantMessage).toContain("Summary of selected notes");
+
+  const objectsBeforeActionItems = await page
+    .locator("article[data-board-object='true']")
+    .count();
+  const actionItemsResult = await sendAiCommand(
+    page,
+    "Create action items from selected notes",
+  );
+  expect(actionItemsResult.assistantMessage).toContain(
+    "action-item sticky notes",
+  );
+
+  const objectsAfterActionItems = await page
+    .locator("article[data-board-object='true']")
+    .count();
+  expect(objectsAfterActionItems).toBeGreaterThan(objectsBeforeActionItems);
+
+  console.log(
+    "Langfuse trace id (summarize selected notes):",
+    summarizeResult.traceId,
+  );
+  console.log(
+    "Langfuse trace id (extract action items):",
+    actionItemsResult.traceId,
   );
 });

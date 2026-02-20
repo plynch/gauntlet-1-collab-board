@@ -30,6 +30,10 @@ import type {
   ConnectorAnchor,
   PresenceUser,
 } from "@/features/boards/types";
+import type {
+  BoardCommandExecutionSummary,
+  BoardCommandResponse,
+} from "@/features/ai/types";
 import {
   AI_COMMAND_REQUEST_TIMEOUT_MS,
   getBoardCommandErrorMessage,
@@ -122,6 +126,16 @@ type ChatMessage = {
   role: "user" | "assistant";
   text: string;
   traceId?: string;
+  provider?: BoardCommandResponse["provider"];
+  mode?: NonNullable<BoardCommandResponse["mode"]>;
+  execution?: BoardCommandExecutionSummary;
+};
+
+type AiQuickAction = {
+  id: string;
+  label: string;
+  prompt: string;
+  requiresSelection?: boolean;
 };
 
 type AiFooterResizeState = {
@@ -279,6 +293,48 @@ const AI_FOOTER_MAX_HEIGHT = 460;
 const AI_FOOTER_COLLAPSED_HEIGHT = 34;
 const AI_FOOTER_HEIGHT_STORAGE_KEY = "collabboard-ai-footer-height-v1";
 const STICKY_TEXT_HOLD_DRAG_DELAY_MS = 120;
+const AI_QUICK_ACTIONS: AiQuickAction[] = [
+  {
+    id: "quick-stickies",
+    label: "Brainstorm 10",
+    prompt: "Create 10 yellow stickies for brainstorming ideas.",
+  },
+  {
+    id: "quick-arrange-grid",
+    label: "Arrange Grid",
+    prompt: "Arrange selected objects in a grid with 3 columns.",
+    requiresSelection: true,
+  },
+  {
+    id: "quick-align-top",
+    label: "Align Top",
+    prompt: "Align selected objects top.",
+    requiresSelection: true,
+  },
+  {
+    id: "quick-distribute-h",
+    label: "Distribute H",
+    prompt: "Distribute selected objects horizontally.",
+    requiresSelection: true,
+  },
+  {
+    id: "quick-summarize",
+    label: "Summarize",
+    prompt: "Summarize selected notes.",
+    requiresSelection: true,
+  },
+  {
+    id: "quick-actions",
+    label: "Action Items",
+    prompt: "Create action items from selected notes.",
+    requiresSelection: true,
+  },
+  {
+    id: "quick-swot",
+    label: "SWOT",
+    prompt: "Create a SWOT analysis template.",
+  },
+];
 const BOARD_COLOR_SWATCHES: ColorSwatch[] = [
   { name: "Yellow", value: "#fde68a" },
   { name: "Orange", value: "#fdba74" },
@@ -464,6 +520,50 @@ function getTimestampMillis(value: unknown): number | null {
  */
 function getFiniteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Parses board command execution summary.
+ */
+function parseBoardCommandExecutionSummary(
+  value: unknown,
+): BoardCommandExecutionSummary | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const candidate = value as {
+    intent?: unknown;
+    mode?: unknown;
+    mcpUsed?: unknown;
+    fallbackUsed?: unknown;
+    toolCalls?: unknown;
+    objectsCreated?: unknown;
+  };
+
+  if (
+    typeof candidate.intent !== "string" ||
+    (candidate.mode !== "deterministic" &&
+      candidate.mode !== "stub" &&
+      candidate.mode !== "llm") ||
+    typeof candidate.mcpUsed !== "boolean" ||
+    typeof candidate.fallbackUsed !== "boolean" ||
+    typeof candidate.toolCalls !== "number" ||
+    !Number.isFinite(candidate.toolCalls) ||
+    typeof candidate.objectsCreated !== "number" ||
+    !Number.isFinite(candidate.objectsCreated)
+  ) {
+    return undefined;
+  }
+
+  return {
+    intent: candidate.intent,
+    mode: candidate.mode,
+    mcpUsed: candidate.mcpUsed,
+    fallbackUsed: candidate.fallbackUsed,
+    toolCalls: Math.max(0, Math.floor(candidate.toolCalls)),
+    objectsCreated: Math.max(0, Math.floor(candidate.objectsCreated)),
+  };
 }
 
 /**
@@ -2262,6 +2362,9 @@ export default function RealtimeBoardCanvas({
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [isAiSubmitting, setIsAiSubmitting] = useState(false);
+  const [aiSelectionScope, setAiSelectionScope] = useState<"selected" | "board">(
+    "selected",
+  );
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [selectionHudSize, setSelectionHudSize] = useState({
     width: 0,
@@ -4899,12 +5002,27 @@ export default function RealtimeBoardCanvas({
           body: JSON.stringify({
             boardId,
             message: nextMessage,
-            selectedObjectIds: Array.from(selectedObjectIdsRef.current),
+            selectedObjectIds:
+              aiSelectionScope === "selected"
+                ? Array.from(selectedObjectIdsRef.current)
+                : [],
             viewportBounds,
           }),
         });
 
         if (!response.ok) {
+          let apiErrorMessage: string | undefined;
+          try {
+            const payload = (await response.json()) as { error?: unknown };
+            if (
+              typeof payload.error === "string" &&
+              payload.error.trim().length > 0
+            ) {
+              apiErrorMessage = payload.error;
+            }
+          } catch {
+            apiErrorMessage = undefined;
+          }
           const assistantMessage = getBoardCommandErrorMessage({
             status: response.status,
           });
@@ -4913,7 +5031,7 @@ export default function RealtimeBoardCanvas({
             {
               id: createChatMessageId("a"),
               role: "assistant",
-              text: assistantMessage,
+              text: apiErrorMessage ?? assistantMessage,
             },
           ]);
           return;
@@ -4922,6 +5040,9 @@ export default function RealtimeBoardCanvas({
         const payload = (await response.json()) as {
           assistantMessage?: unknown;
           traceId?: unknown;
+          provider?: unknown;
+          mode?: unknown;
+          execution?: unknown;
         };
         const assistantMessage =
           typeof payload.assistantMessage === "string" &&
@@ -4932,6 +5053,19 @@ export default function RealtimeBoardCanvas({
           typeof payload.traceId === "string" && payload.traceId.trim().length > 0
             ? payload.traceId
             : undefined;
+        const provider =
+          payload.provider === "stub" ||
+          payload.provider === "deterministic-mcp" ||
+          payload.provider === "openai"
+            ? payload.provider
+            : undefined;
+        const mode =
+          payload.mode === "deterministic" ||
+          payload.mode === "stub" ||
+          payload.mode === "llm"
+            ? payload.mode
+            : undefined;
+        const execution = parseBoardCommandExecutionSummary(payload.execution);
 
         setChatMessages((previous) => [
           ...previous,
@@ -4940,6 +5074,9 @@ export default function RealtimeBoardCanvas({
             role: "assistant",
             text: assistantMessage,
             ...(traceId ? { traceId } : {}),
+            ...(provider ? { provider } : {}),
+            ...(mode ? { mode } : {}),
+            ...(execution ? { execution } : {}),
           },
         ]);
       } catch (error) {
@@ -4963,7 +5100,7 @@ export default function RealtimeBoardCanvas({
         setIsAiSubmitting(false);
       }
     },
-    [boardId, isAiSubmitting, user],
+    [aiSelectionScope, boardId, isAiSubmitting, user],
   );
 
   const handleAiChatSubmit = useCallback(
@@ -4979,6 +5116,33 @@ export default function RealtimeBoardCanvas({
       });
     },
     [chatInput, isAiSubmitting, submitAiCommandMessage],
+  );
+
+  const handleAiQuickActionClick = useCallback(
+    (action: AiQuickAction) => {
+      if (isAiSubmitting) {
+        return;
+      }
+
+      const selectedCount = selectedObjectIdsRef.current.size;
+      if (action.requiresSelection && selectedCount === 0) {
+        setChatMessages((previous) => [
+          ...previous,
+          {
+            id: createChatMessageId("a"),
+            role: "assistant",
+            text: "Select objects first, then run this quick action.",
+          },
+        ]);
+        return;
+      }
+
+      void submitAiCommandMessage(action.prompt, {
+        appendUserMessage: true,
+        clearInput: true,
+      });
+    },
+    [isAiSubmitting, submitAiCommandMessage],
   );
 
   const handleCreateSwotButtonClick = useCallback(() => {
@@ -7705,7 +7869,7 @@ export default function RealtimeBoardCanvas({
                 display: "grid",
                 padding: "0.45rem clamp(0.8rem, 2vw, 1.5rem)",
                 borderBottom: "1px solid #e5e7eb",
-                gap: "0.5rem",
+                gap: "0.55rem",
               }}
             >
               <div
@@ -7714,12 +7878,114 @@ export default function RealtimeBoardCanvas({
                   margin: "0 auto",
                   display: "flex",
                   alignItems: "center",
+                  justifyContent: "space-between",
                   gap: "0.75rem",
+                  flexWrap: "wrap",
                 }}
               >
                 <strong style={{ fontSize: 13, color: "#0f172a" }}>
                   AI Assistant
                 </strong>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.45rem",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span style={{ fontSize: 12, color: "#475569" }}>
+                    Selected: {selectedObjectIds.length}
+                  </span>
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: 999,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setAiSelectionScope("selected")}
+                      disabled={isAiSubmitting}
+                      style={{
+                        border: "none",
+                        padding: "0.24rem 0.5rem",
+                        fontSize: 11,
+                        cursor: "pointer",
+                        background:
+                          aiSelectionScope === "selected"
+                            ? "#dbeafe"
+                            : "#f8fafc",
+                        color:
+                          aiSelectionScope === "selected"
+                            ? "#1d4ed8"
+                            : "#334155",
+                        fontWeight: aiSelectionScope === "selected" ? 700 : 500,
+                      }}
+                    >
+                      Selected only
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAiSelectionScope("board")}
+                      disabled={isAiSubmitting}
+                      style={{
+                        border: "none",
+                        padding: "0.24rem 0.5rem",
+                        fontSize: 11,
+                        cursor: "pointer",
+                        background:
+                          aiSelectionScope === "board" ? "#dbeafe" : "#f8fafc",
+                        color:
+                          aiSelectionScope === "board" ? "#1d4ed8" : "#334155",
+                        fontWeight: aiSelectionScope === "board" ? 700 : 500,
+                      }}
+                    >
+                      Whole board
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div
+                style={{
+                  width: "min(100%, 800px)",
+                  margin: "0 auto",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "0.35rem",
+                }}
+              >
+                {AI_QUICK_ACTIONS.map((action) => {
+                  const disableForSelection =
+                    action.requiresSelection && selectedObjectIds.length === 0;
+                  return (
+                    <button
+                      key={action.id}
+                      type="button"
+                      onClick={() => handleAiQuickActionClick(action)}
+                      disabled={isAiSubmitting || disableForSelection}
+                      style={{
+                        border: "1px solid #cbd5e1",
+                        background: "#f8fafc",
+                        color: "#0f172a",
+                        borderRadius: 999,
+                        padding: "0.24rem 0.58rem",
+                        fontSize: 11,
+                        cursor: disableForSelection ? "not-allowed" : "pointer",
+                        opacity: disableForSelection ? 0.55 : 1,
+                      }}
+                      title={
+                        disableForSelection
+                          ? "Select objects first to use this quick action."
+                          : action.prompt
+                      }
+                    >
+                      {action.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -7763,8 +8029,8 @@ export default function RealtimeBoardCanvas({
                     </div>
                   ) : (
                     <span style={{ color: "#64748b", fontSize: 13 }}>
-                      Ask the board assistant something. It will reply with a
-                      stub for now.
+                      Ask the board assistant to create, organize, summarize, or
+                      extract action items.
                     </span>
                   )
                 ) : (
@@ -7786,6 +8052,36 @@ export default function RealtimeBoardCanvas({
                         }}
                       >
                         <div>{message.text}</div>
+                        {message.role === "assistant" &&
+                        (message.provider || message.mode || message.execution) ? (
+                          <div
+                            style={{
+                              marginTop: 6,
+                              fontSize: 11,
+                              color: "#334155",
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: "0.4rem",
+                            }}
+                          >
+                            {message.provider ? (
+                              <span>provider: {message.provider}</span>
+                            ) : null}
+                            {message.mode ? <span>mode: {message.mode}</span> : null}
+                            {message.execution ? (
+                              <>
+                                <span>intent: {message.execution.intent}</span>
+                                <span>tools: {message.execution.toolCalls}</span>
+                                <span>
+                                  created: {message.execution.objectsCreated}
+                                </span>
+                                {message.execution.fallbackUsed ? (
+                                  <span>fallback: yes</span>
+                                ) : null}
+                              </>
+                            ) : null}
+                          </div>
+                        ) : null}
                         {message.role === "assistant" && message.traceId ? (
                           <div
                             style={{
@@ -7846,6 +8142,7 @@ export default function RealtimeBoardCanvas({
                   onChange={(event) => setChatInput(event.target.value)}
                   disabled={isAiSubmitting}
                   placeholder="Ask AI agent..."
+                  maxLength={500}
                   style={{
                     flex: 1,
                     minWidth: 0,

@@ -325,6 +325,97 @@ describe("planDeterministicCommand", () => {
     }
   });
 
+  it("summarizes selected notes without mutating the board", () => {
+    const boardState = [
+      ...BOARD_STATE,
+      {
+        id: "obj-3",
+        type: "sticky" as const,
+        zIndex: 3,
+        x: 700,
+        y: 220,
+        width: 220,
+        height: 170,
+        rotationDeg: 0,
+        color: "#fde68a",
+        text: "Need customer interview synthesis by Friday",
+        updatedAt: null,
+      },
+    ];
+    const result = planDeterministicCommand({
+      message: "Summarize selected notes",
+      boardState,
+      selectedObjectIds: ["obj-2", "obj-3"],
+    });
+
+    expect(result.planned).toBe(false);
+    expect(result.intent).toBe("summarize-selected");
+    expect(result.assistantMessage).toContain("Summary of selected notes");
+    expect(result.assistantMessage).toContain("-");
+  });
+
+  it("returns guidance when summarize has no selected notes", () => {
+    const result = planDeterministicCommand({
+      message: "Summarize selected notes",
+      boardState: BOARD_STATE,
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(false);
+    expect(result.intent).toBe("summarize-selected");
+    expect(result.assistantMessage).toContain("Select one or more text objects");
+  });
+
+  it("extracts action items into sticky notes", () => {
+    const boardState = [
+      ...BOARD_STATE,
+      {
+        id: "obj-3",
+        type: "sticky" as const,
+        zIndex: 3,
+        x: 700,
+        y: 220,
+        width: 220,
+        height: 170,
+        rotationDeg: 0,
+        color: "#fde68a",
+        text: "Schedule user interviews. Draft onboarding copy.",
+        updatedAt: null,
+      },
+    ];
+    const result = planDeterministicCommand({
+      message: "Create action items from selected notes",
+      boardState,
+      selectedObjectIds: ["obj-2", "obj-3"],
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("extract-action-items");
+      expect(result.plan.operations.length).toBeGreaterThan(0);
+      expect(result.plan.operations.every((op) => op.tool === "createStickyNote")).toBe(
+        true,
+      );
+      const first = result.plan.operations[0];
+      if (first?.tool === "createStickyNote") {
+        expect(first.args.color).toBe("#86efac");
+        expect(first.args.text).toContain("Action 1:");
+      }
+    }
+  });
+
+  it("returns guidance when action-item extraction has no selected notes", () => {
+    const result = planDeterministicCommand({
+      message: "Generate action items from selected notes",
+      boardState: BOARD_STATE,
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(false);
+    expect(result.intent).toBe("extract-action-items");
+    expect(result.assistantMessage).toContain("Select one or more text objects");
+  });
+
   it("returns a useful failure when resize is requested without selection", () => {
     const result = planDeterministicCommand({
       message: "Resize selected to 220 by 140",

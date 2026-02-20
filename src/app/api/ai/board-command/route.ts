@@ -76,6 +76,59 @@ function getInternalMcpToken(): string | null {
 }
 
 /**
+ * Gets traceable error reason.
+ */
+function getErrorReason(error: unknown): string {
+  if (error instanceof Error) {
+    const message = error.message?.trim();
+    return message && message.length > 0
+      ? message
+      : error.name || "Error without message";
+  }
+
+  if (typeof error === "string") {
+    const message = error.trim();
+    return message.length > 0 ? message : "Empty string error";
+  }
+
+  if (!error || typeof error !== "object") {
+    return `Non-error throwable (${typeof error})`;
+  }
+
+  const candidate = error as {
+    name?: unknown;
+    message?: unknown;
+    code?: unknown;
+    status?: unknown;
+  };
+
+  if (typeof candidate.message === "string" && candidate.message.trim()) {
+    return candidate.message.trim();
+  }
+
+  const parts: string[] = [];
+  if (
+    typeof candidate.name === "string" &&
+    candidate.name.trim().length > 0
+  ) {
+    parts.push(`name=${candidate.name.trim()}`);
+  }
+  if (
+    typeof candidate.code === "string" ||
+    typeof candidate.code === "number"
+  ) {
+    parts.push(`code=${String(candidate.code)}`);
+  }
+  if (typeof candidate.status === "number" && Number.isFinite(candidate.status)) {
+    parts.push(`status=${String(candidate.status)}`);
+  }
+
+  return parts.length > 0
+    ? `Non-error throwable (${parts.join(", ")})`
+    : "Non-error throwable (object)";
+}
+
+/**
  * Gets debug message.
  */
 function getDebugMessage(error: unknown): string | undefined {
@@ -83,15 +136,7 @@ function getDebugMessage(error: unknown): string | undefined {
     return undefined;
   }
 
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  if (typeof error === "string") {
-    return error;
-  }
-
-  return undefined;
+  return getErrorReason(error);
 }
 
 /**
@@ -269,7 +314,7 @@ async function attemptOpenAiPlanner(options: {
       await releaseOpenAiBudgetReservation(budgetReservation.reservedUsd);
     }
 
-    const reason = getDebugMessage(error) ?? "OpenAI planner failed.";
+    const reason = getErrorReason(error);
     openAiSpan.fail("OpenAI planner failed.", {
       reason,
     });
@@ -685,7 +730,7 @@ export async function POST(request: NextRequest) {
                 fallbackUsed = true;
                 mcpUsed = false;
                 mcpSpan.fail("MCP command planner failed.", {
-                  reason: getDebugMessage(error) ?? "Unknown error",
+                  reason: getErrorReason(error),
                 });
                 plannerResult = planDeterministicCommand({
                   message: parsedPayload.message,
@@ -955,7 +1000,7 @@ export async function POST(request: NextRequest) {
             fallbackUsed = true;
             mcpUsed = false;
             mcpSpan.fail("MCP template call failed.", {
-              reason: getDebugMessage(error) ?? "Unknown error",
+              reason: getErrorReason(error),
             });
             templateOutput = instantiateLocalTemplate(templateInput);
           }
@@ -1072,7 +1117,7 @@ export async function POST(request: NextRequest) {
     }
 
     activeTrace?.finishError("Failed to handle board AI command.", {
-      reason: getDebugMessage(error) ?? "Unknown error",
+      reason: getErrorReason(error),
     });
     const responseSpan = activeTrace?.startSpan("ai.response.sent", {
       status: 500,

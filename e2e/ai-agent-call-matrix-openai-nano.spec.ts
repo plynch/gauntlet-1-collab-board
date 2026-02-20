@@ -29,9 +29,12 @@ test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async ({ request }) => {
   if (!hasOpenAiKey) {
-    throw new Error(
-      "OPENAI_API_KEY is required for this strict on-demand paid suite.",
-    );
+    throw new Error([
+      "OPENAI_API_KEY is missing or empty.",
+      "This suite makes paid LLM calls and requires a working OpenAI API key.",
+      "Set OPENAI_API_KEY in your environment or .env.local, then rerun:",
+      "npm run test:e2e:ai-openai-smoke:nano:PAID",
+    ].join("\n"));
   }
 
   const langfuseResponse = await request.get("/api/e2e/langfuse-ready");

@@ -65,3 +65,9 @@ Configuration file:
 1. Interactive controls must have clear labels, tooltips, or aria labels.
 2. Keyboard-accessible semantics are required for clickable non-native controls.
 3. Keep visual state transitions predictable (selection, loading, disabled states).
+
+## 8. Paid AI Command Naming
+
+1. Any npm script that can spend paid model tokens must end with the exact suffix `:PAID`.
+2. Paid scripts must fail fast with an actionable setup error when required credentials are missing.
+3. New paid scripts must document expected spend behavior in `README.md`.

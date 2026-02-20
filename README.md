@@ -86,7 +86,7 @@ Java is required for emulator-backed scripts:
 - `npm run firebase:emulators`
 - `npm run test:e2e:emulator`
 - `npm run test:e2e:ai-agent-calls:fallback`
-- `npm run test:e2e:ai-agent-calls:openai-nano`
+- `npm run test:e2e:ai-openai-smoke:nano:PAID`
 
 Styleguide route (component library preview in app):
 
@@ -190,7 +190,11 @@ On-demand AI trace suites:
 - Fallback agent matrix (20 Playwright tests, one AI call per test, trace logging):
   - `npm run test:e2e:ai-agent-calls:fallback`
 - OpenAI nano smoke matrix (strict + on-demand):
-  - `npm run test:e2e:ai-agent-calls:openai-nano`
+  - `npm run test:e2e:ai-openai-smoke:nano:PAID`
+
+Naming convention:
+
+- Any npm script that can spend paid model tokens ends with `:PAID`.
 
 Fallback suite behavior:
 

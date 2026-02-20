@@ -45,26 +45,52 @@ export function useAuthSession(): AuthSessionState {
       return;
     }
 
-    const unsubscribe = onIdTokenChanged(auth, async (nextUser) => {
-      setUser(nextUser);
-
-      if (!nextUser) {
-        setIdToken(null);
-        setAuthLoading(false);
+    let resolved = false;
+    const loadingTimeout = window.setTimeout(() => {
+      if (resolved) {
         return;
       }
 
-      try {
-        const token = await nextUser.getIdToken();
-        setIdToken(token);
-      } catch {
-        setIdToken(null);
-      } finally {
-        setAuthLoading(false);
-      }
-    });
+      setUser(null);
+      setIdToken(null);
+      setAuthLoading(false);
+    }, 4_000);
 
-    return unsubscribe;
+    const unsubscribe = onIdTokenChanged(
+      auth,
+      async (nextUser) => {
+        resolved = true;
+        window.clearTimeout(loadingTimeout);
+        setUser(nextUser);
+
+        if (!nextUser) {
+          setIdToken(null);
+          setAuthLoading(false);
+          return;
+        }
+
+        try {
+          const token = await nextUser.getIdToken();
+          setIdToken(token);
+        } catch {
+          setIdToken(null);
+        } finally {
+          setAuthLoading(false);
+        }
+      },
+      () => {
+        resolved = true;
+        window.clearTimeout(loadingTimeout);
+        setUser(null);
+        setAuthLoading(false);
+        setIdToken(null);
+      },
+    );
+
+    return () => {
+      window.clearTimeout(loadingTimeout);
+      unsubscribe();
+    };
   }, [auth]);
 
   const signInWithGoogle = useCallback(async () => {

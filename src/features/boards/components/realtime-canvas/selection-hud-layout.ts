@@ -66,20 +66,35 @@ export function calculateSelectionHudPosition(
     x: Math.max(edgePadding, Math.min(maxX, point.x)),
     y: Math.max(edgePadding, Math.min(maxY, point.y)),
   });
+  /**
+   * Returns whether fully visible is true.
+   */
+  const isFullyVisible = (point: CanvasPoint) =>
+    point.x >= edgePadding &&
+    point.y >= edgePadding &&
+    point.x + hudWidth <= options.stageSize.width - edgePadding &&
+    point.y + hudHeight <= options.stageSize.height - edgePadding;
 
   if (options.selectedConnectorMidpoint) {
-    const connectorCenter = {
-      x:
-        options.viewport.x +
-        options.selectedConnectorMidpoint.x * options.viewport.scale -
-        hudWidth / 2,
-      y:
-        options.viewport.y +
-        options.selectedConnectorMidpoint.y * options.viewport.scale -
-        hudHeight / 2,
-    };
+    const centerX =
+      options.viewport.x + options.selectedConnectorMidpoint.x * options.viewport.scale;
+    const centerY =
+      options.viewport.y + options.selectedConnectorMidpoint.y * options.viewport.scale;
+    const connectorCandidates = [
+      { x: centerX + offset, y: centerY - hudHeight - offset },
+      { x: centerX + offset, y: centerY + offset },
+      { x: centerX - hudWidth - offset, y: centerY - hudHeight - offset },
+      { x: centerX - hudWidth - offset, y: centerY + offset },
+    ];
+    const visibleConnectorCandidate = connectorCandidates.find((candidate) =>
+      isFullyVisible(candidate),
+    );
 
-    return clampPoint(connectorCenter);
+    if (visibleConnectorCandidate) {
+      return visibleConnectorCandidate;
+    }
+
+    return clampPoint(connectorCandidates[0] ?? { x: edgePadding, y: edgePadding });
   }
 
   const selectionLeft =
@@ -95,15 +110,6 @@ export function calculateSelectionHudPosition(
     options.viewport.y +
     options.selectedObjectBounds.bottom * options.viewport.scale;
   const selectionCenterY = (selectionTop + selectionBottom) / 2;
-
-  /**
-   * Returns whether fully visible is true.
-   */
-  const isFullyVisible = (point: CanvasPoint) =>
-    point.x >= edgePadding &&
-    point.y >= edgePadding &&
-    point.x + hudWidth <= options.stageSize.width - edgePadding &&
-    point.y + hudHeight <= options.stageSize.height - edgePadding;
 
   const candidates = options.preferSidePlacement
     ? [

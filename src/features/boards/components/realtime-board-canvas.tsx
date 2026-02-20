@@ -274,7 +274,11 @@ const AI_FOOTER_MIN_HEIGHT = 140;
 const AI_FOOTER_MAX_HEIGHT = 460;
 const AI_FOOTER_COLLAPSED_HEIGHT = 34;
 const AI_FOOTER_HEIGHT_STORAGE_KEY = "collabboard-ai-footer-height-v1";
+const SNAP_TO_GRID_STORAGE_KEY = "collabboard-snap-to-grid-v1";
 const STICKY_TEXT_HOLD_DRAG_DELAY_MS = 120;
+const GRID_CELL_SIZE = 24;
+const GRID_MAJOR_LINE_EVERY = 5;
+const GRID_MAJOR_SPACING = GRID_CELL_SIZE * GRID_MAJOR_LINE_EVERY;
 const BOARD_COLOR_SWATCHES: ColorSwatch[] = [
   { name: "Yellow", value: "#fde68a" },
   { name: "Orange", value: "#fdba74" },
@@ -837,6 +841,26 @@ function toDegrees(radians: number): number {
  */
 function roundToStep(value: number, step: number): number {
   return Math.round(value / step) * step;
+}
+
+/**
+ * Handles snap to grid.
+ */
+function snapToGrid(value: number): number {
+  return roundToStep(value, GRID_CELL_SIZE);
+}
+
+/**
+ * Returns whether object should snap to grid is true.
+ */
+function isSnapEligibleObjectType(type: BoardObjectKind): boolean {
+  return (
+    type === "rect" ||
+    type === "circle" ||
+    type === "triangle" ||
+    type === "star" ||
+    type === "line"
+  );
 }
 
 /**
@@ -2264,6 +2288,7 @@ export default function RealtimeBoardCanvas({
   const presenceClock = usePresenceClock(5_000);
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
+  const [isSnapToGridEnabled, setIsSnapToGridEnabled] = useState(true);
   const [isAiFooterCollapsed, setIsAiFooterCollapsed] = useState(false);
   const [isAiFooterResizing, setIsAiFooterResizing] = useState(false);
   const [isObjectDragging, setIsObjectDragging] = useState(false);
@@ -2273,6 +2298,9 @@ export default function RealtimeBoardCanvas({
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [isAiSubmitting, setIsAiSubmitting] = useState(false);
+  const [cursorBoardPosition, setCursorBoardPosition] = useState<BoardPoint | null>(
+    null,
+  );
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [selectionHudSize, setSelectionHudSize] = useState({
     width: 0,
@@ -2292,6 +2320,7 @@ export default function RealtimeBoardCanvas({
     () => doc(db, `boards/${boardId}/presence/${user.uid}`),
     [boardId, db, user.uid],
   );
+  const snapToGridEnabledRef = useRef(isSnapToGridEnabled);
 
   useEffect(() => {
     viewportRef.current = viewport;
@@ -2300,6 +2329,10 @@ export default function RealtimeBoardCanvas({
   useEffect(() => {
     canEditRef.current = canEdit;
   }, [canEdit]);
+
+  useEffect(() => {
+    snapToGridEnabledRef.current = isSnapToGridEnabled;
+  }, [isSnapToGridEnabled]);
 
   const clearStickyTextHoldDrag = useCallback(() => {
     const holdState = stickyTextHoldDragRef.current;
@@ -2398,11 +2431,37 @@ export default function RealtimeBoardCanvas({
       return;
     }
 
+    const savedSnapToGrid = window.localStorage.getItem(
+      SNAP_TO_GRID_STORAGE_KEY,
+    );
+    if (savedSnapToGrid === null) {
+      return;
+    }
+
+    setIsSnapToGridEnabled(savedSnapToGrid !== "0");
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
     window.localStorage.setItem(
       AI_FOOTER_HEIGHT_STORAGE_KEY,
       String(aiFooterHeight),
     );
   }, [aiFooterHeight]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(
+      SNAP_TO_GRID_STORAGE_KEY,
+      isSnapToGridEnabled ? "1" : "0",
+    );
+  }, [isSnapToGridEnabled]);
 
   useEffect(() => {
     const element = chatMessagesRef.current;
@@ -3600,10 +3659,17 @@ export default function RealtimeBoardCanvas({
           x: (event.clientX - rect.left - viewportRef.current.x) / scale,
           y: (event.clientY - rect.top - viewportRef.current.y) / scale,
         };
+        const nextMovingPoint =
+          snapToGridEnabledRef.current && isSnapEligibleObjectType("line")
+            ? {
+                x: snapToGrid(movingPoint.x),
+                y: snapToGrid(movingPoint.y),
+              }
+            : movingPoint;
 
         const nextGeometry = getLineGeometryFromEndpointDrag(
           lineEndpointResizeState,
-          movingPoint,
+          nextMovingPoint,
         );
 
         setDraftGeometry(lineEndpointResizeState.objectId, nextGeometry);
@@ -3740,8 +3806,17 @@ export default function RealtimeBoardCanvas({
             return;
           }
 
-          const nextX = initialGeometry.x + deltaX;
-          const nextY = initialGeometry.y + deltaY;
+          let nextX = initialGeometry.x + deltaX;
+          let nextY = initialGeometry.y + deltaY;
+
+          if (
+            snapToGridEnabledRef.current &&
+            objectItem &&
+            isSnapEligibleObjectType(objectItem.type)
+          ) {
+            nextX = snapToGrid(nextX);
+            nextY = snapToGrid(nextY);
+          }
 
           nextPositionsById[objectId] = {
             x: nextX,
@@ -4233,8 +4308,16 @@ export default function RealtimeBoardCanvas({
       const nextZIndex = isBackgroundContainerType(kind)
         ? lowestZIndex - 1
         : highestZIndex + 1;
-      const startX = centerX - width / 2 + spawnOffset.x;
-      const startY = centerY - height / 2 + spawnOffset.y;
+      const startXRaw = centerX - width / 2 + spawnOffset.x;
+      const startYRaw = centerY - height / 2 + spawnOffset.y;
+      const startX =
+        snapToGridEnabledRef.current && isSnapEligibleObjectType(kind)
+          ? snapToGrid(startXRaw)
+          : startXRaw;
+      const startY =
+        snapToGridEnabledRef.current && isSnapEligibleObjectType(kind)
+          ? snapToGrid(startYRaw)
+          : startYRaw;
       const isConnector = isConnectorKind(kind);
 
       try {
@@ -5140,13 +5223,30 @@ export default function RealtimeBoardCanvas({
 
   const handleStagePointerMove = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
+      const nextPoint = toBoardCoordinates(event.clientX, event.clientY);
+      if (nextPoint) {
+        setCursorBoardPosition((previous) => {
+          const nextRounded = {
+            x: Math.round(nextPoint.x),
+            y: Math.round(nextPoint.y),
+          };
+          if (
+            previous &&
+            previous.x === nextRounded.x &&
+            previous.y === nextRounded.y
+          ) {
+            return previous;
+          }
+          return nextRounded;
+        });
+      }
+
       const now = Date.now();
       if (now - sendCursorAtRef.current < CURSOR_THROTTLE_MS) {
         return;
       }
 
       sendCursorAtRef.current = now;
-      const nextPoint = toBoardCoordinates(event.clientX, event.clientY);
       if (!nextPoint) {
         return;
       }
@@ -5157,6 +5257,7 @@ export default function RealtimeBoardCanvas({
   );
 
   const handleStagePointerLeave = useCallback(() => {
+    setCursorBoardPosition(null);
     void updateCursor(null, { force: true });
   }, [updateCursor]);
 
@@ -6029,6 +6130,75 @@ export default function RealtimeBoardCanvas({
         marqueeSelectionState.currentPoint,
       )
     : null;
+  const gridAxisLabels = useMemo(() => {
+    if (
+      stageSize.width <= 0 ||
+      stageSize.height <= 0 ||
+      viewport.scale <= 0 ||
+      !Number.isFinite(viewport.scale)
+    ) {
+      return {
+        xLabels: [] as Array<{ screen: number; value: number }>,
+        yLabels: [] as Array<{ screen: number; value: number }>,
+      };
+    }
+
+    const worldLeft = (-viewport.x) / viewport.scale;
+    const worldRight = (stageSize.width - viewport.x) / viewport.scale;
+    const worldTop = (-viewport.y) / viewport.scale;
+    const worldBottom = (stageSize.height - viewport.y) / viewport.scale;
+    const spacingOnScreen = GRID_MAJOR_SPACING * viewport.scale;
+    const labelStride = Math.max(
+      1,
+      Math.ceil(56 / Math.max(18, spacingOnScreen)),
+    );
+
+    const xLabels: Array<{ screen: number; value: number }> = [];
+    const yLabels: Array<{ screen: number; value: number }> = [];
+    const startX =
+      Math.floor(worldLeft / GRID_MAJOR_SPACING) * GRID_MAJOR_SPACING;
+    const startY =
+      Math.floor(worldTop / GRID_MAJOR_SPACING) * GRID_MAJOR_SPACING;
+
+    for (
+      let index = 0, worldX = startX;
+      worldX <= worldRight && index < 800;
+      index += 1, worldX += GRID_MAJOR_SPACING
+    ) {
+      const majorIndex = Math.round(worldX / GRID_MAJOR_SPACING);
+      if (majorIndex % labelStride !== 0) {
+        continue;
+      }
+
+      const screenX = viewport.x + worldX * viewport.scale;
+      xLabels.push({
+        screen: screenX,
+        value: Math.round(worldX),
+      });
+    }
+
+    for (
+      let index = 0, worldY = startY;
+      worldY <= worldBottom && index < 800;
+      index += 1, worldY += GRID_MAJOR_SPACING
+    ) {
+      const majorIndex = Math.round(worldY / GRID_MAJOR_SPACING);
+      if (majorIndex % labelStride !== 0) {
+        continue;
+      }
+
+      const screenY = viewport.y + worldY * viewport.scale;
+      yLabels.push({
+        screen: screenY,
+        value: Math.round(worldY),
+      });
+    }
+
+    return {
+      xLabels,
+      yLabels,
+    };
+  }, [stageSize.height, stageSize.width, viewport.scale, viewport.x, viewport.y]);
 
   return (
     <section
@@ -6349,6 +6519,39 @@ export default function RealtimeBoardCanvas({
                   </span>
                 </div>
 
+                <label
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    width: "100%",
+                    padding: "0.45rem 0.55rem",
+                    border: "1px solid #d1d5db",
+                    borderRadius: 8,
+                    background: "white",
+                    color: "#374151",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                    userSelect: "none",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSnapToGridEnabled}
+                    onChange={(event) =>
+                      setIsSnapToGridEnabled(event.target.checked)
+                    }
+                    style={{
+                      width: 14,
+                      height: 14,
+                      accentColor: "#2563eb",
+                      cursor: "pointer",
+                    }}
+                  />
+                  <span>Snap to grid (shapes)</span>
+                </label>
+
                 <span
                   style={{
                     color: selectedObjectCount > 0 ? "#111827" : "#6b7280",
@@ -6361,6 +6564,20 @@ export default function RealtimeBoardCanvas({
                   {selectedObjectCount > 0
                     ? `${selectedObjectCount} object${selectedObjectCount === 1 ? "" : "s"}`
                     : "None"}
+                </span>
+
+                <span
+                  style={{
+                    color: cursorBoardPosition ? "#111827" : "#6b7280",
+                    fontSize: 12,
+                    lineHeight: 1.25,
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  Cursor:{" "}
+                  {cursorBoardPosition
+                    ? `${cursorBoardPosition.x}, ${cursorBoardPosition.y}`
+                    : "—"}
                 </span>
 
                 {boardError ? (
@@ -6401,13 +6618,67 @@ export default function RealtimeBoardCanvas({
               overflow: "hidden",
               backgroundColor: "#f9fafb",
               backgroundImage:
-                "linear-gradient(#e5e7eb 1px, transparent 1px), linear-gradient(90deg, #e5e7eb 1px, transparent 1px)",
-              backgroundSize: `${40 * viewport.scale}px ${40 * viewport.scale}px`,
-              backgroundPosition: `${viewport.x}px ${viewport.y}px`,
+                "linear-gradient(#cbd5e1 1px, transparent 1px), linear-gradient(90deg, #cbd5e1 1px, transparent 1px), linear-gradient(#e5e7eb 1px, transparent 1px), linear-gradient(90deg, #e5e7eb 1px, transparent 1px)",
+              backgroundSize: `${GRID_MAJOR_SPACING * viewport.scale}px ${GRID_MAJOR_SPACING * viewport.scale}px, ${GRID_MAJOR_SPACING * viewport.scale}px ${GRID_MAJOR_SPACING * viewport.scale}px, ${GRID_CELL_SIZE * viewport.scale}px ${GRID_CELL_SIZE * viewport.scale}px, ${GRID_CELL_SIZE * viewport.scale}px ${GRID_CELL_SIZE * viewport.scale}px`,
+              backgroundPosition: `${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px`,
               touchAction: "none",
               overscrollBehavior: "contain",
             }}
           >
+            <div
+              aria-hidden
+              style={{
+                position: "absolute",
+                inset: 0,
+                pointerEvents: "none",
+                zIndex: 5,
+                overflow: "hidden",
+              }}
+            >
+              {gridAxisLabels.xLabels.map((label) => (
+                <span
+                  key={`x-${label.value}`}
+                  style={{
+                    position: "absolute",
+                    left: Math.round(label.screen) + 3,
+                    top: 4,
+                    padding: "0 3px",
+                    borderRadius: 4,
+                    background: "rgba(248,250,252,0.84)",
+                    color: "#64748b",
+                    fontSize: 10,
+                    lineHeight: 1.35,
+                    fontWeight: 600,
+                    fontVariantNumeric: "tabular-nums",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {label.value}
+                </span>
+              ))}
+              {gridAxisLabels.yLabels.map((label) => (
+                <span
+                  key={`y-${label.value}`}
+                  style={{
+                    position: "absolute",
+                    left: 4,
+                    top: Math.round(label.screen) + 3,
+                    padding: "0 3px",
+                    borderRadius: 4,
+                    background: "rgba(248,250,252,0.84)",
+                    color: "#64748b",
+                    fontSize: 10,
+                    lineHeight: 1.35,
+                    fontWeight: 600,
+                    fontVariantNumeric: "tabular-nums",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {label.value}
+                </span>
+              ))}
+            </div>
+
             {canShowSelectionHud && selectionHudPosition ? (
               <div
                 ref={selectionHudRef}

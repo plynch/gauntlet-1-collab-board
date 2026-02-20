@@ -52,6 +52,15 @@ npm run test:e2e:ai-agent-calls:fallback
 npm run test:e2e:ai-agent-calls:openai-matrix:nano:PAID
 ```
 
+### Paid required-capabilities suite (rubric command set)
+
+```bash
+npm run test:e2e:ai-required-capabilities:openai-agents:nano:PAID
+```
+
+This suite runs the required command catalog from the project brief using
+`OPENAI_RUNTIME=agents-sdk` + `AI_PLANNER_MODE=openai-strict`.
+
 Legacy alias:
 
 ```bash

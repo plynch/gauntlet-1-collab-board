@@ -677,6 +677,17 @@ function createOpenAiPlannerFailureError(
 }
 
 /**
+ * Gets compact text preview.
+ */
+function getCompactTextPreview(value: string, maxChars: number): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (compact.length <= maxChars) {
+    return compact;
+  }
+  return `${compact.slice(0, maxChars)}…`;
+}
+
+/**
  * Parses openai planner output.
  */
 export function parseOpenAiPlannerOutput(content: string): {
@@ -770,7 +781,11 @@ export async function planBoardCommandWithOpenAi(input: {
       error instanceof Error && error.message.trim().length > 0
         ? error.message
         : "OpenAI planner returned invalid JSON output.";
-    throw createOpenAiPlannerFailureError(reason, usage);
+    const preview = getCompactTextPreview(content, 300);
+    throw createOpenAiPlannerFailureError(
+      `${reason} (plannerPreview=${JSON.stringify(preview)})`,
+      usage,
+    );
   }
 
   return {

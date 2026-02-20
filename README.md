@@ -134,6 +134,7 @@ Generated docs location:
 - ✅ Local fallback template provider if MCP call fails/times out
 - ✅ Server-side board tool executor (create/move/resize/update/color/get state)
 - ✅ End-to-end trace spans through Langfuse (when configured)
+- ✅ Optional OpenAI planner path (`gpt-4.1-nano`) with deterministic fallback and hard spend cap
 
 User guide:
 
@@ -155,6 +156,8 @@ Langfuse coverage:
 - `ai.request.received`
 - `ai.intent.detected`
 - `mcp.call`
+- `openai.budget.reserve`
+- `openai.call`
 - `tool.execute`
 - `board.write.commit`
 - `ai.response.sent` (final trace update)
@@ -169,19 +172,24 @@ Guardrails:
 
 Env notes:
 
-- OpenAI key is **not** required for this phase.
 - To enable internal MCP auth + Langfuse tracing in deployed environments:
   - `MCP_INTERNAL_TOKEN`
   - `LANGFUSE_PUBLIC_KEY`
   - `LANGFUSE_SECRET_KEY`
   - optional: `LANGFUSE_BASE_URL`
   - optional: `AI_AUDIT_LOG_ENABLED=true` (writes `boards/{boardId}/aiRuns/*`)
+- OpenAI planner is optional and off by default:
+  - `AI_ENABLE_OPENAI=true`
+  - `OPENAI_API_KEY=...`
+  - optional: `OPENAI_MODEL=gpt-4.1-nano` (default)
+  - optional: `AI_GUARDRAIL_STORE=memory|firestore` (budget persistence backend)
+  - hard app-level spend guardrail is capped at `$10.00`
 
 On-demand AI trace suites:
 
 - Fallback agent matrix (20 Playwright tests, one AI call per test, trace logging):
   - `npm run test:e2e:ai-agent-calls:fallback`
-- OpenAI nano matrix scaffold (key-gated and on-demand):
+- OpenAI nano smoke matrix (key-gated and on-demand):
   - `npm run test:e2e:ai-agent-calls:openai-nano`
 
 Fallback suite behavior:
@@ -202,6 +210,15 @@ Expected trace log pattern in output:
 ```text
 [langfuse-trace] case=case-01 traceId=<uuid> dashboard=https://us.cloud.langfuse.com/project/cmlu0vcd501siad07glqj49kv
 ```
+
+OpenAI smoke suite behavior:
+
+- Runs only when `PLAYWRIGHT_EMULATOR_MODE=1` and `OPENAI_API_KEY` is present.
+- Validates `/api/e2e/langfuse-ready` and `/api/e2e/openai-ready` before paid calls.
+- Executes two paid calls and asserts:
+  - non-empty `traceId`
+  - `provider=openai`
+  - `mode=llm`
 
 ## In Progress Features
 

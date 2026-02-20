@@ -24,6 +24,12 @@ type CallCommandPlanOptions = TemplateMcpClientOptions & {
   message: string;
   selectedObjectIds: string[];
   boardState: BoardObjectSnapshot[];
+  viewportBounds?: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null;
 };
 
 const operationSchema = z.object({
@@ -154,6 +160,7 @@ export async function callCommandPlanTool(
           message: options.message,
           selectedObjectIds: options.selectedObjectIds,
           boardState: options.boardState,
+          viewportBounds: options.viewportBounds ?? undefined,
         },
       }),
       options.timeoutMs,

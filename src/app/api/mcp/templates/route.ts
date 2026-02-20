@@ -61,6 +61,15 @@ const commandPlanArgsSchema = z.object({
   message: z.string().min(1),
   selectedObjectIds: z.array(z.string()).optional(),
   boardState: boardStateSchema.optional(),
+  viewportBounds: z
+    .object({
+      left: z.number(),
+      top: z.number(),
+      width: z.number().positive(),
+      height: z.number().positive(),
+    })
+    .nullable()
+    .optional(),
 });
 
 /**
@@ -233,6 +242,7 @@ function createTemplateMcpServer(): McpServer {
         message: parsedArgs.data.message,
         selectedObjectIds: parsedArgs.data.selectedObjectIds ?? [],
         boardState: toBoardState(parsedArgs.data.boardState),
+        viewportBounds: parsedArgs.data.viewportBounds ?? null,
       });
 
       return {

@@ -9,6 +9,12 @@ type PlannerInput = {
   message: string;
   boardState: BoardObjectSnapshot[];
   selectedObjectIds: string[];
+  viewportBounds?: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null;
 };
 
 export type DeterministicCommandPlanResult =
@@ -408,6 +414,27 @@ function getBoardBounds(boardState: BoardObjectSnapshot[]): {
 }
 
 /**
+ * Gets target area bounds.
+ */
+function getTargetAreaBounds(input: PlannerInput): {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+} | null {
+  if (input.viewportBounds) {
+    return {
+      left: input.viewportBounds.left,
+      right: input.viewportBounds.left + input.viewportBounds.width,
+      top: input.viewportBounds.top,
+      bottom: input.viewportBounds.top + input.viewportBounds.height,
+    };
+  }
+
+  return getBoardBounds(input.boardState);
+}
+
+/**
  * Gets auto spawn point.
  */
 function getAutoSpawnPoint(boardState: BoardObjectSnapshot[]): Point {
@@ -449,6 +476,33 @@ function parseDirectionDelta(message: string): Point | null {
   }
 
   return { x: 0, y: amount };
+}
+
+/**
+ * Parses side target.
+ */
+function parseSideTarget(message: string): "left" | "right" | "top" | "bottom" | null {
+  const lower = normalizeMessage(message);
+  const sideMatch = lower.match(/\b(right|left|top|bottom)\s+(?:side|edge)\b/);
+  if (!sideMatch) {
+    return null;
+  }
+
+  if (!/\b(screen|viewport|view|canvas|board)\b/.test(lower)) {
+    return null;
+  }
+
+  const direction = sideMatch[1];
+  if (
+    direction !== "left" &&
+    direction !== "right" &&
+    direction !== "top" &&
+    direction !== "bottom"
+  ) {
+    return null;
+  }
+
+  return direction;
 }
 
 /**
@@ -1435,17 +1489,42 @@ function planMoveSelected(
  */
 function parseMoveAllType(message: string): BoardObjectToolKind | null {
   const match = message.match(
-    /\ball\b(?:\s+\w+)?\s+(sticky(?:\s+notes?)?|rectangles?|circles?|lines?|triangles?|stars?|connectors?)\b/i,
+    /\b(?:all|every|each|the)\b(?:\s+\w+){0,3}\s+(sticky\s+notes|stickies|rectangles|circles|lines|triangles|stars|connectors)\b/i,
   );
   if (!match) {
     return null;
   }
 
-  if (/connectors?/i.test(match[1])) {
+  const noun = match[1].toLowerCase();
+  if (noun === "sticky notes" || noun === "stickies") {
+    return "sticky";
+  }
+
+  if (noun === "rectangles") {
+    return "rect";
+  }
+
+  if (noun === "circles") {
+    return "circle";
+  }
+
+  if (noun === "lines") {
+    return "line";
+  }
+
+  if (noun === "triangles") {
+    return "triangle";
+  }
+
+  if (noun === "stars") {
+    return "star";
+  }
+
+  if (noun === "connectors") {
     return "connectorUndirected";
   }
 
-  return parseShapeType(match[1]);
+  return null;
 }
 
 /**
@@ -1455,7 +1534,7 @@ function planMoveAll(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
   const lower = normalizeMessage(input.message);
-  if (!/\bmove\b/.test(lower) || !/\ball\b/.test(lower)) {
+  if (!/\bmove\b/.test(lower)) {
     return null;
   }
 
@@ -1486,12 +1565,68 @@ function planMoveAll(
   }
 
   const targetPoint = parseCoordinatePoint(input.message);
+  const sideTarget = parseSideTarget(input.message);
   const operations: BoardToolCall[] = [];
 
   if (targetPoint) {
     const anchor = candidates[0];
     const dx = targetPoint.x - anchor.x;
     const dy = targetPoint.y - anchor.y;
+
+    candidates.forEach((objectItem) => {
+      operations.push({
+        tool: "moveObject",
+        args: {
+          objectId: objectItem.id,
+          x: objectItem.x + dx,
+          y: objectItem.y + dy,
+        },
+      });
+    });
+  } else if (sideTarget) {
+    const candidateBounds = getBoardBounds(candidates);
+    const targetBounds = getTargetAreaBounds(input);
+    if (!candidateBounds || !targetBounds) {
+      return {
+        planned: false,
+        intent: "move-all",
+        assistantMessage:
+          "I could not determine the target area. Try using explicit coordinates like to 900, 300.",
+      };
+    }
+
+    const groupWidth = Math.max(1, candidateBounds.right - candidateBounds.left);
+    const groupHeight = Math.max(1, candidateBounds.bottom - candidateBounds.top);
+    const padding = 48;
+    const targetLeftBase =
+      sideTarget === "left"
+        ? targetBounds.left + padding
+        : sideTarget === "right"
+          ? targetBounds.right - groupWidth - padding
+          : candidateBounds.left;
+    const targetTopBase =
+      sideTarget === "top"
+        ? targetBounds.top + padding
+        : sideTarget === "bottom"
+          ? targetBounds.bottom - groupHeight - padding
+          : candidateBounds.top;
+
+    const minLeft = targetBounds.left;
+    const maxLeft = targetBounds.right - groupWidth;
+    const minTop = targetBounds.top;
+    const maxTop = targetBounds.bottom - groupHeight;
+
+    const targetLeft =
+      minLeft <= maxLeft
+        ? Math.min(maxLeft, Math.max(minLeft, targetLeftBase))
+        : candidateBounds.left;
+    const targetTop =
+      minTop <= maxTop
+        ? Math.min(maxTop, Math.max(minTop, targetTopBase))
+        : candidateBounds.top;
+
+    const dx = targetLeft - candidateBounds.left;
+    const dy = targetTop - candidateBounds.top;
 
     candidates.forEach((objectItem) => {
       operations.push({

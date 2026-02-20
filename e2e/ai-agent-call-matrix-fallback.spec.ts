@@ -531,7 +531,7 @@ test("case 15: move selected to target position", async ({ page }) => {
   );
 });
 
-test("case 16: move all stickies down", async ({ page }) => {
+test("case 16: move sticky notes to right side of screen", async ({ page }) => {
   const caseId = "case-16";
   const boardTitle = `E2E ${caseId} ${Date.now()}`;
   await createBoardAndOpen(page, caseId, boardTitle);
@@ -544,15 +544,15 @@ test("case 16: move all stickies down", async ({ page }) => {
   const result = await sendAiCommand(
     page,
     caseId,
-    "Move all sticky notes down by 90",
+    "Move the sticky notes to the right side of the screen",
   );
 
   assertCommandIntent(result, "move-all");
 
   const afterFirst = await getBoardObjectBox(page, 0);
   const afterSecond = await getBoardObjectBox(page, 1);
-  expect(afterFirst.y - beforeFirst.y).toBeGreaterThan(55);
-  expect(afterSecond.y - beforeSecond.y).toBeGreaterThan(55);
+  expect(afterFirst.x - beforeFirst.x).toBeGreaterThan(80);
+  expect(afterSecond.x - beforeSecond.x).toBeGreaterThan(80);
 });
 
 test("case 17: resize selected object", async ({ page }) => {

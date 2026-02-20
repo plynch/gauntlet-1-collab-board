@@ -54,7 +54,7 @@ Demo narration tip:
   - summarize selected notes into concise bullets (`summarize selected notes`)
   - extract action-item stickies from selected notes (`create action items from selected notes`)
   - move selected objects
-  - move all objects of a type (optionally color-filtered)
+  - move all objects of a type (optionally color-filtered), including viewport-aware commands like `move the red sticky notes to the right side of the screen`
   - resize selected objects
   - change color of selected objects
   - update selected object text
@@ -72,8 +72,8 @@ Result:
 ### Not yet routed from natural language
 
 - connector creation from arbitrary language prompts
-- advanced layout prompts beyond grid v1 (space-evenly, align)
-- complex multi-step templates beyond SWOT (retro, journey map)
+- advanced layout prompts beyond current align/distribute/grid coverage
+- complex multi-step templates beyond SWOT/retro/journey-map
 - full LLM planning layer for broader prompt understanding
 
 ## Tool schema (minimum + implemented set)

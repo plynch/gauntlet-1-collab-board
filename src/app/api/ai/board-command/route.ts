@@ -975,6 +975,7 @@ export async function POST(request: NextRequest) {
                 message: parsedPayload.message,
                 boardState: boardObjects,
                 selectedObjectIds,
+                viewportBounds: parsedPayload.viewportBounds ?? null,
               });
             } else {
               const mcpSpan = activeTrace.startSpan("mcp.call", {
@@ -994,20 +995,22 @@ export async function POST(request: NextRequest) {
                   message: parsedPayload.message,
                   boardState: boardObjects,
                   selectedObjectIds,
+                  viewportBounds: parsedPayload.viewportBounds ?? null,
                 });
               } else {
                 try {
-                  plannerResult = await callCommandPlanTool({
-                    endpointUrl: new URL(
-                      "/api/mcp/templates",
-                      request.nextUrl.origin,
-                    ),
-                    internalToken: token,
-                    timeoutMs: MCP_TEMPLATE_TIMEOUT_MS,
-                    message: parsedPayload.message,
-                    selectedObjectIds,
-                    boardState: boardObjects,
-                  });
+                plannerResult = await callCommandPlanTool({
+                  endpointUrl: new URL(
+                    "/api/mcp/templates",
+                    request.nextUrl.origin,
+                  ),
+                  internalToken: token,
+                  timeoutMs: MCP_TEMPLATE_TIMEOUT_MS,
+                  message: parsedPayload.message,
+                  selectedObjectIds,
+                  boardState: boardObjects,
+                  viewportBounds: parsedPayload.viewportBounds ?? null,
+                });
                   mcpSpan.end({
                     fallbackUsed: false,
                   });
@@ -1021,6 +1024,7 @@ export async function POST(request: NextRequest) {
                     message: parsedPayload.message,
                     boardState: boardObjects,
                     selectedObjectIds,
+                    viewportBounds: parsedPayload.viewportBounds ?? null,
                   });
                 }
               }

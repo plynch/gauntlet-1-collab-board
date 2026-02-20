@@ -370,6 +370,83 @@ describe("planDeterministicCommand", () => {
     }
   });
 
+  it("moves color-filtered sticky notes to the right side of the screen", () => {
+    const boardState = [
+      ...BOARD_STATE,
+      {
+        id: "obj-3",
+        type: "sticky" as const,
+        zIndex: 3,
+        x: 220,
+        y: 260,
+        width: 220,
+        height: 170,
+        rotationDeg: 0,
+        color: "#fca5a5",
+        text: "Red sticky 1",
+        updatedAt: null,
+      },
+      {
+        id: "obj-4",
+        type: "sticky" as const,
+        zIndex: 4,
+        x: 500,
+        y: 260,
+        width: 220,
+        height: 170,
+        rotationDeg: 0,
+        color: "#fca5a5",
+        text: "Red sticky 2",
+        updatedAt: null,
+      },
+      {
+        id: "obj-5",
+        type: "sticky" as const,
+        zIndex: 5,
+        x: 780,
+        y: 260,
+        width: 220,
+        height: 170,
+        rotationDeg: 0,
+        color: "#fde68a",
+        text: "Yellow sticky",
+        updatedAt: null,
+      },
+    ];
+
+    const originalById = new Map(boardState.map((objectItem) => [objectItem.id, objectItem]));
+    const result = planDeterministicCommand({
+      message: "Move the red sticky notes to the right side of the screen",
+      boardState,
+      selectedObjectIds: [],
+      viewportBounds: {
+        left: 0,
+        top: 0,
+        width: 1200,
+        height: 800,
+      },
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("move-all");
+      expect(result.plan.operations).toHaveLength(2);
+      expect(result.plan.operations.every((op) => op.tool === "moveObject")).toBe(
+        true,
+      );
+
+      result.plan.operations.forEach((operation) => {
+        if (operation.tool !== "moveObject") {
+          return;
+        }
+
+        const original = originalById.get(operation.args.objectId);
+        expect(original).toBeDefined();
+        expect(operation.args.x).toBeGreaterThan((original?.x ?? 0) + 100);
+      });
+    }
+  });
+
   it("plans line shape creation commands", () => {
     const result = planDeterministicCommand({
       message: "Create a line at position 240, 200 size 280 by 12",

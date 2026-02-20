@@ -143,6 +143,20 @@ function getDebugMessage(error: unknown): string | undefined {
 }
 
 /**
+ * Returns whether clear-board request message is true.
+ */
+function isClearBoardRequestMessage(message: string): boolean {
+  const lower = message.trim().toLowerCase();
+  return (
+    /\bclear(?:\s+the)?\s+board\b/.test(lower) ||
+    /\bdelete\s+all\s+shapes\b/.test(lower) ||
+    /\bremove\s+all\s+shapes\b/.test(lower) ||
+    /\b(?:delete|remove)\s+everything(?:\s+on\s+the\s+board)?\b/.test(lower) ||
+    /\bwipe\s+the\s+board\b/.test(lower)
+  );
+}
+
+/**
  * Creates http error.
  */
 function createHttpError(
@@ -905,13 +919,22 @@ export async function POST(request: NextRequest) {
           let llmUsed = false;
           const selectedObjectIds = parsedPayload.selectedObjectIds ?? [];
           const requireOpenAi = isOpenAiRequiredForStubCommands();
+          const shouldForceDeterministicClearBoard = isClearBoardRequestMessage(
+            parsedPayload.message,
+          );
 
-          const openAiAttempt = await attemptOpenAiPlanner({
-            message: parsedPayload.message,
-            boardState: boardObjects,
-            selectedObjectIds,
-            trace: activeTrace,
-          });
+          const openAiAttempt = shouldForceDeterministicClearBoard
+            ? {
+                status: "disabled" as const,
+                model: getOpenAiPlannerConfig().model,
+                reason: "Skipped for deterministic clear-board policy.",
+              }
+            : await attemptOpenAiPlanner({
+                message: parsedPayload.message,
+                boardState: boardObjects,
+                selectedObjectIds,
+                trace: activeTrace,
+              });
           const openAiExecution = buildOpenAiExecutionSummary(openAiAttempt);
           if (openAiAttempt.status === "planned") {
             plannerResult = {
@@ -936,18 +959,17 @@ export async function POST(request: NextRequest) {
           }
 
           if (!plannerResult) {
-            const mcpSpan = activeTrace.startSpan("mcp.call", {
-              endpoint: "/api/mcp/templates",
-              tool: "command.plan",
-            });
-            const token = getInternalMcpToken();
-            if (!token) {
+            if (shouldForceDeterministicClearBoard) {
               fallbackUsed = true;
               mcpUsed = false;
+              const mcpSpan = activeTrace.startSpan("mcp.call", {
+                endpoint: "/api/mcp/templates",
+                tool: "command.plan",
+              });
               mcpSpan.end({
                 skipped: true,
                 fallbackUsed: true,
-                reason: "MCP_INTERNAL_TOKEN is missing.",
+                reason: "Deterministic clear-board policy.",
               });
               plannerResult = planDeterministicCommand({
                 message: parsedPayload.message,
@@ -955,32 +977,52 @@ export async function POST(request: NextRequest) {
                 selectedObjectIds,
               });
             } else {
-              try {
-                plannerResult = await callCommandPlanTool({
-                  endpointUrl: new URL(
-                    "/api/mcp/templates",
-                    request.nextUrl.origin,
-                  ),
-                  internalToken: token,
-                  timeoutMs: MCP_TEMPLATE_TIMEOUT_MS,
-                  message: parsedPayload.message,
-                  selectedObjectIds,
-                  boardState: boardObjects,
-                });
-                mcpSpan.end({
-                  fallbackUsed: false,
-                });
-              } catch (error) {
+              const mcpSpan = activeTrace.startSpan("mcp.call", {
+                endpoint: "/api/mcp/templates",
+                tool: "command.plan",
+              });
+              const token = getInternalMcpToken();
+              if (!token) {
                 fallbackUsed = true;
                 mcpUsed = false;
-                mcpSpan.fail("MCP command planner failed.", {
-                  reason: getErrorReason(error),
+                mcpSpan.end({
+                  skipped: true,
+                  fallbackUsed: true,
+                  reason: "MCP_INTERNAL_TOKEN is missing.",
                 });
                 plannerResult = planDeterministicCommand({
                   message: parsedPayload.message,
                   boardState: boardObjects,
                   selectedObjectIds,
                 });
+              } else {
+                try {
+                  plannerResult = await callCommandPlanTool({
+                    endpointUrl: new URL(
+                      "/api/mcp/templates",
+                      request.nextUrl.origin,
+                    ),
+                    internalToken: token,
+                    timeoutMs: MCP_TEMPLATE_TIMEOUT_MS,
+                    message: parsedPayload.message,
+                    selectedObjectIds,
+                    boardState: boardObjects,
+                  });
+                  mcpSpan.end({
+                    fallbackUsed: false,
+                  });
+                } catch (error) {
+                  fallbackUsed = true;
+                  mcpUsed = false;
+                  mcpSpan.fail("MCP command planner failed.", {
+                    reason: getErrorReason(error),
+                  });
+                  plannerResult = planDeterministicCommand({
+                    message: parsedPayload.message,
+                    boardState: boardObjects,
+                    selectedObjectIds,
+                  });
+                }
               }
             }
           }

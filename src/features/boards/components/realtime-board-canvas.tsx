@@ -30,10 +30,6 @@ import type {
   ConnectorAnchor,
   PresenceUser,
 } from "@/features/boards/types";
-import type {
-  BoardCommandExecutionSummary,
-  BoardCommandResponse,
-} from "@/features/ai/types";
 import { getBoardCommandErrorMessage } from "@/features/ai/board-command";
 import {
   getPathLength,
@@ -122,15 +118,7 @@ type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   text: string;
-  traceId?: string;
-  provider?: BoardCommandResponse["provider"];
-  mode?: NonNullable<BoardCommandResponse["mode"]>;
-  execution?: BoardCommandExecutionSummary;
 };
-
-type OpenAiExecutionStatus = NonNullable<
-  BoardCommandExecutionSummary["openAi"]
->["status"];
 
 type AiFooterResizeState = {
   startClientY: number;
@@ -472,106 +460,6 @@ function getTimestampMillis(value: unknown): number | null {
  */
 function getFiniteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-/**
- * Parses board command execution summary.
- */
-function parseBoardCommandExecutionSummary(
-  value: unknown,
-): BoardCommandExecutionSummary | undefined {
-  if (!value || typeof value !== "object") {
-    return undefined;
-  }
-
-  const candidate = value as {
-    intent?: unknown;
-    mode?: unknown;
-    mcpUsed?: unknown;
-    fallbackUsed?: unknown;
-    toolCalls?: unknown;
-    objectsCreated?: unknown;
-    openAi?: unknown;
-  };
-
-  if (
-    typeof candidate.intent !== "string" ||
-    (candidate.mode !== "deterministic" &&
-      candidate.mode !== "stub" &&
-      candidate.mode !== "llm") ||
-    typeof candidate.mcpUsed !== "boolean" ||
-    typeof candidate.fallbackUsed !== "boolean" ||
-    typeof candidate.toolCalls !== "number" ||
-    !Number.isFinite(candidate.toolCalls) ||
-    typeof candidate.objectsCreated !== "number" ||
-    !Number.isFinite(candidate.objectsCreated)
-  ) {
-    return undefined;
-  }
-
-  const openAiCandidate =
-    candidate.openAi && typeof candidate.openAi === "object"
-      ? (candidate.openAi as {
-          attempted?: unknown;
-          status?: unknown;
-          model?: unknown;
-          estimatedCostUsd?: unknown;
-          totalSpentUsd?: unknown;
-        })
-      : null;
-  const openAiStatus: OpenAiExecutionStatus | null =
-    openAiCandidate?.status === "disabled" ||
-    openAiCandidate?.status === "budget-blocked" ||
-    openAiCandidate?.status === "planned" ||
-    openAiCandidate?.status === "not-planned" ||
-    openAiCandidate?.status === "error"
-      ? openAiCandidate.status
-      : null;
-  const parsedOpenAi =
-    openAiCandidate &&
-    typeof openAiCandidate.attempted === "boolean" &&
-    openAiStatus !== null &&
-    typeof openAiCandidate.model === "string" &&
-    typeof openAiCandidate.estimatedCostUsd === "number" &&
-    Number.isFinite(openAiCandidate.estimatedCostUsd) &&
-    (openAiCandidate.totalSpentUsd === undefined ||
-      (typeof openAiCandidate.totalSpentUsd === "number" &&
-        Number.isFinite(openAiCandidate.totalSpentUsd)))
-      ? {
-          attempted: openAiCandidate.attempted,
-          status: openAiStatus,
-          model: openAiCandidate.model,
-          estimatedCostUsd: Math.max(0, openAiCandidate.estimatedCostUsd),
-          ...(typeof openAiCandidate.totalSpentUsd === "number"
-            ? { totalSpentUsd: Math.max(0, openAiCandidate.totalSpentUsd) }
-            : {}),
-        }
-      : undefined;
-
-  return {
-    intent: candidate.intent,
-    mode: candidate.mode,
-    mcpUsed: candidate.mcpUsed,
-    fallbackUsed: candidate.fallbackUsed,
-    toolCalls: Math.max(0, Math.floor(candidate.toolCalls)),
-    objectsCreated: Math.max(0, Math.floor(candidate.objectsCreated)),
-    ...(parsedOpenAi ? { openAi: parsedOpenAi } : {}),
-  };
-}
-
-/**
- * Formats usd for compact AI metadata.
- */
-function formatUsdCompact(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) {
-    return "$0.00";
-  }
-
-  if (value < 0.01) {
-    return `$${value.toFixed(4)}`;
-  }
-
-  return `$${value.toFixed(2)}`;
 }
 
 /**
@@ -5040,33 +4928,12 @@ export default function RealtimeBoardCanvas({
 
         const payload = (await response.json()) as {
           assistantMessage?: unknown;
-          traceId?: unknown;
-          provider?: unknown;
-          mode?: unknown;
-          execution?: unknown;
         };
         const assistantMessage =
           typeof payload.assistantMessage === "string" &&
           payload.assistantMessage.trim()
             ? payload.assistantMessage
             : "AI agent coming soon!";
-        const traceId =
-          typeof payload.traceId === "string" && payload.traceId.trim().length > 0
-            ? payload.traceId
-            : undefined;
-        const provider =
-          payload.provider === "stub" ||
-          payload.provider === "deterministic-mcp" ||
-          payload.provider === "openai"
-            ? payload.provider
-            : undefined;
-        const mode =
-          payload.mode === "deterministic" ||
-          payload.mode === "stub" ||
-          payload.mode === "llm"
-            ? payload.mode
-            : undefined;
-        const execution = parseBoardCommandExecutionSummary(payload.execution);
 
         setChatMessages((previous) => [
           ...previous,
@@ -5074,10 +4941,6 @@ export default function RealtimeBoardCanvas({
             id: createChatMessageId("a"),
             role: "assistant",
             text: assistantMessage,
-            ...(traceId ? { traceId } : {}),
-            ...(provider ? { provider } : {}),
-            ...(mode ? { mode } : {}),
-            ...(execution ? { execution } : {}),
           },
         ]);
       } catch {
@@ -7925,75 +7788,6 @@ export default function RealtimeBoardCanvas({
                         }}
                       >
                         <div>{message.text}</div>
-                        {message.role === "assistant" &&
-                        (message.provider || message.mode || message.execution) ? (
-                          <div
-                            style={{
-                              marginTop: 6,
-                              fontSize: 11,
-                              color: "#334155",
-                              display: "flex",
-                              flexWrap: "wrap",
-                              gap: "0.4rem",
-                            }}
-                          >
-                            {message.provider ? (
-                              <span>provider: {message.provider}</span>
-                            ) : null}
-                            {message.mode ? <span>mode: {message.mode}</span> : null}
-                            {message.execution ? (
-                              <>
-                                <span>intent: {message.execution.intent}</span>
-                                <span>tools: {message.execution.toolCalls}</span>
-                                <span>
-                                  created: {message.execution.objectsCreated}
-                                </span>
-                                {message.execution.fallbackUsed ? (
-                                  <span>fallback: yes</span>
-                                ) : null}
-                                {message.execution.openAi ? (
-                                  <>
-                                    <span>
-                                      openai: {message.execution.openAi.status}
-                                    </span>
-                                    <span>
-                                      model: {message.execution.openAi.model}
-                                    </span>
-                                    <span>
-                                      est:{" "}
-                                      {formatUsdCompact(
-                                        message.execution.openAi.estimatedCostUsd,
-                                      )}
-                                    </span>
-                                    {typeof message.execution.openAi.totalSpentUsd ===
-                                    "number" ? (
-                                      <span>
-                                        total:{" "}
-                                        {formatUsdCompact(
-                                          message.execution.openAi.totalSpentUsd,
-                                        )}
-                                      </span>
-                                    ) : null}
-                                  </>
-                                ) : null}
-                              </>
-                            ) : null}
-                          </div>
-                        ) : null}
-                        {message.role === "assistant" && message.traceId ? (
-                          <div
-                            style={{
-                              marginTop: 6,
-                              fontFamily:
-                                "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace",
-                              fontSize: 11,
-                              color: "#334155",
-                              wordBreak: "break-all",
-                            }}
-                          >
-                            traceId: {message.traceId}
-                          </div>
-                        ) : null}
                       </div>
                     ))}
                     {isAiSubmitting ? (

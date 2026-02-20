@@ -182,6 +182,7 @@ Env notes:
   - `AI_ENABLE_OPENAI=true`
   - `OPENAI_API_KEY=...`
   - optional: `OPENAI_MODEL=gpt-4.1-nano` (default)
+  - optional: `OPENAI_RESERVE_USD_PER_CALL=0.003` (default reservation per call)
   - optional: `AI_GUARDRAIL_STORE=memory|firestore` (budget persistence backend)
   - hard app-level spend guardrail is capped at `$10.00`
 

@@ -63,7 +63,7 @@ export function getOpenAiPlannerConfig(): OpenAiPlannerConfig {
     ),
     reserveUsdPerCall: parsePositiveNumberEnv(
       process.env.OPENAI_RESERVE_USD_PER_CALL,
-      0.05,
+      0.003,
     ),
     inputCostPerMillionUsd: parsePositiveNumberEnv(
       process.env.OPENAI_INPUT_COST_PER_1M_USD,

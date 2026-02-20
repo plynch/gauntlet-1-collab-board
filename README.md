@@ -11,6 +11,17 @@ Built with Next.js and Firebase Firestore.
 
 ## Build And Run Locally
 
+Prerequisites:
+
+- Node.js and npm
+- Java 21+ (required for Firebase emulator-backed workflows)
+
+Verify local toolchain:
+
+```bash
+node -v && npm -v && java -version
+```
+
 1. Install dependencies:
 
 ```bash
@@ -70,7 +81,12 @@ Firebase emulator e2e (no paid Firebase usage):
 npm run test:e2e:emulator
 ```
 
-Prerequisite: Java runtime (required by Firestore emulator).
+Java is required for emulator-backed scripts:
+
+- `npm run firebase:emulators`
+- `npm run test:e2e:emulator`
+- `npm run test:e2e:ai-agent-calls:fallback`
+- `npm run test:e2e:ai-agent-calls:openai-nano`
 
 Styleguide route (component library preview in app):
 
@@ -171,9 +187,21 @@ On-demand AI trace suites:
 Fallback suite behavior:
 
 - Forces `AI_ENABLE_OPENAI=false` so no paid LLM calls are used.
-- Requires `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY`.
+- Checks `/api/e2e/langfuse-ready` before running test cases and fails early when Langfuse is not configured server-side.
 - Logs one line per test with case id, `traceId`, and dashboard URL:
   - `https://us.cloud.langfuse.com/project/cmlu0vcd501siad07glqj49kv`
+
+Fallback trace runbook:
+
+```bash
+npm run test:e2e:ai-agent-calls:fallback
+```
+
+Expected trace log pattern in output:
+
+```text
+[langfuse-trace] case=case-01 traceId=<uuid> dashboard=https://us.cloud.langfuse.com/project/cmlu0vcd501siad07glqj49kv
+```
 
 ## In Progress Features
 

@@ -321,13 +321,11 @@ const AI_QUICK_ACTIONS: AiQuickAction[] = [
     id: "quick-summarize",
     label: "Summarize",
     prompt: "Summarize selected notes.",
-    requiresSelection: true,
   },
   {
     id: "quick-actions",
     label: "Action Items",
     prompt: "Create action items from selected notes.",
-    requiresSelection: true,
   },
   {
     id: "quick-swot",
@@ -5125,7 +5123,11 @@ export default function RealtimeBoardCanvas({
       }
 
       const selectedCount = selectedObjectIdsRef.current.size;
-      if (action.requiresSelection && selectedCount === 0) {
+      if (
+        action.requiresSelection &&
+        aiSelectionScope === "selected" &&
+        selectedCount === 0
+      ) {
         setChatMessages((previous) => [
           ...previous,
           {
@@ -5137,12 +5139,19 @@ export default function RealtimeBoardCanvas({
         return;
       }
 
-      void submitAiCommandMessage(action.prompt, {
+      let prompt = action.prompt;
+      if (aiSelectionScope === "board" && action.id === "quick-summarize") {
+        prompt = "Summarize the board notes.";
+      } else if (aiSelectionScope === "board" && action.id === "quick-actions") {
+        prompt = "Create action items for the board notes.";
+      }
+
+      void submitAiCommandMessage(prompt, {
         appendUserMessage: true,
         clearInput: true,
       });
     },
-    [isAiSubmitting, submitAiCommandMessage],
+    [aiSelectionScope, isAiSubmitting, submitAiCommandMessage],
   );
 
   const handleCreateSwotButtonClick = useCallback(() => {

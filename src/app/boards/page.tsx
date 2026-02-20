@@ -1,17 +1,22 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
+  type SyntheticEvent,
   useCallback,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent,
   type FormEvent,
 } from "react";
 
 import { MAX_OWNED_BOARDS, type BoardSummary } from "@/features/boards/types";
 import { useAuthSession } from "@/features/auth/hooks/use-auth-session";
 import { useOwnedBoardsLive } from "@/features/boards/hooks/use-owned-boards-live";
+import { copyBoardUrlToClipboard } from "@/features/boards/lib/board-share";
 import AppHeader from "@/features/layout/components/app-header";
 
 type CreateBoardResponse = {
@@ -52,21 +57,13 @@ const boardActionButtonStyle: CSSProperties = {
 };
 
 /**
- * Handles open board icon.
+ * Handles share board icon.
  */
-function OpenBoardIcon() {
+function ShareBoardIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
       <path
-        d="M6 2.5H4.5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2V10"
-        stroke="#0f172a"
-        strokeWidth="1.4"
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M8 8 13.5 2.5M10 2.5h3.5V6"
+        d="M9.5 3.2h3.3v3.3M8.9 7.1l3.9-3.9M7 3.2H4.6a1.8 1.8 0 0 0-1.8 1.8v6.4a1.8 1.8 0 0 0 1.8 1.8H11a1.8 1.8 0 0 0 1.8-1.8V9.8"
         stroke="#0f172a"
         strokeWidth="1.4"
         fill="none"
@@ -168,6 +165,7 @@ function GoogleBrandIcon() {
  * Handles boards page.
  */
 export default function BoardsPage() {
+  const router = useRouter();
   const [showCreateBoardForm, setShowCreateBoardForm] = useState(false);
   const [newBoardTitle, setNewBoardTitle] = useState("");
   const [creatingBoard, setCreatingBoard] = useState(false);
@@ -176,6 +174,8 @@ export default function BoardsPage() {
   const [editingBoardId, setEditingBoardId] = useState<string | null>(null);
   const [renameBoardTitle, setRenameBoardTitle] = useState("");
   const [deletingBoardId, setDeletingBoardId] = useState<string | null>(null);
+  const [sharedBoardId, setSharedBoardId] = useState<string | null>(null);
+  const shareFeedbackTimeoutRef = useRef<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const {
     firebaseIsConfigured,
@@ -391,6 +391,49 @@ export default function BoardsPage() {
     setNewBoardTitle("");
   }, [creatingBoard]);
 
+  const handleOpenBoard = useCallback(
+    (boardId: string) => {
+      router.push(`/boards/${boardId}`);
+    },
+    [router],
+  );
+
+  const handleBoardRowKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLElement>, boardId: string) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      handleOpenBoard(boardId);
+    },
+    [handleOpenBoard],
+  );
+
+  const stopRowNavigation = useCallback((event: SyntheticEvent) => {
+    event.stopPropagation();
+  }, []);
+
+  const handleShareBoard = useCallback(async (boardId: string) => {
+    setErrorMessage(null);
+
+    try {
+      await copyBoardUrlToClipboard(boardId, window.location.origin);
+      setSharedBoardId(boardId);
+      if (shareFeedbackTimeoutRef.current !== null) {
+        window.clearTimeout(shareFeedbackTimeoutRef.current);
+      }
+      shareFeedbackTimeoutRef.current = window.setTimeout(() => {
+        setSharedBoardId((currentValue) =>
+          currentValue === boardId ? null : currentValue,
+        );
+      }, 1_800);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Failed to copy board link.",
+      );
+    }
+  }, []);
+
   const combinedErrorMessage = useMemo(() => {
     if (errorMessage) {
       return errorMessage;
@@ -523,10 +566,21 @@ export default function BoardsPage() {
               {boards.map((board) => (
                 <li
                   key={board.id}
+                  role="link"
+                  tabIndex={editingBoardId === board.id ? -1 : 0}
+                  aria-label={`Open board ${board.title}`}
+                  onClick={() => {
+                    if (editingBoardId === board.id) {
+                      return;
+                    }
+                    handleOpenBoard(board.id);
+                  }}
+                  onKeyDown={(event) => handleBoardRowKeyDown(event, board.id)}
                   style={{
                     border: "1px solid #e5e7eb",
                     borderRadius: 10,
                     padding: "0.9rem",
+                    cursor: editingBoardId === board.id ? "default" : "pointer",
                   }}
                 >
                   <div
@@ -552,6 +606,12 @@ export default function BoardsPage() {
                           onSubmit={(event) => {
                             event.preventDefault();
                             void handleRenameBoardSubmit(board.id);
+                          }}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                          }}
+                          onKeyDown={(event) => {
+                            event.stopPropagation();
                           }}
                           style={{ display: "grid", gap: "0.5rem" }}
                         >
@@ -598,7 +658,10 @@ export default function BoardsPage() {
                         <>
                           <button
                             type="button"
-                            onClick={() => handleStartRenameBoard(board)}
+                            onClick={(event) => {
+                              stopRowNavigation(event);
+                              handleStartRenameBoard(board);
+                            }}
                             disabled={renamingBoardId === board.id}
                             className="icon-tooltip-trigger"
                             data-tooltip={
@@ -651,19 +714,33 @@ export default function BoardsPage() {
                       )}
                     </div>
 
-                    <div style={{ display: "flex", gap: "0.4rem" }}>
-                      <Link
-                        href={`/boards/${board.id}`}
+                    <div
+                      style={{ display: "flex", gap: "0.4rem" }}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                      }}
+                      onKeyDown={(event) => {
+                        event.stopPropagation();
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => void handleShareBoard(board.id)}
                         className="icon-tooltip-trigger"
-                        data-tooltip="Open board"
-                        title="Open board"
-                        aria-label={`Open board ${board.title}`}
+                        data-tooltip={
+                          sharedBoardId === board.id ? "Copied board URL" : "Share board"
+                        }
+                        title={
+                          sharedBoardId === board.id ? "Copied board URL" : "Share board"
+                        }
+                        aria-label={`Share board ${board.title}`}
                         style={boardActionButtonStyle}
                       >
-                        <OpenBoardIcon />
-                      </Link>
+                        <ShareBoardIcon />
+                      </button>
                       <Link
                         href={`/boards/${board.id}/settings`}
+                        onClick={stopRowNavigation}
                         className="icon-tooltip-trigger"
                         data-tooltip="Manage access"
                         title="Control access"

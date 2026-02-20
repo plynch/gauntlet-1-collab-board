@@ -6,6 +6,7 @@ import type { BoardSummary } from "@/features/boards/types";
 
 const mockUseAuthSession = vi.fn();
 const mockUseOwnedBoardsLive = vi.fn();
+const mockPush = vi.fn();
 
 vi.mock("@/features/auth/hooks/use-auth-session", () => ({
   useAuthSession: () => mockUseAuthSession(),
@@ -13,6 +14,12 @@ vi.mock("@/features/auth/hooks/use-auth-session", () => ({
 
 vi.mock("@/features/boards/hooks/use-owned-boards-live", () => ({
   useOwnedBoardsLive: (...args: unknown[]) => mockUseOwnedBoardsLive(...args),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: mockPush,
+  }),
 }));
 
 import BoardsPage from "./page";
@@ -111,6 +118,12 @@ describe("BoardsPage", () => {
 
     expect(screen.getByText("My Boards (1 out of 3)")).toBeTruthy();
     expect(screen.getByText("Demo Board")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Open board Demo Board" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Share board Demo Board" }),
+    ).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "Create New Board" }),
     ).toBeTruthy();

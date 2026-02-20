@@ -16,6 +16,7 @@ type AppHeaderProps = {
   signOutDisabled?: boolean;
   showAccountLink?: boolean;
   title?: string;
+  titleAction?: ReactNode;
 };
 
 /**
@@ -44,6 +45,7 @@ export default function AppHeader({
   signOutDisabled = false,
   showAccountLink = true,
   title = "CollabBoard",
+  titleAction,
 }: AppHeaderProps) {
   const profileLabel =
     user?.displayName?.trim() || user?.email?.trim() || user?.uid || "Account";
@@ -53,8 +55,13 @@ export default function AppHeader({
     <header className="grid min-h-14 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b-2 border-slate-300 px-3.5">
       <div>{leftSlot ?? <div className="h-[34px] w-[34px]" />}</div>
 
-      <h1 className="m-0 overflow-hidden text-ellipsis whitespace-nowrap text-center text-xl font-bold">
-        {title}
+      <h1 className="m-0 text-center text-xl font-bold">
+        <span className="inline-flex max-w-full items-center gap-2">
+          <span className="overflow-hidden text-ellipsis whitespace-nowrap">
+            {title}
+          </span>
+          {titleAction ? <span className="shrink-0">{titleAction}</span> : null}
+        </span>
       </h1>
 
       <div className="flex min-w-[34px] justify-end">

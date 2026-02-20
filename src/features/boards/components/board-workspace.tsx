@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useRef, useMemo, useState } from "react";
 
 import { useAuthSession } from "@/features/auth/hooks/use-auth-session";
 import { useBoardLive } from "@/features/boards/hooks/use-board-live";
+import { copyBoardUrlToClipboard } from "@/features/boards/lib/board-share";
 import RealtimeBoardCanvas from "@/features/boards/components/realtime-board-canvas";
 import AppHeader, {
   HeaderBackLink,
@@ -40,11 +41,31 @@ function GoogleBrandIcon() {
 }
 
 /**
+ * Handles share board icon.
+ */
+function ShareBoardIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M9.5 3.2h3.3v3.3M8.9 7.1l3.9-3.9M7 3.2H4.6a1.8 1.8 0 0 0-1.8 1.8v6.4a1.8 1.8 0 0 0 1.8 1.8H11a1.8 1.8 0 0 0 1.8-1.8V9.8"
+        stroke="#0f172a"
+        strokeWidth="1.4"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/**
  * Handles board workspace.
  */
 export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+  const shareFeedbackTimeoutRef = useRef<number | null>(null);
   const {
     firebaseIsConfigured,
     user,
@@ -91,6 +112,25 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
 
     return boardError;
   }, [boardError, errorMessage]);
+
+  const handleShareBoard = useCallback(async () => {
+    setErrorMessage(null);
+    try {
+      await copyBoardUrlToClipboard(boardId, window.location.origin);
+      setShareCopied(true);
+      if (shareFeedbackTimeoutRef.current !== null) {
+        window.clearTimeout(shareFeedbackTimeoutRef.current);
+      }
+      shareFeedbackTimeoutRef.current = window.setTimeout(() => {
+        setShareCopied(false);
+      }, 1_800);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Failed to copy board URL.",
+      );
+    }
+  }, [boardId]);
+
   if (!firebaseIsConfigured) {
     return (
       <main
@@ -129,6 +169,20 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
     >
       <AppHeader
         user={user}
+        title={board?.title ?? "CollabBoard"}
+        titleAction={
+          user && board && permissions?.canRead ? (
+            <button
+              type="button"
+              onClick={() => void handleShareBoard()}
+              title={shareCopied ? "Copied board URL" : "Share board"}
+              aria-label={shareCopied ? "Copied board URL" : "Share board"}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-900"
+            >
+              <ShareBoardIcon />
+            </button>
+          ) : undefined
+        }
         leftSlot={
           user ? (
             <HeaderBackLink href="/" label="Back to My Boards" />

@@ -3991,6 +3991,12 @@ export default function RealtimeBoardCanvas({
             rows,
             cols,
             gap,
+            {
+              // Keep existing child placement stable during container drags.
+              clampToSectionBounds: false,
+              // Do not pull in unrelated objects just because the container moved over them.
+              includeObjectsInNextBounds: false,
+            },
           );
 
           Object.entries(childUpdates.positionByObjectId).forEach(

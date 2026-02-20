@@ -267,10 +267,17 @@ export function useContainerMembership({
       rows: number,
       cols: number,
       gap: number,
+      options: {
+        clampToSectionBounds?: boolean;
+        includeObjectsInNextBounds?: boolean;
+      } = {},
     ): {
       positionByObjectId: Record<string, MembershipBoardPoint>;
       membershipByObjectId: Record<string, ContainerMembershipPatch>;
     } => {
+      const clampToSectionBounds = options.clampToSectionBounds ?? true;
+      const includeObjectsInNextBounds =
+        options.includeObjectsInNextBounds ?? true;
       const sections = getGridSectionBoundsFromGeometry(
         containerGeometry,
         rows,
@@ -337,7 +344,8 @@ export function useContainerMembership({
         const belongsToContainer =
           objectItem.containerId === containerId ||
           isPointInsideBounds(center, currentContainerBounds) ||
-          isPointInsideBounds(center, nextContainerBounds);
+          (includeObjectsInNextBounds &&
+            isPointInsideBounds(center, nextContainerBounds));
 
         if (!belongsToContainer) {
           return;
@@ -383,16 +391,18 @@ export function useContainerMembership({
           x: targetCenterX - geometry.width / 2,
           y: targetCenterY - geometry.height / 2,
         };
-        const clampedTopLeft = clampObjectTopLeftToSection(
-          section,
-          {
-            width: geometry.width,
-            height: geometry.height,
-          },
-          preferredTopLeft,
-        );
-        const nextX = clampedTopLeft.x;
-        const nextY = clampedTopLeft.y;
+        const nextTopLeft = clampToSectionBounds
+          ? clampObjectTopLeftToSection(
+              section,
+              {
+                width: geometry.width,
+                height: geometry.height,
+              },
+              preferredTopLeft,
+            )
+          : preferredTopLeft;
+        const nextX = nextTopLeft.x;
+        const nextY = nextTopLeft.y;
 
         const nextCenter = {
           x: nextX + geometry.width / 2,

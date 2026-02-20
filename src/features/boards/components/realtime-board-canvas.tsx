@@ -3729,10 +3729,12 @@ export default function RealtimeBoardCanvas({
         const deltaY = (event.clientY - dragState.startClientY) / scale;
 
         const nextPositionsById: Record<string, BoardPoint> = {};
+        const draggedContainerIds: string[] = [];
 
         dragState.objectIds.forEach((objectId) => {
           const initialGeometry = dragState.initialGeometries[objectId];
           const currentGeometry = getCurrentObjectGeometry(objectId);
+          const objectItem = objectsByIdRef.current.get(objectId);
           if (!initialGeometry || !currentGeometry) {
             return;
           }
@@ -3750,11 +3752,71 @@ export default function RealtimeBoardCanvas({
             x: nextX,
             y: nextY,
           });
+
+          if (objectItem?.type === "gridContainer") {
+            draggedContainerIds.push(objectId);
+          }
+        });
+
+        draggedContainerIds.forEach((containerId) => {
+          const containerItem = objectsByIdRef.current.get(containerId);
+          const nextPosition = nextPositionsById[containerId];
+          if (
+            !containerItem ||
+            containerItem.type !== "gridContainer" ||
+            !nextPosition
+          ) {
+            return;
+          }
+
+          const nextContainerGeometry: ObjectGeometry = {
+            x: nextPosition.x,
+            y: nextPosition.y,
+            width: containerItem.width,
+            height: containerItem.height,
+            rotationDeg: containerItem.rotationDeg,
+          };
+          const rows = Math.max(1, containerItem.gridRows ?? 2);
+          const cols = Math.max(1, containerItem.gridCols ?? 2);
+          const gap = Math.max(
+            0,
+            containerItem.gridGap ?? GRID_CONTAINER_DEFAULT_GAP,
+          );
+          const childUpdates = getSectionAnchoredObjectUpdatesForContainer(
+            containerId,
+            nextContainerGeometry,
+            rows,
+            cols,
+            gap,
+            {
+              clampToSectionBounds: false,
+              includeObjectsInNextBounds: false,
+            },
+          );
+          Object.entries(childUpdates.positionByObjectId).forEach(
+            ([childId, childPosition]) => {
+              if (childId in nextPositionsById) {
+                return;
+              }
+
+              nextPositionsById[childId] = childPosition;
+              const currentChildGeometry = getCurrentObjectGeometry(childId);
+              if (!currentChildGeometry) {
+                return;
+              }
+              setDraftGeometry(childId, {
+                ...currentChildGeometry,
+                x: childPosition.x,
+                y: childPosition.y,
+              });
+            },
+          );
         });
 
         const now = Date.now();
         if (
           canEditRef.current &&
+          draggedContainerIds.length === 0 &&
           now - dragState.lastSentAt >= DRAG_THROTTLE_MS
         ) {
           dragState.lastSentAt = now;
@@ -4020,6 +4082,10 @@ export default function RealtimeBoardCanvas({
             nextPositionsById,
             seedMembershipByObjectId,
           );
+
+        Object.keys(nextPositionsById).forEach((objectId) => {
+          clearDraftGeometry(objectId);
+        });
 
         void updateObjectPositionsBatch(nextPositionsById, {
           includeUpdatedAt: true,

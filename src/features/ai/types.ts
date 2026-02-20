@@ -200,7 +200,7 @@ export type TemplateInstantiateOutput = {
 
 export type BoardCommandExecutionSummary = {
   intent: string;
-  mode: "deterministic" | "stub";
+  mode: "deterministic" | "stub" | "llm";
   mcpUsed: boolean;
   fallbackUsed: boolean;
   toolCalls: number;
@@ -209,10 +209,10 @@ export type BoardCommandExecutionSummary = {
 
 export type BoardCommandResponse = {
   ok: true;
-  provider: "stub" | "deterministic-mcp";
+  provider: "stub" | "deterministic-mcp" | "openai";
   assistantMessage: string;
   tools: BoardAiTool[];
-  mode?: "deterministic" | "stub";
+  mode?: "deterministic" | "stub" | "llm";
   traceId?: string;
   execution?: BoardCommandExecutionSummary;
 };

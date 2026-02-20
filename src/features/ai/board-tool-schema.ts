@@ -24,7 +24,7 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
       properties: {
         type: {
           type: "string",
-          enum: ["rect", "circle", "triangle", "star"],
+          enum: ["rect", "circle", "line", "triangle", "star"],
         },
         x: { type: "number" },
         y: { type: "number" },

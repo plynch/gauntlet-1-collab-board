@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildClearBoardAssistantMessage,
   buildDeterministicBoardCommandResponse,
+  buildOpenAiBoardCommandResponse,
   buildStubBoardCommandResponse,
   buildSwotAssistantMessage,
   detectBoardCommandIntent,
@@ -148,6 +149,28 @@ describe("buildDeterministicBoardCommandResponse", () => {
     expect(response.provider).toBe("deterministic-mcp");
     expect(response.mode).toBe("deterministic");
     expect(response.traceId).toBe("trace-1");
+  });
+});
+
+describe("buildOpenAiBoardCommandResponse", () => {
+  it("returns response metadata for llm execution", () => {
+    const response = buildOpenAiBoardCommandResponse({
+      assistantMessage: "Created with OpenAI",
+      traceId: "trace-openai-1",
+      execution: {
+        intent: "llm-plan",
+        mode: "llm",
+        mcpUsed: false,
+        fallbackUsed: false,
+        toolCalls: 3,
+        objectsCreated: 2,
+      },
+    });
+
+    expect(response.ok).toBe(true);
+    expect(response.provider).toBe("openai");
+    expect(response.mode).toBe("llm");
+    expect(response.traceId).toBe("trace-openai-1");
   });
 });
 

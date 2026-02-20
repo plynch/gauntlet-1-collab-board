@@ -234,6 +234,25 @@ export function buildDeterministicBoardCommandResponse(options: {
 }
 
 /**
+ * Builds openai board command response.
+ */
+export function buildOpenAiBoardCommandResponse(options: {
+  assistantMessage: string;
+  traceId: string;
+  execution: BoardCommandExecutionSummary;
+}): BoardCommandResponse {
+  return {
+    ok: true,
+    provider: "openai",
+    assistantMessage: options.assistantMessage,
+    tools: BOARD_AI_TOOLS,
+    mode: "llm",
+    traceId: options.traceId,
+    execution: options.execution,
+  };
+}
+
+/**
  * Gets board command error message.
  */
 export function getBoardCommandErrorMessage(options: {

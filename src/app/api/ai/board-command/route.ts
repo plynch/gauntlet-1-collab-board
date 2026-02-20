@@ -7,6 +7,7 @@ import type { Serialized } from "@langchain/core/load/serializable";
 import {
   buildClearBoardAssistantMessage,
   buildDeterministicBoardCommandResponse,
+  buildOpenAiBoardCommandResponse,
   buildSwotAssistantMessage,
   buildStubBoardCommandResponse,
   detectBoardCommandIntent,
@@ -29,6 +30,13 @@ import { LangChainLangfuseCallbackHandler } from "@/features/ai/observability/la
 import { flushLangfuseClient } from "@/features/ai/observability/langfuse-client";
 import { createAiTraceRun } from "@/features/ai/observability/trace-run";
 import { planDeterministicCommand } from "@/features/ai/commands/deterministic-command-planner";
+import {
+  finalizeOpenAiBudgetReservation,
+  releaseOpenAiBudgetReservation,
+  reserveOpenAiBudget,
+} from "@/features/ai/openai/openai-cost-controls";
+import { getOpenAiPlannerConfig } from "@/features/ai/openai/openai-client";
+import { planBoardCommandWithOpenAi } from "@/features/ai/openai/openai-command-planner";
 import { instantiateLocalTemplate } from "@/features/ai/templates/local-template-provider";
 import { SWOT_TEMPLATE_ID } from "@/features/ai/templates/template-types";
 import { BoardToolExecutor } from "@/features/ai/tools/board-tools";
@@ -36,6 +44,7 @@ import type {
   BoardBounds,
   BoardObjectSnapshot,
   BoardToolCall,
+  TemplatePlan,
 } from "@/features/ai/types";
 import {
   assertFirestoreWritesAllowedInDev,
@@ -126,6 +135,149 @@ function createsObject(toolCall: BoardToolCall): boolean {
     toolCall.tool === "createFrame" ||
     toolCall.tool === "createConnector"
   );
+}
+
+type OpenAiPlanAttempt =
+  | {
+      status: "disabled";
+      reason: string;
+    }
+  | {
+      status: "budget-blocked";
+      assistantMessage: string;
+      totalSpentUsd: number;
+    }
+  | {
+      status: "planned";
+      intent: string;
+      assistantMessage: string;
+      plan: TemplatePlan;
+      totalSpentUsd: number;
+      usage: {
+        model: string;
+        inputTokens: number;
+        outputTokens: number;
+        totalTokens: number;
+        estimatedCostUsd: number;
+      };
+    }
+  | {
+      status: "not-planned";
+      intent: string;
+      assistantMessage: string;
+      totalSpentUsd: number;
+      usage: {
+        model: string;
+        inputTokens: number;
+        outputTokens: number;
+        totalTokens: number;
+        estimatedCostUsd: number;
+      };
+    }
+  | {
+      status: "error";
+      reason: string;
+    };
+
+/**
+ * Handles attempt openai planner.
+ */
+async function attemptOpenAiPlanner(options: {
+  message: string;
+  boardState: BoardObjectSnapshot[];
+  selectedObjectIds: string[];
+  trace: ReturnType<typeof createAiTraceRun>;
+}): Promise<OpenAiPlanAttempt> {
+  const config = getOpenAiPlannerConfig();
+  if (!config.enabled) {
+    return {
+      status: "disabled",
+      reason: "OpenAI planner disabled.",
+    };
+  }
+
+  const budgetSpan = options.trace.startSpan("openai.budget.reserve", {
+    reserveUsd: config.reserveUsdPerCall,
+  });
+  const budgetReservation = await reserveOpenAiBudget(config.reserveUsdPerCall);
+  if (!budgetReservation.ok) {
+    budgetSpan.fail(budgetReservation.error, {
+      totalSpentUsd: budgetReservation.totalSpentUsd,
+    });
+    return {
+      status: "budget-blocked",
+      assistantMessage: budgetReservation.error,
+      totalSpentUsd: budgetReservation.totalSpentUsd,
+    };
+  }
+  budgetSpan.end({
+    totalSpentUsd: budgetReservation.totalSpentUsd,
+  });
+
+  let reservationOpen = true;
+  const openAiSpan = options.trace.startSpan("openai.call", {
+    model: config.model,
+  });
+
+  try {
+    const plannerResult = await planBoardCommandWithOpenAi({
+      message: options.message,
+      boardState: options.boardState,
+      selectedObjectIds: options.selectedObjectIds,
+    });
+
+    const actualUsd =
+      plannerResult.usage.estimatedCostUsd > 0
+        ? plannerResult.usage.estimatedCostUsd
+        : config.reserveUsdPerCall;
+    const finalized = await finalizeOpenAiBudgetReservation({
+      reservedUsd: budgetReservation.reservedUsd,
+      actualUsd,
+    });
+    reservationOpen = false;
+
+    openAiSpan.end({
+      planned: plannerResult.planned,
+      intent: plannerResult.intent,
+      inputTokens: plannerResult.usage.inputTokens,
+      outputTokens: plannerResult.usage.outputTokens,
+      totalTokens: plannerResult.usage.totalTokens,
+      estimatedCostUsd: plannerResult.usage.estimatedCostUsd,
+      totalSpentUsd: finalized.totalSpentUsd,
+    });
+
+    if (!plannerResult.planned || !plannerResult.plan) {
+      return {
+        status: "not-planned",
+        intent: plannerResult.intent,
+        assistantMessage: plannerResult.assistantMessage,
+        totalSpentUsd: finalized.totalSpentUsd,
+        usage: plannerResult.usage,
+      };
+    }
+
+    return {
+      status: "planned",
+      intent: plannerResult.intent,
+      assistantMessage: plannerResult.assistantMessage,
+      plan: plannerResult.plan,
+      totalSpentUsd: finalized.totalSpentUsd,
+      usage: plannerResult.usage,
+    };
+  } catch (error) {
+    if (reservationOpen) {
+      await releaseOpenAiBudgetReservation(budgetReservation.reservedUsd);
+    }
+
+    const reason = getDebugMessage(error) ?? "OpenAI planner failed.";
+    openAiSpan.fail("OpenAI planner failed.", {
+      reason,
+    });
+    return {
+      status: "error",
+      reason,
+    };
+  }
 }
 
 /**
@@ -459,69 +611,120 @@ export async function POST(request: NextRequest) {
             existingObjectCount: boardObjects.length,
           });
 
-          let plannerResult;
+          let plannerResult:
+            | {
+                planned: boolean;
+                intent: string;
+                assistantMessage: string;
+                plan?: TemplatePlan;
+              }
+            | null = null;
           let fallbackUsed = false;
           let mcpUsed = true;
+          let llmUsed = false;
           const selectedObjectIds = parsedPayload.selectedObjectIds ?? [];
 
-          const mcpSpan = activeTrace.startSpan("mcp.call", {
-            endpoint: "/api/mcp/templates",
-            tool: "command.plan",
+          const openAiAttempt = await attemptOpenAiPlanner({
+            message: parsedPayload.message,
+            boardState: boardObjects,
+            selectedObjectIds,
+            trace: activeTrace,
           });
-          try {
+          if (openAiAttempt.status === "planned") {
+            plannerResult = {
+              planned: true,
+              intent: openAiAttempt.intent,
+              assistantMessage: openAiAttempt.assistantMessage,
+              plan: openAiAttempt.plan,
+            };
+            llmUsed = true;
+            mcpUsed = false;
+          } else if (
+            openAiAttempt.status === "budget-blocked" ||
+            openAiAttempt.status === "error"
+          ) {
+            fallbackUsed = true;
+          }
+
+          if (!plannerResult) {
+            const mcpSpan = activeTrace.startSpan("mcp.call", {
+              endpoint: "/api/mcp/templates",
+              tool: "command.plan",
+            });
             const token = getInternalMcpToken();
             if (!token) {
-              throw new Error("MCP_INTERNAL_TOKEN is missing.");
+              fallbackUsed = true;
+              mcpUsed = false;
+              mcpSpan.end({
+                skipped: true,
+                fallbackUsed: true,
+                reason: "MCP_INTERNAL_TOKEN is missing.",
+              });
+              plannerResult = planDeterministicCommand({
+                message: parsedPayload.message,
+                boardState: boardObjects,
+                selectedObjectIds,
+              });
+            } else {
+              try {
+                plannerResult = await callCommandPlanTool({
+                  endpointUrl: new URL(
+                    "/api/mcp/templates",
+                    request.nextUrl.origin,
+                  ),
+                  internalToken: token,
+                  timeoutMs: MCP_TEMPLATE_TIMEOUT_MS,
+                  message: parsedPayload.message,
+                  selectedObjectIds,
+                  boardState: boardObjects,
+                });
+                mcpSpan.end({
+                  fallbackUsed: false,
+                });
+              } catch (error) {
+                fallbackUsed = true;
+                mcpUsed = false;
+                mcpSpan.fail("MCP command planner failed.", {
+                  reason: getDebugMessage(error) ?? "Unknown error",
+                });
+                plannerResult = planDeterministicCommand({
+                  message: parsedPayload.message,
+                  boardState: boardObjects,
+                  selectedObjectIds,
+                });
+              }
             }
-
-            plannerResult = await callCommandPlanTool({
-              endpointUrl: new URL(
-                "/api/mcp/templates",
-                request.nextUrl.origin,
-              ),
-              internalToken: token,
-              timeoutMs: MCP_TEMPLATE_TIMEOUT_MS,
-              message: parsedPayload.message,
-              selectedObjectIds,
-              boardState: boardObjects,
-            });
-            mcpSpan.end({
-              fallbackUsed: false,
-            });
-          } catch (error) {
-            fallbackUsed = true;
-            mcpUsed = false;
-            mcpSpan.fail("MCP command planner failed.", {
-              reason: getDebugMessage(error) ?? "Unknown error",
-            });
-            plannerResult = planDeterministicCommand({
-              message: parsedPayload.message,
-              boardState: boardObjects,
-              selectedObjectIds,
-            });
           }
 
           const intentSpan = activeTrace.startSpan("ai.intent.detected", {
             intent: plannerResult.intent,
           });
           intentSpan.end({
-            deterministic: true,
+            deterministic: !llmUsed,
+            llmUsed,
             planned: plannerResult.planned,
           });
 
           if (!plannerResult.planned) {
-            const payload = buildDeterministicBoardCommandResponse({
-              assistantMessage: plannerResult.assistantMessage,
-              traceId,
-              execution: {
-                intent: plannerResult.intent,
-                mode: "deterministic",
-                mcpUsed,
-                fallbackUsed,
-                toolCalls: 0,
-                objectsCreated: 0,
-              },
-            });
+            const execution = {
+              intent: plannerResult.intent,
+              mode: llmUsed ? ("llm" as const) : ("deterministic" as const),
+              mcpUsed,
+              fallbackUsed,
+              toolCalls: 0,
+              objectsCreated: 0,
+            };
+            const payload = llmUsed
+              ? buildOpenAiBoardCommandResponse({
+                  assistantMessage: plannerResult.assistantMessage,
+                  traceId,
+                  execution,
+                })
+              : buildDeterministicBoardCommandResponse({
+                  assistantMessage: plannerResult.assistantMessage,
+                  traceId,
+                  execution,
+                });
 
             const responseSpan = activeTrace.startSpan("ai.response.sent", {
               status: 200,
@@ -535,6 +738,7 @@ export async function POST(request: NextRequest) {
               planned: false,
               mcpUsed,
               fallbackUsed,
+              llmUsed,
             });
             return payload;
           }
@@ -544,7 +748,12 @@ export async function POST(request: NextRequest) {
               ? await listAllBoardObjectIds(parsedPayload.boardId)
               : null;
 
-          const validation = validateTemplatePlan(plannerResult.plan);
+          const executionPlan = plannerResult.plan;
+          if (!executionPlan) {
+            throw createHttpError(500, "Planner returned no execution plan.");
+          }
+
+          const validation = validateTemplatePlan(executionPlan);
           if (!validation.ok) {
             throw createHttpError(validation.status, validation.error);
           }
@@ -552,11 +761,11 @@ export async function POST(request: NextRequest) {
           const executionResult = await executePlanWithTracing({
             executor,
             trace: activeTrace,
-            operations: plannerResult.plan.operations,
+            operations: executionPlan.operations,
           });
 
           const commitSpan = activeTrace.startSpan("board.write.commit", {
-            operationCount: plannerResult.plan.operations.length,
+            operationCount: executionPlan.operations.length,
           });
           commitSpan.end({
             createdObjectCount: executionResult.createdObjectIds.length,
@@ -589,18 +798,25 @@ export async function POST(request: NextRequest) {
             });
           }
 
-          const payload = buildDeterministicBoardCommandResponse({
-            assistantMessage,
-            traceId,
-            execution: {
-              intent: plannerResult.intent,
-              mode: "deterministic",
-              mcpUsed,
-              fallbackUsed,
-              toolCalls: executionResult.results.length,
-              objectsCreated: executionResult.createdObjectIds.length,
-            },
-          });
+          const execution = {
+            intent: plannerResult.intent,
+            mode: llmUsed ? ("llm" as const) : ("deterministic" as const),
+            mcpUsed,
+            fallbackUsed,
+            toolCalls: executionResult.results.length,
+            objectsCreated: executionResult.createdObjectIds.length,
+          };
+          const payload = llmUsed
+            ? buildOpenAiBoardCommandResponse({
+                assistantMessage,
+                traceId,
+                execution,
+              })
+            : buildDeterministicBoardCommandResponse({
+                assistantMessage,
+                traceId,
+                execution,
+              });
 
           await writeAiAuditLogIfEnabled({
             boardId: parsedPayload.boardId,
@@ -628,6 +844,7 @@ export async function POST(request: NextRequest) {
             objectsCreated: executionResult.createdObjectIds.length,
             fallbackUsed,
             mcpUsed,
+            llmUsed,
           });
 
           return payload;
@@ -713,28 +930,35 @@ export async function POST(request: NextRequest) {
           endpoint: "/api/mcp/templates",
           templateId: templateInput.templateId,
         });
-        try {
-          const token = getInternalMcpToken();
-          if (!token) {
-            throw new Error("MCP_INTERNAL_TOKEN is missing.");
-          }
-
-          templateOutput = await callTemplateInstantiateTool({
-            endpointUrl: new URL("/api/mcp/templates", request.nextUrl.origin),
-            internalToken: token,
-            timeoutMs: MCP_TEMPLATE_TIMEOUT_MS,
-            input: templateInput,
-          });
-          mcpSpan.end({
-            fallbackUsed: false,
-          });
-        } catch (error) {
+        const token = getInternalMcpToken();
+        if (!token) {
           fallbackUsed = true;
           mcpUsed = false;
-          mcpSpan.fail("MCP template call failed.", {
-            reason: getDebugMessage(error) ?? "Unknown error",
+          mcpSpan.end({
+            skipped: true,
+            fallbackUsed: true,
+            reason: "MCP_INTERNAL_TOKEN is missing.",
           });
           templateOutput = instantiateLocalTemplate(templateInput);
+        } else {
+          try {
+            templateOutput = await callTemplateInstantiateTool({
+              endpointUrl: new URL("/api/mcp/templates", request.nextUrl.origin),
+              internalToken: token,
+              timeoutMs: MCP_TEMPLATE_TIMEOUT_MS,
+              input: templateInput,
+            });
+            mcpSpan.end({
+              fallbackUsed: false,
+            });
+          } catch (error) {
+            fallbackUsed = true;
+            mcpUsed = false;
+            mcpSpan.fail("MCP template call failed.", {
+              reason: getDebugMessage(error) ?? "Unknown error",
+            });
+            templateOutput = instantiateLocalTemplate(templateInput);
+          }
         }
 
         const validation = validateTemplatePlan(templateOutput.plan);

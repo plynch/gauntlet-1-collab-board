@@ -14,53 +14,69 @@ Provide natural-language board operations with:
 1. UI submits `POST /api/ai/board-command`.
 2. Route authenticates user and validates board access.
 3. Route acquires per-user/per-board guardrails.
-4. Planner runs according to `AI_PLANNER_MODE`.
-5. Plan is validated against operation/object limits.
-6. `BoardToolExecutor` applies operations to Firestore.
-7. Response returns assistant message plus execution summary.
+4. OpenAI runtime backend is selected by `OPENAI_RUNTIME`.
+5. Planner mode is applied (`AI_PLANNER_MODE`).
+6. Guardrails are enforced before write operations.
+7. `BoardToolExecutor` applies operations to Firestore.
+8. Response returns assistant message plus execution summary.
+
+## Runtime Selection
+
+- `OPENAI_RUNTIME=agents-sdk` (default): OpenAI agent calls board tools directly.
+- `OPENAI_RUNTIME=chat-completions`: legacy JSON planner backend.
+- `AI_PLANNER_MODE` semantics are unchanged for both runtimes.
 
 ## Planner Modes
 
 ### `openai-strict`
 
-- OpenAI planner is required.
-- If OpenAI does not return a valid plan, request fails with actionable error.
-- Best mode for live happy-path quality validation.
+- OpenAI planning/runtime success is required.
+- If OpenAI does not produce a valid planned outcome, request fails with actionable error.
 
 ### `openai-with-fallback`
 
 - OpenAI attempted first.
-- deterministic/MCP fallback used when OpenAI cannot plan.
-- useful for resilience in local/dev environments.
+- deterministic/MCP fallback used when OpenAI is not-planned, budget-blocked, or errors.
 
 ### `deterministic-only`
 
-- OpenAI planner disabled.
+- OpenAI disabled.
 - deterministic planner path only.
-- used for free/no-token fallback matrix tests.
 
 ## Planning Layers
 
-### OpenAI planner
+### OpenAI Agents SDK runtime (primary)
+
+- files:
+  - `src/features/ai/openai/agents/openai-agents-runner.ts`
+  - `src/features/ai/openai/agents/board-agent-tools.ts`
+- uses `@openai/agents` with direct tool-calling.
+- tool wrappers map 1:1 to canonical board tools.
+- mutating tool calls are guardrail-validated pre-write.
+- final output schema: `intent`, `planned`, `assistantMessage`.
+
+### Legacy OpenAI planner backend (rollback path)
 
 - file: `src/features/ai/openai/openai-command-planner.ts`
+- selected when `OPENAI_RUNTIME=chat-completions`
 - outputs strict JSON: `intent`, `planned`, `assistantMessage`, `operations`
-- normalized through alias-handling before schema validation
+- retained for rollback and regression isolation.
 
 ### Deterministic planner
 
 - file: `src/features/ai/commands/deterministic-command-planner.ts`
-- covers fixed command families and deterministic template operations
+- fixed command-family parsing for no-token and fallback execution.
 
 ### MCP planner integration
 
-- route can call internal MCP endpoint (`/api/mcp/templates`) for template planning
+- route can call internal MCP endpoint (`/api/mcp/templates`) for template planning.
 
 ## Execution Layer
 
 - file: `src/features/ai/tools/board-tools.ts`
-- server-side tool executor performs batched Firestore writes where possible
-- supports high-level bulk tools (`createStickyBatch`, `moveObjects`, `fitFrameToContents`)
+- server-side tool executor performs batched Firestore writes where possible.
+- supports high-level bulk tools (`createStickyBatch`, `moveObjects`, `fitFrameToContents`).
+- shared by deterministic planner, MCP planner responses, and Agents SDK tool wrappers.
 
 ## Guardrails
 
@@ -76,10 +92,11 @@ Provide natural-language board operations with:
 - reservation-per-call (`OPENAI_RESERVE_USD_PER_CALL`, default `0.003`)
 - app-level hard cap (`$10`) via spend store
 - guardrail store backend: memory or Firestore
+- in Agents runtime, usage finalization uses SDK run usage when available; reserve value remains fallback
 
 ## Observability
 
-Langfuse spans include:
+Langfuse spans:
 
 - `ai.request.received`
 - `openai.budget.reserve`
@@ -90,14 +107,21 @@ Langfuse spans include:
 - `board.write.commit`
 - `ai.response.sent`
 
-Trace metadata includes:
+OpenAI tracing:
 
-- planner mode/path
-- per-tool operation counts
-- coordinate hint extraction
-- partial argument previews for tool calls
+- enabled by `OPENAI_AGENTS_TRACING` (default `true`)
+- workflow name from `OPENAI_AGENTS_WORKFLOW_NAME`
+- trace metadata includes `langfuseTraceId`, `boardId`, `userId`, planner mode, runtime backend
+- Langfuse `openai.call` span includes runtime and OpenAI response ID when available
 
-## UX policy
+## Why Hybrid Runtime
 
-- Chat bubbles stay user-focused (no provider/model/trace metadata rendered in the drawer).
-- Traceability details remain available in API response payloads and Langfuse.
+- Meets “agents through their API” requirement using official OpenAI Agents SDK.
+- Preserves existing UI and `/api/ai/board-command` response contract.
+- Keeps deterministic and legacy planner paths for resilience and free regression coverage.
+- Minimizes deadline risk versus a full OpenAI-hosted backend migration.
+
+## UX Policy
+
+- Chat bubbles remain user-focused (no provider/model/trace metadata).
+- Traceability details remain available in API payloads and Langfuse.

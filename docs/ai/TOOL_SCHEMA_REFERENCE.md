@@ -7,12 +7,16 @@ Source of truth:
 - `src/features/ai/types.ts`
 - `src/features/ai/board-tool-schema.ts`
 - `src/features/ai/tools/board-tools.ts`
+- `src/features/ai/openai/agents/board-agent-tools.ts`
 
 ## Principles
 
 - Prefer high-level tools for reliability and lower latency.
 - Keep tool calls compact and deterministic.
 - Respect guardrail limits before execution.
+- Tools are callable from both:
+  - deterministic/MCP/legacy planners (plan then execute)
+  - OpenAI Agents SDK runtime (`OPENAI_RUNTIME=agents-sdk`, direct tool calls)
 
 ## Tool List
 

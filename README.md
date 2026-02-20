@@ -130,7 +130,8 @@ Generated docs location:
 
 Implemented capabilities:
 
-- ✅ OpenAI planner integration (`gpt-4.1-nano`)
+- ✅ OpenAI Agents SDK runtime integration (`@openai/agents`, `gpt-4.1-nano`)
+- ✅ Runtime backend switch: `OPENAI_RUNTIME=agents-sdk|chat-completions` (default `agents-sdk`)
 - ✅ Planner modes: `openai-strict`, `openai-with-fallback`, `deterministic-only`
 - ✅ Deterministic planner support for key creation/manipulation/layout/template commands
 - ✅ High-level bulk tools for reliability (`createStickyBatch`, `moveObjects`, `fitFrameToContents`)
@@ -151,9 +152,11 @@ Runtime flow:
 
 1. Board chat drawer submits to `POST /api/ai/board-command`.
 2. Route authenticates, checks board permissions, and applies guardrails.
-3. Planner selected by `AI_PLANNER_MODE` generates a structured operation plan.
-4. Plan is validated and executed through server-side board tools.
-5. Response returns assistant message + execution summary + trace ID.
+3. OpenAI runtime backend is selected by `OPENAI_RUNTIME`.
+4. In `agents-sdk` mode, OpenAI agent tools execute board operations directly in-route.
+5. In `chat-completions` mode, legacy planner generates a structured operation plan.
+6. Planner mode (`AI_PLANNER_MODE`) still controls strict/fallback/deterministic behavior.
+7. Response returns assistant message + execution summary + trace ID.
 
 Langfuse spans:
 
@@ -184,8 +187,12 @@ Env notes:
 - Required for OpenAI planner:
   - `AI_ENABLE_OPENAI=true`
   - `AI_PLANNER_MODE=openai-strict` (recommended for happy path)
+  - `OPENAI_RUNTIME=agents-sdk` (default; direct tool-calling path)
   - `OPENAI_API_KEY=...`
   - optional `OPENAI_MODEL=gpt-4.1-nano`
+  - optional `OPENAI_AGENTS_MAX_TURNS=8`
+  - optional `OPENAI_AGENTS_TRACING=true`
+  - optional `OPENAI_AGENTS_WORKFLOW_NAME=collabboard-command`
   - optional `OPENAI_RESERVE_USD_PER_CALL=0.003`
   - optional `AI_GUARDRAIL_STORE=memory|firestore`
 - hard app-level spend guardrail: `$10.00`

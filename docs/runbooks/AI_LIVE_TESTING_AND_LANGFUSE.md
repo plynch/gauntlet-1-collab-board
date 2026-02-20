@@ -2,7 +2,7 @@
 
 ## Goal
 
-Validate happy-path command quality, trace coverage, and paid/non-paid test suites.
+Validate happy-path command quality, trace coverage, and paid/non-paid suites.
 
 Langfuse project:
 
@@ -19,19 +19,24 @@ Langfuse project:
   - optional `LANGFUSE_BASE_URL`
   - `OPENAI_API_KEY` (for paid OpenAI suite)
 
-## Planner mode setup
+## Runtime Setup
 
 ### Fallback matrix (no paid LLM)
 
 - `AI_PLANNER_MODE=deterministic-only`
 - `AI_ENABLE_OPENAI=false`
 
-### Paid OpenAI matrix
+### Paid OpenAI matrix (Agents SDK)
 
 - `AI_PLANNER_MODE=openai-strict`
 - `AI_ENABLE_OPENAI=true`
 - `AI_REQUIRE_OPENAI=true`
+- `OPENAI_RUNTIME=agents-sdk`
 - `OPENAI_MODEL=gpt-4.1-nano`
+- optional:
+  - `OPENAI_AGENTS_MAX_TURNS=8`
+  - `OPENAI_AGENTS_TRACING=true`
+  - `OPENAI_AGENTS_WORKFLOW_NAME=collabboard-command`
 
 ## Commands
 
@@ -53,7 +58,7 @@ Legacy alias:
 npm run test:e2e:ai-openai-smoke:nano:PAID
 ```
 
-## Expected output
+## Expected Output
 
 Each test prints:
 
@@ -61,7 +66,7 @@ Each test prints:
 [langfuse-trace] case=<case-id> traceId=<uuid> dashboard=https://us.cloud.langfuse.com/project/cmlu0vcd501siad07glqj49kv
 ```
 
-## Manual live browser pass
+## Manual Live Browser Pass
 
 Run on deployed app after pushing:
 
@@ -77,18 +82,30 @@ Expected:
 - visible board mutations match prompt intent
 - clean chat messages without provider/model/trace details
 
-## Langfuse verification
+## Langfuse Verification
 
 For each tested command:
 
 1. Open trace by `traceId`.
-2. Confirm span chain exists end-to-end.
-3. Confirm tool spans (`tool.execute.call`) contain tool metadata.
-4. Confirm OpenAI spans show model/tokens/estimated cost for paid runs.
+2. Confirm full span chain exists.
+3. Confirm `openai.call` has runtime metadata (`agents-sdk`).
+4. Confirm `tool.execute.call` spans list executed tools.
 
-## Common failure signatures
+## OpenAI Trace Correlation
 
-- `OpenAI planner disabled`: `AI_ENABLE_OPENAI` false or mode set to deterministic-only.
-- `OpenAI-required mode ... planned=false`: prompt unsupported in strict mode.
+With Agents tracing enabled:
+
+1. OpenAI tracing should include metadata fields:
+   - `langfuseTraceId`
+   - `boardId`
+   - `userId`
+   - `plannerMode`
+   - `runtimeBackend`
+2. In Langfuse `openai.call`, confirm `openAiRunId` when available.
+
+## Common Failure Signatures
+
+- `OpenAI planner disabled`: `AI_ENABLE_OPENAI` false or mode deterministic-only.
+- `OpenAI-required mode ... planned=false`: strict mode with unsupported command.
 - `budget blocked`: reserve/cap guardrail exceeded.
-- `MCP_INTERNAL_TOKEN is missing`: MCP call skipped (deterministic fallback path).
+- `MCP_INTERNAL_TOKEN is missing`: MCP call skipped (fallback path).

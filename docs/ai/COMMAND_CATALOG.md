@@ -5,6 +5,7 @@ This catalog maps user phrasing to planner intent families and tool operations.
 Primary planner mode for live quality:
 
 - `AI_PLANNER_MODE=openai-strict`
+- `OPENAI_RUNTIME=agents-sdk`
 
 Fallback compatibility mode:
 

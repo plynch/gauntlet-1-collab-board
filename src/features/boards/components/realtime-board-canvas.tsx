@@ -798,6 +798,20 @@ function getObjectLabel(kind: BoardObjectKind): string {
 }
 
 /**
+ * Returns whether object type is a background container.
+ */
+function isBackgroundContainerType(type: BoardObjectKind): boolean {
+  return type === "gridContainer";
+}
+
+/**
+ * Gets render layer rank.
+ */
+function getRenderLayerRank(type: BoardObjectKind): number {
+  return isBackgroundContainerType(type) ? 0 : 1;
+}
+
+/**
  * Returns whether object supports selection hud color updates.
  */
 function canUseSelectionHudColor(objectItem: BoardObject): boolean {
@@ -2571,6 +2585,12 @@ export default function RealtimeBoardCanvas({
         });
 
         nextObjects.sort((left, right) => {
+          const leftRank = getRenderLayerRank(left.type);
+          const rightRank = getRenderLayerRank(right.type);
+          if (leftRank !== rightRank) {
+            return leftRank - rightRank;
+          }
+
           if (left.zIndex !== right.zIndex) {
             return left.zIndex - right.zIndex;
           }
@@ -4133,7 +4153,13 @@ export default function RealtimeBoardCanvas({
         (maxValue, objectItem) => Math.max(maxValue, objectItem.zIndex),
         0,
       );
-      const nextZIndex = highestZIndex + 1;
+      const lowestZIndex = Array.from(objectsByIdRef.current.values()).reduce(
+        (minValue, objectItem) => Math.min(minValue, objectItem.zIndex),
+        0,
+      );
+      const nextZIndex = isBackgroundContainerType(kind)
+        ? lowestZIndex - 1
+        : highestZIndex + 1;
       const startX = centerX - width / 2 + spawnOffset.x;
       const startY = centerY - height / 2 + spawnOffset.y;
       const isConnector = isConnectorKind(kind);

@@ -9,12 +9,14 @@ import type {
   BoardObjectToolKind,
   BoardToolCall,
   TemplatePlan,
+  ViewportBounds,
 } from "@/features/ai/types";
 import { getFirebaseAdminDb } from "@/lib/firebase/admin";
 
 type ExecuteToolResult = {
   tool: BoardToolCall["tool"];
   objectId?: string;
+  createdObjectIds?: string[];
   deletedCount?: number;
 };
 
@@ -32,6 +34,19 @@ const LAYOUT_GRID_DEFAULT_COLUMNS = 3;
 const LAYOUT_GRID_MIN_GAP = 0;
 const LAYOUT_GRID_MAX_GAP = 400;
 const LAYOUT_GRID_DEFAULT_GAP = 32;
+const STICKY_BATCH_MIN_COUNT = 1;
+const STICKY_BATCH_MAX_COUNT = 50;
+const STICKY_BATCH_DEFAULT_COLUMNS = 5;
+const STICKY_BATCH_MIN_COLUMNS = 1;
+const STICKY_BATCH_MAX_COLUMNS = 10;
+const STICKY_BATCH_DEFAULT_GAP_X = 240;
+const STICKY_BATCH_DEFAULT_GAP_Y = 190;
+const MOVE_OBJECTS_MIN_PADDING = 0;
+const MOVE_OBJECTS_MAX_PADDING = 400;
+const MOVE_OBJECTS_DEFAULT_PADDING = 48;
+const FRAME_FIT_MIN_PADDING = 0;
+const FRAME_FIT_MAX_PADDING = 240;
+const FRAME_FIT_DEFAULT_PADDING = 40;
 
 type LayoutAlignment =
   | "left"
@@ -195,6 +210,13 @@ function isConnectorType(value: BoardObjectToolKind): boolean {
 }
 
 /**
+ * Returns whether type is a background container.
+ */
+function isBackgroundContainerType(value: BoardObjectToolKind): boolean {
+  return value === "gridContainer";
+}
+
+/**
  * Handles to anchor point.
  */
 function toAnchorPoint(
@@ -312,6 +334,73 @@ function toObjectCenter(objectItem: BoardObjectSnapshot): {
   };
 }
 
+/**
+ * Handles to object bounds.
+ */
+function toObjectBounds(objectItem: BoardObjectSnapshot): {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+} {
+  return {
+    left: objectItem.x,
+    right: objectItem.x + objectItem.width,
+    top: objectItem.y,
+    bottom: objectItem.y + objectItem.height,
+  };
+}
+
+/**
+ * Handles to combined bounds.
+ */
+function toCombinedBounds(objects: BoardObjectSnapshot[]): {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+} | null {
+  if (objects.length === 0) {
+    return null;
+  }
+
+  return {
+    left: Math.min(...objects.map((objectItem) => objectItem.x)),
+    right: Math.max(
+      ...objects.map((objectItem) => objectItem.x + objectItem.width),
+    ),
+    top: Math.min(...objects.map((objectItem) => objectItem.y)),
+    bottom: Math.max(
+      ...objects.map((objectItem) => objectItem.y + objectItem.height),
+    ),
+  };
+}
+
+/**
+ * Returns whether bounds overlap is true.
+ */
+function boundsOverlap(
+  leftBounds: {
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+  },
+  rightBounds: {
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+  },
+): boolean {
+  return !(
+    leftBounds.right < rightBounds.left ||
+    leftBounds.left > rightBounds.right ||
+    leftBounds.bottom < rightBounds.top ||
+    leftBounds.top > rightBounds.bottom
+  );
+}
+
 export class BoardToolExecutor {
   private readonly boardId: string;
   private readonly userId: string;
@@ -374,6 +463,21 @@ export class BoardToolExecutor {
   }
 
   /**
+   * Gets next z-index value for object type.
+   */
+  private getNextZIndexForType(type: BoardObjectToolKind): number {
+    if (!isBackgroundContainerType(type)) {
+      return this.nextZIndex++;
+    }
+
+    const lowestZIndex = Array.from(this.objectsById.values()).reduce(
+      (minimum, objectItem) => Math.min(minimum, objectItem.zIndex),
+      0,
+    );
+    return lowestZIndex - 1;
+  }
+
+  /**
    * Creates object.
    */
   private async createObject(options: {
@@ -397,7 +501,7 @@ export class BoardToolExecutor {
 
     const payload: Record<string, unknown> = {
       type: options.type,
-      zIndex: this.nextZIndex++,
+      zIndex: this.getNextZIndexForType(options.type),
       x: options.x,
       y: options.y,
       width: Math.max(1, options.width),
@@ -491,6 +595,80 @@ export class BoardToolExecutor {
   }
 
   /**
+   * Handles update objects in batches.
+   */
+  private async updateObjectsInBatch(
+    updates: Array<{
+      objectId: string;
+      payload: Partial<
+        Pick<BoardObjectDoc, "x" | "y" | "width" | "height" | "color" | "text">
+      >;
+    }>,
+  ): Promise<void> {
+    await this.ensureLoadedObjects();
+
+    const normalizedUpdates = updates.filter(
+      (update) => this.objectsById.has(update.objectId),
+    );
+    if (normalizedUpdates.length === 0) {
+      return;
+    }
+
+    for (
+      let index = 0;
+      index < normalizedUpdates.length;
+      index += DELETE_BATCH_CHUNK_SIZE
+    ) {
+      const chunk = normalizedUpdates.slice(
+        index,
+        index + DELETE_BATCH_CHUNK_SIZE,
+      );
+      const batch = this.db.batch();
+      chunk.forEach((entry) => {
+        batch.update(this.objectsCollection.doc(entry.objectId), {
+          ...entry.payload,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      });
+      await batch.commit();
+    }
+
+    normalizedUpdates.forEach((entry) => {
+      const existing = this.objectsById.get(entry.objectId);
+      if (!existing) {
+        return;
+      }
+      this.objectsById.set(entry.objectId, {
+        ...existing,
+        ...entry.payload,
+      });
+    });
+  }
+
+  /**
+   * Gets target area bounds from viewport or board state.
+   */
+  private getTargetAreaBounds(
+    viewportBounds?: ViewportBounds,
+  ): {
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+  } | null {
+    if (viewportBounds) {
+      return {
+        left: viewportBounds.left,
+        right: viewportBounds.left + viewportBounds.width,
+        top: viewportBounds.top,
+        bottom: viewportBounds.top + viewportBounds.height,
+      };
+    }
+
+    return toCombinedBounds(Array.from(this.objectsById.values()));
+  }
+
+  /**
    * Resolves selected objects by ids.
    */
   private async resolveSelectedObjects(
@@ -548,6 +726,101 @@ export class BoardToolExecutor {
     });
 
     return { tool: "createStickyNote", objectId: created.id };
+  }
+
+  /**
+   * Creates sticky notes in one batch.
+   */
+  async createStickyBatch(args: {
+    count: number;
+    color: string;
+    originX: number;
+    originY: number;
+    columns?: number;
+    gapX?: number;
+    gapY?: number;
+    textPrefix?: string;
+  }): Promise<ExecuteToolResult> {
+    await this.ensureLoadedObjects();
+
+    const count = toGridDimension(
+      args.count,
+      STICKY_BATCH_MIN_COUNT,
+      STICKY_BATCH_MIN_COUNT,
+      STICKY_BATCH_MAX_COUNT,
+    );
+    const columns = toGridDimension(
+      args.columns,
+      STICKY_BATCH_DEFAULT_COLUMNS,
+      STICKY_BATCH_MIN_COLUMNS,
+      STICKY_BATCH_MAX_COLUMNS,
+    );
+    const gapX = toGridDimension(
+      args.gapX,
+      STICKY_BATCH_DEFAULT_GAP_X,
+      LAYOUT_GRID_MIN_GAP,
+      LAYOUT_GRID_MAX_GAP,
+    );
+    const gapY = toGridDimension(
+      args.gapY,
+      STICKY_BATCH_DEFAULT_GAP_Y,
+      LAYOUT_GRID_MIN_GAP,
+      LAYOUT_GRID_MAX_GAP,
+    );
+    const textPrefix = toOptionalString(args.textPrefix, 960) ?? "Sticky";
+    const createdObjectIds: string[] = [];
+
+    for (let index = 0; index < count; index += DELETE_BATCH_CHUNK_SIZE) {
+      const chunkCount = Math.min(DELETE_BATCH_CHUNK_SIZE, count - index);
+      const batch = this.db.batch();
+
+      for (let offset = 0; offset < chunkCount; offset += 1) {
+        const absoluteIndex = index + offset;
+        const row = Math.floor(absoluteIndex / columns);
+        const column = absoluteIndex % columns;
+        const x = args.originX + column * gapX;
+        const y = args.originY + row * gapY;
+        const docRef = this.objectsCollection.doc();
+        const payload = {
+          type: "sticky",
+          zIndex: this.nextZIndex++,
+          x,
+          y,
+          width: 180,
+          height: 140,
+          rotationDeg: 0,
+          color: args.color,
+          text: `${textPrefix} ${absoluteIndex + 1}`.slice(0, 1_000),
+          createdBy: this.userId,
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        } satisfies Record<string, unknown>;
+
+        batch.set(docRef, payload);
+        this.objectsById.set(docRef.id, {
+          id: docRef.id,
+          type: "sticky",
+          zIndex: payload.zIndex as number,
+          x: payload.x as number,
+          y: payload.y as number,
+          width: payload.width as number,
+          height: payload.height as number,
+          rotationDeg: payload.rotationDeg as number,
+          color: payload.color as string,
+          text: payload.text as string,
+          updatedAt: null,
+        });
+        createdObjectIds.push(docRef.id);
+      }
+
+      await batch.commit();
+    }
+
+    return {
+      tool: "createStickyBatch",
+      objectId: createdObjectIds[0],
+      createdObjectIds,
+    };
   }
 
   /**
@@ -799,18 +1072,21 @@ export class BoardToolExecutor {
     const originX = toNumber(args.originX, defaultOriginX);
     const originY = toNumber(args.originY, defaultOriginY);
 
-    for (let index = 0; index < sortedObjects.length; index += 1) {
-      const objectItem = sortedObjects[index];
+    const updates = sortedObjects.map((objectItem, index) => {
       const row = Math.floor(index / columns);
       const column = index % columns;
       const nextX = originX + column * (cellWidth + gapX);
       const nextY = originY + row * (cellHeight + gapY);
 
-      await this.updateObject(objectItem.id, {
-        x: nextX,
-        y: nextY,
-      });
-    }
+      return {
+        objectId: objectItem.id,
+        payload: {
+          x: nextX,
+          y: nextY,
+        },
+      };
+    });
+    await this.updateObjectsInBatch(updates);
 
     return { tool: "arrangeObjectsInGrid" };
   }
@@ -838,42 +1114,56 @@ export class BoardToolExecutor {
     const centerX = (minLeft + maxRight) / 2;
     const centerY = (minTop + maxBottom) / 2;
 
-    for (const objectItem of selectedObjects) {
+    const updates = selectedObjects.map((objectItem) => {
       if (args.alignment === "left") {
-        await this.updateObject(objectItem.id, { x: minLeft });
-        continue;
+        return {
+          objectId: objectItem.id,
+          payload: { x: minLeft },
+        };
       }
 
       if (args.alignment === "center") {
-        await this.updateObject(objectItem.id, {
-          x: centerX - objectItem.width / 2,
-        });
-        continue;
+        return {
+          objectId: objectItem.id,
+          payload: {
+            x: centerX - objectItem.width / 2,
+          },
+        };
       }
 
       if (args.alignment === "right") {
-        await this.updateObject(objectItem.id, {
-          x: maxRight - objectItem.width,
-        });
-        continue;
+        return {
+          objectId: objectItem.id,
+          payload: {
+            x: maxRight - objectItem.width,
+          },
+        };
       }
 
       if (args.alignment === "top") {
-        await this.updateObject(objectItem.id, { y: minTop });
-        continue;
+        return {
+          objectId: objectItem.id,
+          payload: { y: minTop },
+        };
       }
 
       if (args.alignment === "middle") {
-        await this.updateObject(objectItem.id, {
-          y: centerY - objectItem.height / 2,
-        });
-        continue;
+        return {
+          objectId: objectItem.id,
+          payload: {
+            y: centerY - objectItem.height / 2,
+          },
+        };
       }
 
-      await this.updateObject(objectItem.id, {
-        y: maxBottom - objectItem.height,
-      });
-    }
+      return {
+        objectId: objectItem.id,
+        payload: {
+          y: maxBottom - objectItem.height,
+        },
+      };
+    });
+    await this.updateObjectsInBatch(updates);
 
     return { tool: "alignObjects" };
   }
@@ -919,22 +1209,134 @@ export class BoardToolExecutor {
         : lastCenter.y - firstCenter.y;
     const step = span / (sortedObjects.length - 1);
 
+    const updates: Array<{
+      objectId: string;
+      payload: Partial<
+        Pick<BoardObjectDoc, "x" | "y" | "width" | "height" | "color" | "text">
+      >;
+    }> = [];
     for (let index = 1; index < sortedObjects.length - 1; index += 1) {
       const objectItem = sortedObjects[index];
-      const nextCenter = (args.axis === "horizontal" ? firstCenter.x : firstCenter.y) + step * index;
+      const nextCenter =
+        (args.axis === "horizontal" ? firstCenter.x : firstCenter.y) +
+        step * index;
 
-      if (args.axis === "horizontal") {
-        await this.updateObject(objectItem.id, {
-          x: nextCenter - objectItem.width / 2,
-        });
-      } else {
-        await this.updateObject(objectItem.id, {
-          y: nextCenter - objectItem.height / 2,
-        });
-      }
+      updates.push(
+        args.axis === "horizontal"
+          ? {
+              objectId: objectItem.id,
+              payload: {
+                x: nextCenter - objectItem.width / 2,
+              },
+            }
+          : {
+              objectId: objectItem.id,
+              payload: {
+                y: nextCenter - objectItem.height / 2,
+              },
+            },
+      );
     }
+    await this.updateObjectsInBatch(updates);
 
     return { tool: "distributeObjects" };
+  }
+
+  /**
+   * Handles move objects.
+   */
+  async moveObjects(args: {
+    objectIds: string[];
+    delta?: {
+      dx: number;
+      dy: number;
+    };
+    toPoint?: {
+      x: number;
+      y: number;
+    };
+    toViewportSide?: {
+      side: "left" | "right" | "top" | "bottom";
+      viewportBounds?: ViewportBounds;
+      padding?: number;
+    };
+  }): Promise<ExecuteToolResult> {
+    const selectedObjects = await this.resolveSelectedObjects(args.objectIds);
+    if (selectedObjects.length === 0) {
+      return { tool: "moveObjects" };
+    }
+
+    let dx = 0;
+    let dy = 0;
+    if (args.toPoint) {
+      const anchor = selectedObjects[0];
+      dx = args.toPoint.x - anchor.x;
+      dy = args.toPoint.y - anchor.y;
+    } else if (args.toViewportSide) {
+      const selectedBounds = toCombinedBounds(selectedObjects);
+      const targetBounds = this.getTargetAreaBounds(
+        args.toViewportSide.viewportBounds,
+      );
+      if (!selectedBounds || !targetBounds) {
+        return { tool: "moveObjects" };
+      }
+
+      const padding = toGridDimension(
+        args.toViewportSide.padding,
+        MOVE_OBJECTS_DEFAULT_PADDING,
+        MOVE_OBJECTS_MIN_PADDING,
+        MOVE_OBJECTS_MAX_PADDING,
+      );
+      const groupWidth = Math.max(1, selectedBounds.right - selectedBounds.left);
+      const groupHeight = Math.max(
+        1,
+        selectedBounds.bottom - selectedBounds.top,
+      );
+      const targetLeftBase =
+        args.toViewportSide.side === "left"
+          ? targetBounds.left + padding
+          : args.toViewportSide.side === "right"
+            ? targetBounds.right - groupWidth - padding
+            : selectedBounds.left;
+      const targetTopBase =
+        args.toViewportSide.side === "top"
+          ? targetBounds.top + padding
+          : args.toViewportSide.side === "bottom"
+            ? targetBounds.bottom - groupHeight - padding
+            : selectedBounds.top;
+
+      const minLeft = targetBounds.left;
+      const maxLeft = targetBounds.right - groupWidth;
+      const minTop = targetBounds.top;
+      const maxTop = targetBounds.bottom - groupHeight;
+      const targetLeft =
+        minLeft <= maxLeft
+          ? Math.min(maxLeft, Math.max(minLeft, targetLeftBase))
+          : selectedBounds.left;
+      const targetTop =
+        minTop <= maxTop
+          ? Math.min(maxTop, Math.max(minTop, targetTopBase))
+          : selectedBounds.top;
+
+      dx = targetLeft - selectedBounds.left;
+      dy = targetTop - selectedBounds.top;
+    } else if (args.delta) {
+      dx = args.delta.dx;
+      dy = args.delta.dy;
+    } else {
+      return { tool: "moveObjects" };
+    }
+
+    const updates = selectedObjects.map((objectItem) => ({
+      objectId: objectItem.id,
+      payload: {
+        x: objectItem.x + dx,
+        y: objectItem.y + dy,
+      },
+    }));
+    await this.updateObjectsInBatch(updates);
+
+    return { tool: "moveObjects" };
   }
 
   /**
@@ -1040,6 +1442,53 @@ export class BoardToolExecutor {
   }
 
   /**
+   * Handles fit frame to contents.
+   */
+  async fitFrameToContents(args: {
+    frameId: string;
+    padding?: number;
+  }): Promise<ExecuteToolResult> {
+    await this.ensureLoadedObjects();
+    const frame = this.objectsById.get(args.frameId);
+    if (!frame) {
+      throw new Error(`Frame not found: ${args.frameId}`);
+    }
+
+    const frameBounds = toObjectBounds(frame);
+    const contentObjects = Array.from(this.objectsById.values()).filter(
+      (objectItem) =>
+        objectItem.id !== frame.id &&
+        boundsOverlap(toObjectBounds(objectItem), frameBounds),
+    );
+    const contentBounds = toCombinedBounds(contentObjects);
+    if (!contentBounds) {
+      return { tool: "fitFrameToContents", objectId: frame.id };
+    }
+
+    const padding = toGridDimension(
+      args.padding,
+      FRAME_FIT_DEFAULT_PADDING,
+      FRAME_FIT_MIN_PADDING,
+      FRAME_FIT_MAX_PADDING,
+    );
+
+    await this.updateObject(frame.id, {
+      x: contentBounds.left - padding,
+      y: contentBounds.top - padding,
+      width: Math.max(
+        180,
+        contentBounds.right - contentBounds.left + padding * 2,
+      ),
+      height: Math.max(
+        120,
+        contentBounds.bottom - contentBounds.top + padding * 2,
+      ),
+    });
+
+    return { tool: "fitFrameToContents", objectId: frame.id };
+  }
+
+  /**
    * Handles execute tool call.
    */
   async executeToolCall(toolCall: BoardToolCall): Promise<ExecuteToolResult> {
@@ -1049,6 +1498,8 @@ export class BoardToolExecutor {
         return { tool: "getBoardState" };
       case "createStickyNote":
         return this.createStickyNote(toolCall.args);
+      case "createStickyBatch":
+        return this.createStickyBatch(toolCall.args);
       case "createShape":
         return this.createShape(toolCall.args);
       case "createGridContainer":
@@ -1063,6 +1514,8 @@ export class BoardToolExecutor {
         return this.alignObjects(toolCall.args);
       case "distributeObjects":
         return this.distributeObjects(toolCall.args);
+      case "moveObjects":
+        return this.moveObjects(toolCall.args);
       case "moveObject":
         return this.moveObject(toolCall.args);
       case "resizeObject":
@@ -1073,6 +1526,8 @@ export class BoardToolExecutor {
         return this.changeColor(toolCall.args);
       case "deleteObjects":
         return this.deleteObjects(toolCall.args);
+      case "fitFrameToContents":
+        return this.fitFrameToContents(toolCall.args);
       default: {
         const exhaustiveCheck: never = toolCall;
         throw new Error(
@@ -1104,6 +1559,13 @@ export class BoardToolExecutor {
           operation.tool === "createConnector")
       ) {
         createdObjectIds.push(result.objectId);
+      }
+      if (
+        operation.tool === "createStickyBatch" &&
+        result.createdObjectIds &&
+        result.createdObjectIds.length > 0
+      ) {
+        createdObjectIds.push(...result.createdObjectIds);
       }
     }
 

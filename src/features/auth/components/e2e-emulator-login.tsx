@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { signInWithCustomToken } from "firebase/auth";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { getFirebaseClientAuth } from "@/lib/firebase/client";
 
@@ -31,6 +31,9 @@ export default function E2eEmulatorLogin() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [signedInEmail, setSignedInEmail] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedUid = searchParams.get("uid");
+  const requestedEmail = searchParams.get("email");
 
   /**
    * Handles handle sign in.
@@ -40,8 +43,20 @@ export default function E2eEmulatorLogin() {
     setErrorMessage(null);
 
     try {
+      const params = new URLSearchParams();
+      if (requestedUid && requestedUid.trim().length > 0) {
+        params.set("uid", requestedUid.trim());
+      }
+      if (requestedEmail && requestedEmail.trim().length > 0) {
+        params.set("email", requestedEmail.trim());
+      }
+
+      const requestUrl =
+        params.toString().length > 0
+          ? `/api/e2e/custom-token?${params.toString()}`
+          : "/api/e2e/custom-token";
       const response = await fetch(
-        "/api/e2e/custom-token?uid=e2e-playwright-user&email=e2e.playwright.user@example.com",
+        requestUrl,
       );
       const payload = (await response.json()) as
         | CustomTokenResponse

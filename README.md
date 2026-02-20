@@ -161,6 +161,20 @@ Env notes:
   - optional: `LANGFUSE_BASE_URL`
   - optional: `AI_AUDIT_LOG_ENABLED=true` (writes `boards/{boardId}/aiRuns/*`)
 
+On-demand AI trace suites:
+
+- Fallback agent matrix (20 Playwright tests, one AI call per test, trace logging):
+  - `npm run test:e2e:ai-agent-calls:fallback`
+- OpenAI nano matrix scaffold (key-gated and on-demand):
+  - `npm run test:e2e:ai-agent-calls:openai-nano`
+
+Fallback suite behavior:
+
+- Forces `AI_ENABLE_OPENAI=false` so no paid LLM calls are used.
+- Requires `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY`.
+- Logs one line per test with case id, `traceId`, and dashboard URL:
+  - `https://us.cloud.langfuse.com/project/cmlu0vcd501siad07glqj49kv`
+
 ## In Progress Features
 
 - 🛠️ Better testing

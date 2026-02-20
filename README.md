@@ -86,7 +86,7 @@ Java is required for emulator-backed scripts:
 - `npm run firebase:emulators`
 - `npm run test:e2e:emulator`
 - `npm run test:e2e:ai-agent-calls:fallback`
-- `npm run test:e2e:ai-openai-smoke:nano:PAID`
+- `npm run test:e2e:ai-agent-calls:openai-matrix:nano:PAID`
 
 Styleguide route (component library preview in app):
 
@@ -126,110 +126,81 @@ Generated docs location:
 - ✅ User authentication! (Google only, more coming later)
 - ✅ Deployed and publicly accessible
 
-## Runtime AI Agent (Phase 1)
+## Runtime AI Agent
 
-- ✅ Deterministic command routing for SWOT requests
-- ✅ Deterministic command routing for create/move/resize/color/text commands
-- ✅ Deterministic layout routing for arrange-grid, align-selected, and distribute-selected
-- ✅ Deterministic sticky batch/grid prompts (`create 25 red stickies`, `create 2x3 sticky grid`)
-- ✅ Deterministic insight prompts (`summarize selected notes`, `create action items from selected notes`)
-- ✅ Runtime MCP integration (in-app Streamable HTTP endpoint)
-- ✅ Local fallback template provider if MCP call fails/times out
-- ✅ Server-side board tool executor (create/move/resize/update/color/get state)
-- ✅ End-to-end trace spans through Langfuse (when configured)
-- ✅ Optional OpenAI planner path (`gpt-4.1-nano`) with deterministic fallback and hard spend cap
+Implemented capabilities:
 
-User guide:
+- ✅ OpenAI planner integration (`gpt-4.1-nano`)
+- ✅ Planner modes: `openai-strict`, `openai-with-fallback`, `deterministic-only`
+- ✅ Deterministic planner support for key creation/manipulation/layout/template commands
+- ✅ High-level bulk tools for reliability (`createStickyBatch`, `moveObjects`, `fitFrameToContents`)
+- ✅ Extended layout tools (`arrangeObjectsInGrid`, `alignObjects`, `distributeObjects`)
+- ✅ Server-side tool execution with batched writes where possible
+- ✅ End-to-end Langfuse tracing, including per-tool spans
+- ✅ Cost guardrails with reservation-per-call and hard spend cap
 
-- `AI-AGENT-USER-GUIDE.md`
+Docs:
 
-Architecture (current):
+- User guide: `AI-AGENT-USER-GUIDE.md`
+- Tool schema reference: `docs/ai/TOOL_SCHEMA_REFERENCE.md`
+- Command catalog: `docs/ai/COMMAND_CATALOG.md`
+- Architecture overview: `docs/architecture/AI_SYSTEM_OVERVIEW.md`
+- Live test + tracing runbook: `docs/runbooks/AI_LIVE_TESTING_AND_LANGFUSE.md`
 
-1. Board chat drawer sends command to `POST /api/ai/board-command`.
-2. Route authenticates user, validates board permissions, applies guardrails.
-3. Route calls internal MCP endpoint `POST /api/mcp/templates`:
-   - `template.instantiate` for `swot.v1`
-   - `command.plan` for deterministic object commands
-4. MCP returns a structured template plan (operations list).
-5. Route executes operations via server-side board tools, writing Firestore objects.
-6. Response returns assistant message + execution metadata + `traceId`.
+Runtime flow:
 
-Langfuse coverage:
+1. Board chat drawer submits to `POST /api/ai/board-command`.
+2. Route authenticates, checks board permissions, and applies guardrails.
+3. Planner selected by `AI_PLANNER_MODE` generates a structured operation plan.
+4. Plan is validated and executed through server-side board tools.
+5. Response returns assistant message + execution summary + trace ID.
+
+Langfuse spans:
 
 - `ai.request.received`
-- `ai.intent.detected`
 - `mcp.call`
 - `openai.budget.reserve`
 - `openai.call`
 - `tool.execute`
+- `tool.execute.call`
 - `board.write.commit`
-- `ai.response.sent` (final trace update)
+- `ai.response.sent`
 
 Guardrails:
 
-- Max operations per command
-- Max created objects per command
-- Max layout object ids per layout tool call
-- Per-user rate limiting window
-- Per-board command lock to avoid conflicting concurrent AI runs
-- MCP timeout and overall route timeout
+- max operations per command
+- max created objects per command
+- per-tool limits (`createStickyBatch`, layout tools, `moveObjects`, `deleteObjects`)
+- per-user rate limiting window
+- per-board command lock
+- route timeout
 
 Env notes:
 
-- To enable internal MCP auth + Langfuse tracing in deployed environments:
-  - `MCP_INTERNAL_TOKEN`
+- Required for tracing:
   - `LANGFUSE_PUBLIC_KEY`
   - `LANGFUSE_SECRET_KEY`
-  - optional: `LANGFUSE_BASE_URL`
-  - optional: `AI_AUDIT_LOG_ENABLED=true` (writes `boards/{boardId}/aiRuns/*`)
-- OpenAI planner is optional and off by default:
+  - optional `LANGFUSE_BASE_URL`
+- Required for OpenAI planner:
   - `AI_ENABLE_OPENAI=true`
+  - `AI_PLANNER_MODE=openai-strict` (recommended for happy path)
   - `OPENAI_API_KEY=...`
-  - optional: `OPENAI_MODEL=gpt-4.1-nano` (default)
-  - optional: `OPENAI_RESERVE_USD_PER_CALL=0.003` (default reservation per call)
-  - optional: `AI_GUARDRAIL_STORE=memory|firestore` (budget persistence backend)
-  - hard app-level spend guardrail is capped at `$10.00`
+  - optional `OPENAI_MODEL=gpt-4.1-nano`
+  - optional `OPENAI_RESERVE_USD_PER_CALL=0.003`
+  - optional `AI_GUARDRAIL_STORE=memory|firestore`
+- hard app-level spend guardrail: `$10.00`
 
-On-demand AI trace suites:
+On-demand AI test suites:
 
-- Fallback agent matrix (20 Playwright tests, one AI call per test, trace logging):
+- Fallback matrix (20 commands, no paid LLM):
   - `npm run test:e2e:ai-agent-calls:fallback`
-- OpenAI nano smoke matrix (strict + on-demand):
-  - `npm run test:e2e:ai-openai-smoke:nano:PAID`
+- OpenAI matrix (20 paid commands, strict mode):
+  - `npm run test:e2e:ai-agent-calls:openai-matrix:nano:PAID`
+  - legacy alias: `npm run test:e2e:ai-openai-smoke:nano:PAID`
 
 Naming convention:
 
 - Any npm script that can spend paid model tokens ends with `:PAID`.
-
-Fallback suite behavior:
-
-- Forces `AI_ENABLE_OPENAI=false` so no paid LLM calls are used.
-- Checks `/api/e2e/langfuse-ready` before running test cases and fails early when Langfuse is not configured server-side.
-- Logs one line per test with case id, `traceId`, and dashboard URL:
-  - `https://us.cloud.langfuse.com/project/cmlu0vcd501siad07glqj49kv`
-
-Fallback trace runbook:
-
-```bash
-npm run test:e2e:ai-agent-calls:fallback
-```
-
-Expected trace log pattern in output:
-
-```text
-[langfuse-trace] case=case-01 traceId=<uuid> dashboard=https://us.cloud.langfuse.com/project/cmlu0vcd501siad07glqj49kv
-```
-
-OpenAI smoke suite behavior:
-
-- Runs only in emulator mode and fails fast when server-side OpenAI config is not ready.
-- Sets `AI_REQUIRE_OPENAI=true` so paid smoke fails immediately if OpenAI does not produce the plan.
-- Validates `/api/e2e/langfuse-ready` and `/api/e2e/openai-ready` before paid calls.
-- Executes two paid calls and asserts:
-  - non-empty `traceId`
-  - `provider=openai`
-  - `mode=llm`
-  - `execution.openAi` metadata with planner status/model/cost
 
 ## In Progress Features
 

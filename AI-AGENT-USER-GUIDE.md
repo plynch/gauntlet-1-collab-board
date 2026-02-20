@@ -4,11 +4,11 @@
 
 This guide explains:
 
-- where to use the AI agent
-- commands that work right now
-- the full tool schema implemented in the backend
-- example prompts for minimum requirements and beyond
-- how MCP fallback and tracing work
+- where to use the AI assistant
+- commands that work in the current build
+- how to get the best happy-path results
+- key constraints and guardrails
+- where to inspect traces and costs
 
 ## Where to issue commands
 
@@ -18,190 +18,106 @@ This guide explains:
 
 The UI calls `POST /api/ai/board-command`.
 
-## Quick demo script (60-90 seconds)
+## Recommended runtime mode
 
-Use these commands in order during a live demo:
+For best live command quality, run OpenAI-first strict planning:
 
-1. `Create a SWOT analysis template`
-2. `Create a blue rectangle at position 1200, 140`
-3. `Add a yellow sticky note that says Customer feedback`
-4. Select a few objects on canvas, then run:
-   - `Move selected objects right by 180`
-5. With one object selected, run:
-   - `Change selected object color to green`
-6. With one sticky note selected, run:
-   - `Update selected sticky text to Top priority`
+- `AI_PLANNER_MODE=openai-strict`
+- `AI_ENABLE_OPENAI=true`
+- `OPENAI_MODEL=gpt-4.1-nano`
 
-Demo narration tip:
+In strict mode, the route does not silently hide OpenAI planner failures.
 
-- Mention that each command goes through `POST /api/ai/board-command` with guardrails, MCP planning/fallback, and trace spans.
+## Command catalog
 
-## Current command support (today)
-
-### Works now
-
-- SWOT template generation via deterministic intent routing:
-  - `Create a SWOT analysis template`
-  - `Build a SWOT board`
-  - `Create a SWOT analysis`
-- Deterministic object command routing:
-  - create sticky notes, frames, and shapes
-  - create multiple stickies with count and color (for example `create 25 red stickies`)
-  - create sticky-note grids from prompts like `create a 2x3 grid of sticky notes`
-  - arrange selected objects into a grid (`arrange selected in a grid`, `arrange selected in 3 columns`)
-  - align selected objects (`align selected left`, `align selected top`, `align selected center`)
-  - distribute selected objects (`distribute selected objects horizontally`, `space selected evenly vertically`)
-  - summarize selected notes into concise bullets (`summarize selected notes`)
-  - extract action-item stickies from selected notes (`create action items from selected notes`)
-  - move selected objects
-  - move all objects of a type (optionally color-filtered), including viewport-aware commands like `move the red sticky notes to the right side of the screen`
-  - resize selected objects
-  - change color of selected objects
-  - update selected object text
-
-Result:
-
-- 4 colored rectangle quadrants
-- 4 label stickies:
-  - Strengths
-  - Weaknesses
-  - Opportunities
-  - Threats
-- auto-placement to the right of existing board content
-
-### Not yet routed from natural language
-
-- connector creation from arbitrary language prompts
-- advanced layout prompts beyond current align/distribute/grid coverage
-- complex multi-step templates beyond SWOT/retro/journey-map
-- full LLM planning layer for broader prompt understanding
-
-## Tool schema (minimum + implemented set)
-
-The backend tool schema includes:
-
-- `createStickyNote(text, x, y, color)`
-- `createShape(type, x, y, width, height, color)`
-  - `type`: `rect | circle | line | triangle | star`
-- `createFrame(title, x, y, width, height)`
-- `createConnector(fromId, toId, style)`
-  - `style`: `undirected | one-way-arrow | two-way-arrow`
-- `arrangeObjectsInGrid(objectIds, columns, gapX?, gapY?, originX?, originY?)`
-- `alignObjects(objectIds, alignment)`
-  - `alignment`: `left | center | right | top | middle | bottom`
-- `distributeObjects(objectIds, axis)`
-  - `axis`: `horizontal | vertical`
-- `moveObject(objectId, x, y)`
-- `resizeObject(objectId, width, height)`
-- `updateText(objectId, newText)`
-- `changeColor(objectId, color)`
-- `getBoardState()`
-
-Notes:
-
-- This satisfies the project’s minimum tool schema requirement.
-- Current chat routing executes a subset directly (SWOT flow uses `getBoardState`, `createShape`, `createStickyNote`).
-
-## Example command library
-
-Use these as copy/paste starting points.
-
-### Creation commands
+### Creation
 
 - `Add a yellow sticky note that says User Research`
+- `Add a pink sticky note at position 520, 280 that says Follow-up`
 - `Create 25 red stickies`
-- `Create a blue rectangle at position 100, 200`
-- `Add a frame called Sprint Planning`
-- `Create an undirected connector between object A and object B`
-
-### Manipulation commands
-
-- `Move the selected objects to 400, 300`
-- `Resize the selected object to 220 by 140`
-- `Change the selected sticky note color to green`
-- `Update the selected sticky note text to Q2 priorities`
-
-### Layout commands
-
-- `Arrange selected sticky notes in a grid`
-- `Arrange selected objects in 3 columns`
-- `Align selected objects top`
-- `Distribute selected objects horizontally`
-- `Summarize selected notes`
-- `Create action items from selected notes`
 - `Create a 2x3 grid of sticky notes for pros and cons`
-- `Space selected elements evenly`
+- `Create a blue rectangle at position 900, 120`
+- `Create an orange circle`
+- `Create a purple triangle`
+- `Create a yellow star`
+- `Create one line shape at x 220 y 220 with width 260 and height 24 in gray`
+- `Add a frame called Sprint Planning`
 
-### Complex template commands
+### Manipulation
 
-- `Create a SWOT analysis template` (works now)
-- `Set up a retrospective board with What Went Well, What Didn't, and Action Items columns`
+- `Move selected objects right by 120`
+- `Move selected objects to 420, 260`
+- `Move the sticky notes to the right side of the screen`
+- `Resize selected to 260 by 180`
+- `Resize the frame to fit contents`
+- `Change selected object color to green`
+- `Update selected sticky text to Q2 priorities`
+- `Delete selected`
+- `Clear the board`
+
+### Layout
+
+- `Arrange selected objects in a grid with 2 columns gap x 24 y 32`
+- `Align selected objects left`
+- `Distribute selected objects horizontally`
+
+### Complex templates
+
+- `Create a SWOT analysis template`
 - `Build a user journey map with 5 stages`
+- `Set up a retrospective board with What Went Well, What Didn't, and Action Items columns`
 
-## MCP behavior and fallback
+## Best prompt patterns
 
-For all routed commands:
+- Be explicit with coordinates when placement matters: `at x 140 y 180`.
+- Mention scope words (`selected`, `all red sticky notes`) when moving/changing many objects.
+- For layout actions, select objects first, then issue the command.
+- Keep one action per prompt for fastest and most reliable execution.
 
-1. The command route calls internal MCP template endpoint.
-2. MCP tool returns structured operations:
-   - `template.instantiate` for SWOT
-   - `command.plan` for deterministic non-SWOT commands
-3. Operations are executed via server-side board tools.
-4. If MCP is unavailable/times out, local deterministic planner/provider is used automatically.
+## Known constraints
 
-So routed commands remain reliable even if MCP is degraded.
+- Message length max is enforced server-side.
+- Max operations per command: `50`.
+- Max created objects per command: `50`.
+- `createStickyBatch` max count per call: `50`.
+- Layout tool object ID cap per call: `50`.
+- `moveObjects` object ID cap per call: `500`.
+
+## What you should see in chat
+
+- Clean assistant status messages only.
+- No provider/model/trace metadata is shown in chat bubbles.
+
+Trace IDs and detailed execution metadata remain available through API responses and Langfuse traces for debugging.
 
 ## Traceability (Langfuse)
-
-Every AI command run can be traced (when Langfuse env vars are configured).
-
-Spans emitted:
-
-- `ai.request.received`
-- `ai.intent.detected`
-- `mcp.call`
-- `tool.execute`
-- `board.write.commit`
-- `ai.response.sent`
-
-Tool execution tracing is emitted via a LangChain callback bridge:
-
-- chain run maps to `tool.execute`
-- each tool call maps to `tool.execute.call`
-
-The assistant response bubble also shows:
-- `traceId` for each successful command
-- execution metadata (intent/tool counts/fallback)
-- OpenAI planner metadata when used (`status`, `model`, estimated and total spend)
 
 Required env vars:
 
 - `LANGFUSE_PUBLIC_KEY`
 - `LANGFUSE_SECRET_KEY`
-- optional `LANGFUSE_BASE_URL`
+- optional: `LANGFUSE_BASE_URL`
 
-## Safety guardrails
+Project dashboard:
 
-The AI route currently enforces:
+- `https://us.cloud.langfuse.com/project/cmlu0vcd501siad07glqj49kv`
 
-- max command length
-- max operations per command (50)
-- max object creations per command (50)
-- per-user command rate limit window
-- per-board concurrency lock
-- MCP timeout and overall route timeout
+Expected span chain includes:
 
-## Permissions behavior
+- `ai.request.received`
+- `openai.budget.reserve`
+- `openai.call`
+- `tool.execute`
+- `tool.execute.call`
+- `board.write.commit`
+- `ai.response.sent`
 
-- Users must have board read access to use the AI endpoint.
-- Mutating AI commands (like SWOT creation) require edit access.
-- Read-only users receive a non-mutating response.
+## Quick live validation flow (3-5 minutes)
 
-## Planned next expansion
+1. `Create 10 red stickies`
+2. `Move the red sticky notes to the right side of the screen`
+3. Select several stickies, then run: `Arrange selected objects in a grid`
+4. `Create a SWOT analysis template`
+5. `Clear the board`
 
-Near-term roadmap:
-
-1. Route natural language to the full tool set (not just SWOT).
-2. Add MCP fallback path for all tool-planning commands.
-3. Add broader template catalog and command coverage (retro, journey map, connector language).
-4. Add LLM planner on top of deterministic paths, with deterministic fallback preserved.
+After each command, inspect the trace in Langfuse and verify the tool spans match the action.

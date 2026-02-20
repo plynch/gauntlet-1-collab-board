@@ -73,6 +73,11 @@ const ACTION_ITEM_GRID_COLUMNS = 4;
 const ACTION_ITEM_SPACING_X = 240;
 const ACTION_ITEM_SPACING_Y = 190;
 const ACTION_ITEM_COLOR = COLOR_KEYWORDS.green;
+const JOURNEY_DEFAULT_STAGES = 5;
+const JOURNEY_MIN_STAGES = 3;
+const JOURNEY_MAX_STAGES = 8;
+const JOURNEY_STAGE_SPACING_X = 230;
+const RETRO_COLUMN_SPACING_X = 320;
 
 /**
  * Handles normalize message.
@@ -279,6 +284,18 @@ function parseGridColumns(message: string): number | null {
   }
 
   return toPositiveInteger(columnsMatch[1]);
+}
+
+/**
+ * Parses journey map stage count.
+ */
+function parseJourneyStageCount(message: string): number | null {
+  const stageMatch = message.match(/\b(\d+)\s*(?:-|\s)?stages?\b/i);
+  if (!stageMatch) {
+    return null;
+  }
+
+  return toPositiveInteger(stageMatch[1]);
 }
 
 /**
@@ -540,7 +557,9 @@ function isClearBoardCommand(message: string): boolean {
   return (
     /\bclear(?:\s+the)?\s+board\b/.test(lower) ||
     /\bdelete\s+all\s+shapes\b/.test(lower) ||
-    /\bremove\s+all\s+shapes\b/.test(lower)
+    /\bremove\s+all\s+shapes\b/.test(lower) ||
+    /\b(?:delete|remove)\s+everything(?:\s+on\s+the\s+board)?\b/.test(lower) ||
+    /\bwipe\s+the\s+board\b/.test(lower)
   );
 }
 
@@ -999,6 +1018,153 @@ function planCreateStickyGrid(
     plan: toPlan({
       id: "command.create-sticky-grid",
       name: "Create Sticky Note Grid",
+      operations,
+    }),
+  };
+}
+
+/**
+ * Returns whether create journey-map command is true.
+ */
+function isCreateJourneyMapCommand(message: string): boolean {
+  const lower = normalizeMessage(message);
+  const hasCreateVerb = /\b(add|create|build|set up|setup)\b/.test(lower);
+  const hasJourneyLanguage =
+    /\bjourney\s+map\b/.test(lower) || /\buser\s+journey\b/.test(lower);
+  return hasCreateVerb && hasJourneyLanguage;
+}
+
+/**
+ * Handles plan create journey-map.
+ */
+function planCreateJourneyMap(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
+  if (!isCreateJourneyMapCommand(input.message)) {
+    return null;
+  }
+
+  const stageCount = parseJourneyStageCount(input.message) ?? JOURNEY_DEFAULT_STAGES;
+  if (stageCount < JOURNEY_MIN_STAGES || stageCount > JOURNEY_MAX_STAGES) {
+    return {
+      planned: false,
+      intent: "create-journey-map",
+      assistantMessage: `Create journey maps with ${JOURNEY_MIN_STAGES}-${JOURNEY_MAX_STAGES} stages.`,
+    };
+  }
+
+  const spawnPoint =
+    parseCoordinatePoint(input.message) ?? getAutoSpawnPoint(input.boardState);
+  const frameWidth = Math.max(760, stageCount * JOURNEY_STAGE_SPACING_X + 120);
+  const stageNames = [
+    "Discover",
+    "Consider",
+    "Sign Up",
+    "Onboard",
+    "Adopt",
+    "Retain",
+    "Advocate",
+    "Renew",
+  ];
+
+  const operations: BoardToolCall[] = [
+    {
+      tool: "createFrame",
+      args: {
+        title: `User Journey Map (${stageCount} stages)`,
+        x: spawnPoint.x,
+        y: spawnPoint.y,
+        width: frameWidth,
+        height: 360,
+      },
+    },
+  ];
+
+  for (let index = 0; index < stageCount; index += 1) {
+    operations.push({
+      tool: "createStickyNote",
+      args: {
+        text: `${index + 1}. ${stageNames[index] ?? `Stage ${index + 1}`}`,
+        x: spawnPoint.x + 30 + index * JOURNEY_STAGE_SPACING_X,
+        y: spawnPoint.y + 88,
+        color: COLOR_KEYWORDS.yellow,
+      },
+    });
+  }
+
+  return {
+    planned: true,
+    intent: "create-journey-map",
+    assistantMessage: `Created user journey map with ${stageCount} stages.`,
+    plan: toPlan({
+      id: "command.create-journey-map",
+      name: "Create User Journey Map",
+      operations,
+    }),
+  };
+}
+
+/**
+ * Returns whether create retrospective-board command is true.
+ */
+function isCreateRetrospectiveCommand(message: string): boolean {
+  const lower = normalizeMessage(message);
+  const hasCreateVerb = /\b(add|create|build|set up|setup)\b/.test(lower);
+  const hasRetroLanguage = /\b(retrospective|retro)\b/.test(lower);
+  return hasCreateVerb && hasRetroLanguage;
+}
+
+/**
+ * Handles plan create retrospective-board.
+ */
+function planCreateRetrospectiveBoard(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
+  if (!isCreateRetrospectiveCommand(input.message)) {
+    return null;
+  }
+
+  const spawnPoint =
+    parseCoordinatePoint(input.message) ?? getAutoSpawnPoint(input.boardState);
+  const columns = [
+    { title: "What Went Well", color: COLOR_KEYWORDS.green },
+    { title: "What Didn't", color: COLOR_KEYWORDS.pink },
+    { title: "Action Items", color: COLOR_KEYWORDS.blue },
+  ] as const;
+
+  const operations: BoardToolCall[] = [
+    {
+      tool: "createFrame",
+      args: {
+        title: "Retrospective Board",
+        x: spawnPoint.x,
+        y: spawnPoint.y,
+        width: 1020,
+        height: 420,
+      },
+    },
+  ];
+
+  columns.forEach((column, index) => {
+    operations.push({
+      tool: "createStickyNote",
+      args: {
+        text: column.title,
+        x: spawnPoint.x + 40 + index * RETRO_COLUMN_SPACING_X,
+        y: spawnPoint.y + 72,
+        color: column.color,
+      },
+    });
+  });
+
+  return {
+    planned: true,
+    intent: "create-retrospective-board",
+    assistantMessage:
+      "Created retrospective board with What Went Well, What Didn't, and Action Items columns.",
+    plan: toPlan({
+      id: "command.create-retrospective-board",
+      name: "Create Retrospective Board",
       operations,
     }),
   };
@@ -1546,6 +1712,8 @@ export function planDeterministicCommand(
     planSummarizeSource,
     planExtractActionItems,
     planCreateStickyGrid,
+    planCreateJourneyMap,
+    planCreateRetrospectiveBoard,
     planCreateStickyBatch,
     planCreateSticky,
     planCreateFrame,
@@ -1568,6 +1736,6 @@ export function planDeterministicCommand(
     planned: false,
     intent: "unsupported-command",
     assistantMessage:
-      "I could not map that command yet. Try creating shapes/stickies, arranging selected objects in a grid, aligning/distributing selected objects, summarizing selected notes, extracting action items, moving/resizing selected objects, deleting selected, clearing the board, changing selected color, or creating a SWOT template.",
+      "I could not map that command yet. Try creating shapes/stickies, arranging selected objects in a grid, aligning/distributing selected objects, summarizing selected notes, extracting action items, moving/resizing selected objects, deleting selected, clearing the board, changing selected color, or creating SWOT, retrospective, and journey-map templates.",
   };
 }

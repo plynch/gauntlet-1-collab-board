@@ -73,6 +73,20 @@ describe("planDeterministicCommand", () => {
     }
   });
 
+  it("treats delete everything on the board as clear-board command", () => {
+    const result = planDeterministicCommand({
+      message: "delete everything on the board",
+      boardState: BOARD_STATE,
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("clear-board");
+      expect(result.plan.operations[0]?.tool).toBe("deleteObjects");
+    }
+  });
+
   it("plans delete selected command", () => {
     const result = planDeterministicCommand({
       message: "delete selected",
@@ -278,6 +292,55 @@ describe("planDeterministicCommand", () => {
         true,
       );
     }
+  });
+
+  it("plans create-retrospective-board command", () => {
+    const result = planDeterministicCommand({
+      message:
+        "Set up a retrospective board with What Went Well, What Didn't, and Action Items columns",
+      boardState: BOARD_STATE,
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("create-retrospective-board");
+      expect(result.plan.operations[0]?.tool).toBe("createFrame");
+      expect(result.plan.operations).toHaveLength(4);
+      expect(result.plan.operations.slice(1).every((op) => op.tool === "createStickyNote")).toBe(
+        true,
+      );
+    }
+  });
+
+  it("plans create-journey-map command with stage count", () => {
+    const result = planDeterministicCommand({
+      message: "Build a user journey map with 5 stages",
+      boardState: BOARD_STATE,
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("create-journey-map");
+      expect(result.plan.operations[0]?.tool).toBe("createFrame");
+      expect(result.plan.operations).toHaveLength(6);
+      expect(result.plan.operations.slice(1).every((op) => op.tool === "createStickyNote")).toBe(
+        true,
+      );
+    }
+  });
+
+  it("returns guidance when journey map stage count is outside supported range", () => {
+    const result = planDeterministicCommand({
+      message: "Build a user journey map with 12 stages",
+      boardState: BOARD_STATE,
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(false);
+    expect(result.intent).toBe("create-journey-map");
+    expect(result.assistantMessage).toContain("3-8");
   });
 
   it("returns actionable message for oversized sticky-grid prompts", () => {

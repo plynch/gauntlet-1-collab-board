@@ -71,7 +71,7 @@ function getEmulatorProjectId(): string {
     process.env.GOOGLE_CLOUD_PROJECT?.trim() ||
     process.env.GCLOUD_PROJECT?.trim();
 
-  return projectId && projectId.length > 0 ? projectId : "demo-collab-board";
+  return projectId && projectId.length > 0 ? projectId : "gauntlet-1-collab-board";
 }
 
 let firebaseAdminApp: App | null = null;

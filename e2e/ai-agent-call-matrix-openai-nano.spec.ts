@@ -25,14 +25,15 @@ test.skip(
   "Firebase emulator e2e runs only when PLAYWRIGHT_EMULATOR_MODE=1.",
 );
 
-test.skip(
-  !hasOpenAiKey,
-  "OPENAI_API_KEY is missing. This paid suite is on-demand and key-gated.",
-);
-
 test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async ({ request }) => {
+  if (!hasOpenAiKey) {
+    throw new Error(
+      "OPENAI_API_KEY is required for this strict on-demand paid suite.",
+    );
+  }
+
   const langfuseResponse = await request.get("/api/e2e/langfuse-ready");
   expect(langfuseResponse.ok()).toBeTruthy();
   const langfusePayload = (await langfuseResponse.json()) as {
@@ -51,6 +52,9 @@ test.beforeAll(async ({ request }) => {
 });
 
 test.afterAll(() => {
+  if (traceIds.length === 0) {
+    return;
+  }
   expect(traceIds).toHaveLength(2);
   expect(new Set(traceIds).size).toBe(2);
 });

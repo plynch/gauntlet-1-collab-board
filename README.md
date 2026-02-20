@@ -189,7 +189,7 @@ On-demand AI trace suites:
 
 - Fallback agent matrix (20 Playwright tests, one AI call per test, trace logging):
   - `npm run test:e2e:ai-agent-calls:fallback`
-- OpenAI nano smoke matrix (key-gated and on-demand):
+- OpenAI nano smoke matrix (strict + on-demand):
   - `npm run test:e2e:ai-agent-calls:openai-nano`
 
 Fallback suite behavior:
@@ -213,7 +213,7 @@ Expected trace log pattern in output:
 
 OpenAI smoke suite behavior:
 
-- Runs only when `PLAYWRIGHT_EMULATOR_MODE=1` and `OPENAI_API_KEY` is present.
+- Runs only in emulator mode and fails fast when `OPENAI_API_KEY` is missing.
 - Validates `/api/e2e/langfuse-ready` and `/api/e2e/openai-ready` before paid calls.
 - Executes two paid calls and asserts:
   - non-empty `traceId`

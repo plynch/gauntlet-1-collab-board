@@ -103,7 +103,57 @@ describe("validateTemplatePlan", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.status).toBe(400);
-      expect(result.error).toContain("Grid layout operation");
+      expect(result.error).toContain("arrangeObjectsInGrid");
+    }
+  });
+
+  it("rejects oversized alignObjects calls", () => {
+    const result = validateTemplatePlan({
+      templateId: SWOT_TEMPLATE_ID,
+      templateName: "Align",
+      operations: [
+        {
+          tool: "alignObjects",
+          args: {
+            objectIds: Array.from(
+              { length: 51 },
+              (_, index) => `obj-${index}`,
+            ),
+            alignment: "left",
+          },
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(400);
+      expect(result.error).toContain("alignObjects");
+    }
+  });
+
+  it("rejects oversized distributeObjects calls", () => {
+    const result = validateTemplatePlan({
+      templateId: SWOT_TEMPLATE_ID,
+      templateName: "Distribute",
+      operations: [
+        {
+          tool: "distributeObjects",
+          args: {
+            objectIds: Array.from(
+              { length: 51 },
+              (_, index) => `obj-${index}`,
+            ),
+            axis: "horizontal",
+          },
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(400);
+      expect(result.error).toContain("distributeObjects");
     }
   });
 });

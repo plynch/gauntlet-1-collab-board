@@ -80,6 +80,27 @@ const boardToolCallSchema: z.ZodType<BoardToolCall> = z.discriminatedUnion(
       }),
     }),
     z.object({
+      tool: z.literal("alignObjects"),
+      args: z.object({
+        objectIds: z.array(z.string()),
+        alignment: z.enum([
+          "left",
+          "center",
+          "right",
+          "top",
+          "middle",
+          "bottom",
+        ]),
+      }),
+    }),
+    z.object({
+      tool: z.literal("distributeObjects"),
+      args: z.object({
+        objectIds: z.array(z.string()),
+        axis: z.enum(["horizontal", "vertical"]),
+      }),
+    }),
+    z.object({
       tool: z.literal("moveObject"),
       args: z.object({
         objectId: z.string(),

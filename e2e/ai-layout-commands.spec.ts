@@ -169,3 +169,91 @@ test("AI layout commands create sticky grids and arrange selected objects with t
   console.log("Langfuse trace id (create sticky grid):", createGridResult.traceId);
   console.log("Langfuse trace id (arrange grid):", arrangeResult.traceId);
 });
+
+test("AI layout commands align and distribute selected objects with trace ids", async ({
+  page,
+}) => {
+  const boardTitle = `E2E AI Align Distribute ${Date.now()}`;
+  await createBoardAndOpen(page, boardTitle);
+
+  const createOne = await sendAiCommand(
+    page,
+    "Add a yellow sticky note at 120, 120 that says Align A",
+  );
+  const createTwo = await sendAiCommand(
+    page,
+    "Add a yellow sticky note at 460, 210 that says Align B",
+  );
+  const createThree = await sendAiCommand(
+    page,
+    "Add a yellow sticky note at 880, 320 that says Align C",
+  );
+
+  const stickyA = page
+    .locator("article[data-board-object='true'] textarea")
+    .filter({ hasText: /Align A/i })
+    .locator("xpath=ancestor::article[1]");
+  const stickyB = page
+    .locator("article[data-board-object='true'] textarea")
+    .filter({ hasText: /Align B/i })
+    .locator("xpath=ancestor::article[1]");
+  const stickyC = page
+    .locator("article[data-board-object='true'] textarea")
+    .filter({ hasText: /Align C/i })
+    .locator("xpath=ancestor::article[1]");
+
+  await stickyA.click({ position: { x: 16, y: 12 } });
+  await stickyB.click({ modifiers: ["Shift"], position: { x: 16, y: 12 } });
+  await stickyC.click({ modifiers: ["Shift"], position: { x: 16, y: 12 } });
+  await expect(page.getByText(/Selected:\s*3 objects/i)).toBeVisible();
+
+  const alignResult = await sendAiCommand(page, "Align selected objects top");
+  expect(alignResult.assistantMessage).toContain("Aligned 3 selected objects");
+
+  const alignedA = await stickyA.boundingBox();
+  const alignedB = await stickyB.boundingBox();
+  const alignedC = await stickyC.boundingBox();
+  if (!alignedA || !alignedB || !alignedC) {
+    throw new Error("Could not read sticky positions after align command.");
+  }
+
+  expect(Math.abs(alignedA.y - alignedB.y)).toBeLessThanOrEqual(10);
+  expect(Math.abs(alignedA.y - alignedC.y)).toBeLessThanOrEqual(10);
+
+  await stickyA.click({ position: { x: 16, y: 12 } });
+  await stickyB.click({ modifiers: ["Shift"], position: { x: 16, y: 12 } });
+  await stickyC.click({ modifiers: ["Shift"], position: { x: 16, y: 12 } });
+  await expect(page.getByText(/Selected:\s*3 objects/i)).toBeVisible();
+
+  const distributeResult = await sendAiCommand(
+    page,
+    "Distribute selected objects horizontally",
+  );
+  expect(distributeResult.assistantMessage).toContain(
+    "Distributed 3 selected objects",
+  );
+
+  const distributedA = await stickyA.boundingBox();
+  const distributedB = await stickyB.boundingBox();
+  const distributedC = await stickyC.boundingBox();
+  if (!distributedA || !distributedB || !distributedC) {
+    throw new Error("Could not read sticky positions after distribute command.");
+  }
+
+  const centerAX = distributedA.x + distributedA.width / 2;
+  const centerBX = distributedB.x + distributedB.width / 2;
+  const centerCX = distributedC.x + distributedC.width / 2;
+  const deltaAB = centerBX - centerAX;
+  const deltaBC = centerCX - centerBX;
+
+  expect(Math.abs(deltaAB - deltaBC)).toBeLessThanOrEqual(10);
+
+  console.log("Langfuse trace id (align create A):", createOne.traceId);
+  console.log("Langfuse trace id (align create B):", createTwo.traceId);
+  console.log("Langfuse trace id (align create C):", createThree.traceId);
+  console.log("Langfuse trace id (align selected):", alignResult.traceId);
+  console.log(
+    "Langfuse trace id (distribute selected):",
+    distributeResult.traceId,
+  );
+});

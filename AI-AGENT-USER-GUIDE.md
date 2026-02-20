@@ -49,6 +49,8 @@ Demo narration tip:
   - create multiple stickies with count and color (for example `create 25 red stickies`)
   - create sticky-note grids from prompts like `create a 2x3 grid of sticky notes`
   - arrange selected objects into a grid (`arrange selected in a grid`, `arrange selected in 3 columns`)
+  - align selected objects (`align selected left`, `align selected top`, `align selected center`)
+  - distribute selected objects (`distribute selected objects horizontally`, `space selected evenly vertically`)
   - move selected objects
   - move all objects of a type (optionally color-filtered)
   - resize selected objects
@@ -78,11 +80,15 @@ The backend tool schema includes:
 
 - `createStickyNote(text, x, y, color)`
 - `createShape(type, x, y, width, height, color)`
-  - `type`: `rect | circle | triangle | star`
+  - `type`: `rect | circle | line | triangle | star`
 - `createFrame(title, x, y, width, height)`
 - `createConnector(fromId, toId, style)`
   - `style`: `undirected | one-way-arrow | two-way-arrow`
 - `arrangeObjectsInGrid(objectIds, columns, gapX?, gapY?, originX?, originY?)`
+- `alignObjects(objectIds, alignment)`
+  - `alignment`: `left | center | right | top | middle | bottom`
+- `distributeObjects(objectIds, axis)`
+  - `axis`: `horizontal | vertical`
 - `moveObject(objectId, x, y)`
 - `resizeObject(objectId, width, height)`
 - `updateText(objectId, newText)`
@@ -117,8 +123,10 @@ Use these as copy/paste starting points.
 
 - `Arrange selected sticky notes in a grid`
 - `Arrange selected objects in 3 columns`
+- `Align selected objects top`
+- `Distribute selected objects horizontally`
 - `Create a 2x3 grid of sticky notes for pros and cons`
-- `Space selected elements evenly` (planned next)
+- `Space selected elements evenly`
 
 ### Complex template commands
 
@@ -188,5 +196,5 @@ Near-term roadmap:
 
 1. Route natural language to the full tool set (not just SWOT).
 2. Add MCP fallback path for all tool-planning commands.
-3. Add broader template catalog and command coverage (space-evenly, align, retro, journey map).
+3. Add broader template catalog and command coverage (retro, journey map, connector language).
 4. Add LLM planner on top of deterministic paths, with deterministic fallback preserved.

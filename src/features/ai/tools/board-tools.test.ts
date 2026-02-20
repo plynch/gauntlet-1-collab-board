@@ -25,6 +25,7 @@ class FakeFirestore {
   readonly objects = new Map<string, ObjectDoc>();
   readonly deletedIds: string[] = [];
   batchCommitCount = 0;
+  private createdIdCounter = 0;
 
   /**
    * Initializes this class instance.
@@ -61,6 +62,30 @@ class FakeFirestore {
                   data: () => ({ ...data }),
                 })),
               }),
+              add: async (payload: Record<string, unknown>) => {
+                this.createdIdCounter += 1;
+                const id = `created-${this.createdIdCounter}`;
+                this.objects.set(id, {
+                  type: typeof payload.type === "string" ? payload.type : "rect",
+                  zIndex:
+                    typeof payload.zIndex === "number" ? payload.zIndex : 0,
+                  x: typeof payload.x === "number" ? payload.x : 0,
+                  y: typeof payload.y === "number" ? payload.y : 0,
+                  width: typeof payload.width === "number" ? payload.width : 120,
+                  height:
+                    typeof payload.height === "number" ? payload.height : 120,
+                  rotationDeg:
+                    typeof payload.rotationDeg === "number"
+                      ? payload.rotationDeg
+                      : 0,
+                  color:
+                    typeof payload.color === "string"
+                      ? payload.color
+                      : "#93c5fd",
+                  text: typeof payload.text === "string" ? payload.text : "",
+                });
+                return { id };
+              },
               doc: (id: string) => ({
                 id,
                 update: async (payload: UpdatePayload) => {
@@ -278,5 +303,86 @@ describe("BoardToolExecutor arrangeObjectsInGrid", () => {
     expect(byId.get("obj-1")?.y).toBe(80);
     expect(byId.get("obj-2")?.x).toBe(180);
     expect(byId.get("obj-2")?.y).toBe(80);
+  });
+});
+
+describe("BoardToolExecutor alignObjects", () => {
+  it("aligns selected objects to left edge", async () => {
+    const fakeDb = new FakeFirestore([
+      createObject("obj-1", 1, { x: 100, y: 120, width: 140, height: 90 }),
+      createObject("obj-2", 2, { x: 300, y: 210, width: 90, height: 70 }),
+      createObject("obj-3", 3, { x: 220, y: 320, width: 120, height: 60 }),
+    ]);
+    const executor = new BoardToolExecutor({
+      boardId: "board-1",
+      userId: "user-1",
+      db: fakeDb as unknown as Firestore,
+    });
+
+    const result = await executor.alignObjects({
+      objectIds: ["obj-1", "obj-2", "obj-3"],
+      alignment: "left",
+    });
+    const state = await executor.getBoardState();
+    const byId = new Map(state.map((objectItem) => [objectItem.id, objectItem]));
+
+    expect(result.tool).toBe("alignObjects");
+    expect(byId.get("obj-1")?.x).toBe(100);
+    expect(byId.get("obj-2")?.x).toBe(100);
+    expect(byId.get("obj-3")?.x).toBe(100);
+  });
+});
+
+describe("BoardToolExecutor distributeObjects", () => {
+  it("distributes selected objects horizontally by center points", async () => {
+    const fakeDb = new FakeFirestore([
+      createObject("obj-1", 1, { x: 100, y: 80, width: 100, height: 80 }),
+      createObject("obj-2", 2, { x: 260, y: 80, width: 100, height: 80 }),
+      createObject("obj-3", 3, { x: 500, y: 80, width: 100, height: 80 }),
+    ]);
+    const executor = new BoardToolExecutor({
+      boardId: "board-1",
+      userId: "user-1",
+      db: fakeDb as unknown as Firestore,
+    });
+
+    const result = await executor.distributeObjects({
+      objectIds: ["obj-1", "obj-2", "obj-3"],
+      axis: "horizontal",
+    });
+    const state = await executor.getBoardState();
+    const byId = new Map(state.map((objectItem) => [objectItem.id, objectItem]));
+
+    expect(result.tool).toBe("distributeObjects");
+    expect(byId.get("obj-1")?.x).toBe(100);
+    expect(byId.get("obj-2")?.x).toBe(300);
+    expect(byId.get("obj-3")?.x).toBe(500);
+  });
+});
+
+describe("BoardToolExecutor createShape", () => {
+  it("creates line shape with line-safe minimum size", async () => {
+    const fakeDb = new FakeFirestore([]);
+    const executor = new BoardToolExecutor({
+      boardId: "board-1",
+      userId: "user-1",
+      db: fakeDb as unknown as Firestore,
+    });
+
+    const result = await executor.createShape({
+      type: "line",
+      x: 180,
+      y: 220,
+      width: 8,
+      height: 1,
+      color: "#94a3b8",
+    });
+    const state = await executor.getBoardState();
+
+    expect(result.tool).toBe("createShape");
+    expect(state).toHaveLength(1);
+    expect(state[0]?.type).toBe("line");
+    expect(state[0]?.width).toBe(24);
+    expect(state[0]?.height).toBe(2);
   });
 });

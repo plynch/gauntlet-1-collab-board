@@ -130,6 +130,8 @@ Generated docs location:
 
 - ✅ Deterministic command routing for SWOT requests
 - ✅ Deterministic command routing for create/move/resize/color/text commands
+- ✅ Deterministic layout routing for arrange-grid, align-selected, and distribute-selected
+- ✅ Deterministic sticky batch/grid prompts (`create 25 red stickies`, `create 2x3 sticky grid`)
 - ✅ Runtime MCP integration (in-app Streamable HTTP endpoint)
 - ✅ Local fallback template provider if MCP call fails/times out
 - ✅ Server-side board tool executor (create/move/resize/update/color/get state)
@@ -166,6 +168,7 @@ Guardrails:
 
 - Max operations per command
 - Max created objects per command
+- Max layout object ids per layout tool call
 - Per-user rate limiting window
 - Per-board command lock to avoid conflicting concurrent AI runs
 - MCP timeout and overall route timeout
@@ -219,6 +222,7 @@ Expected trace log pattern in output:
 OpenAI smoke suite behavior:
 
 - Runs only in emulator mode and fails fast when server-side OpenAI config is not ready.
+- Sets `AI_REQUIRE_OPENAI=true` so paid smoke fails immediately if OpenAI does not produce the plan.
 - Validates `/api/e2e/langfuse-ready` and `/api/e2e/openai-ready` before paid calls.
 - Executes two paid calls and asserts:
   - non-empty `traceId`

@@ -134,6 +134,26 @@ export type BoardToolCall =
       };
     }
   | {
+      tool: "alignObjects";
+      args: {
+        objectIds: string[];
+        alignment:
+          | "left"
+          | "center"
+          | "right"
+          | "top"
+          | "middle"
+          | "bottom";
+      };
+    }
+  | {
+      tool: "distributeObjects";
+      args: {
+        objectIds: string[];
+        axis: "horizontal" | "vertical";
+      };
+    }
+  | {
       tool: "moveObject";
       args: {
         objectId: string;

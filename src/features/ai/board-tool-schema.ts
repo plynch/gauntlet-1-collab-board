@@ -123,6 +123,45 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
     },
   },
   {
+    name: "alignObjects",
+    description: "Align selected objects to one shared edge or center line.",
+    parameters: {
+      type: "object",
+      properties: {
+        objectIds: {
+          type: "array",
+          items: { type: "string" },
+        },
+        alignment: {
+          type: "string",
+          enum: ["left", "center", "right", "top", "middle", "bottom"],
+        },
+      },
+      required: ["objectIds", "alignment"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "distributeObjects",
+    description:
+      "Evenly distribute selected objects by center point on horizontal or vertical axis.",
+    parameters: {
+      type: "object",
+      properties: {
+        objectIds: {
+          type: "array",
+          items: { type: "string" },
+        },
+        axis: {
+          type: "string",
+          enum: ["horizontal", "vertical"],
+        },
+      },
+      required: ["objectIds", "axis"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "moveObject",
     description: "Move one object to a specific coordinate.",
     parameters: {

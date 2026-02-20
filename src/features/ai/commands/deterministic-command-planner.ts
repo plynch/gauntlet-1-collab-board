@@ -220,6 +220,52 @@ function parseGridGap(message: string): {
 }
 
 /**
+ * Parses alignment mode.
+ */
+function parseAlignmentMode(message: string):
+  | "left"
+  | "center"
+  | "right"
+  | "top"
+  | "middle"
+  | "bottom"
+  | null {
+  const lower = normalizeMessage(message);
+  if (/\bleft\b/.test(lower)) {
+    return "left";
+  }
+  if (/\bright\b/.test(lower)) {
+    return "right";
+  }
+  if (/\btop\b/.test(lower)) {
+    return "top";
+  }
+  if (/\bbottom\b/.test(lower)) {
+    return "bottom";
+  }
+  if (/\bmiddle\b/.test(lower)) {
+    return "middle";
+  }
+  if (/\bcenter\b|\bcentre\b/.test(lower)) {
+    return "center";
+  }
+
+  return null;
+}
+
+/**
+ * Parses distribution axis.
+ */
+function parseDistributionAxis(message: string): "horizontal" | "vertical" {
+  const lower = normalizeMessage(message);
+  if (/\bvertical\b|\bvertically\b|\by-axis\b|\bup\b|\bdown\b/.test(lower)) {
+    return "vertical";
+  }
+
+  return "horizontal";
+}
+
+/**
  * Gets board bounds.
  */
 function getBoardBounds(boardState: BoardObjectSnapshot[]): {
@@ -357,6 +403,9 @@ function parseShapeType(message: string): BoardObjectToolKind | null {
   }
   if (/\bcircles?\b/.test(lower)) {
     return "circle";
+  }
+  if (/\blines?\b/.test(lower)) {
+    return "line";
   }
   if (/\btriangles?\b/.test(lower)) {
     return "triangle";
@@ -538,6 +587,122 @@ function planArrangeGrid(
             columns,
             ...(gap?.gapX !== undefined ? { gapX: gap.gapX } : {}),
             ...(gap?.gapY !== undefined ? { gapY: gap.gapY } : {}),
+          },
+        },
+      ],
+    }),
+  };
+}
+
+/**
+ * Returns whether align command is true.
+ */
+function isAlignCommand(message: string): boolean {
+  return /\balign\b/.test(normalizeMessage(message));
+}
+
+/**
+ * Handles plan align selected.
+ */
+function planAlignSelected(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
+  if (!isAlignCommand(input.message)) {
+    return null;
+  }
+
+  const selectedObjects = getSelectedObjects(
+    input.boardState,
+    input.selectedObjectIds,
+  );
+  if (selectedObjects.length < 2) {
+    return {
+      planned: false,
+      intent: "align-objects",
+      assistantMessage:
+        "Select two or more objects first, then run align selected.",
+    };
+  }
+
+  const alignment = parseAlignmentMode(input.message);
+  if (!alignment) {
+    return {
+      planned: false,
+      intent: "align-objects",
+      assistantMessage:
+        "Specify alignment direction: left, center, right, top, middle, or bottom.",
+    };
+  }
+
+  return {
+    planned: true,
+    intent: "align-objects",
+    assistantMessage: `Aligned ${selectedObjects.length} selected object${selectedObjects.length === 1 ? "" : "s"} to ${alignment}.`,
+    plan: toPlan({
+      id: "command.align-selected",
+      name: "Align Selected Objects",
+      operations: [
+        {
+          tool: "alignObjects",
+          args: {
+            objectIds: selectedObjects.map((objectItem) => objectItem.id),
+            alignment,
+          },
+        },
+      ],
+    }),
+  };
+}
+
+/**
+ * Returns whether distribute command is true.
+ */
+function isDistributeCommand(message: string): boolean {
+  const lower = normalizeMessage(message);
+  return (
+    /\bdistribute\b/.test(lower) ||
+    /\bspace\b[\w\s]{0,25}\bevenly\b/.test(lower) ||
+    /\bevenly\b[\w\s]{0,25}\bspace\b/.test(lower)
+  );
+}
+
+/**
+ * Handles plan distribute selected.
+ */
+function planDistributeSelected(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
+  if (!isDistributeCommand(input.message)) {
+    return null;
+  }
+
+  const selectedObjects = getSelectedObjects(
+    input.boardState,
+    input.selectedObjectIds,
+  );
+  if (selectedObjects.length < 3) {
+    return {
+      planned: false,
+      intent: "distribute-objects",
+      assistantMessage:
+        "Select three or more objects first, then run distribute selected.",
+    };
+  }
+
+  const axis = parseDistributionAxis(input.message);
+  return {
+    planned: true,
+    intent: "distribute-objects",
+    assistantMessage: `Distributed ${selectedObjects.length} selected object${selectedObjects.length === 1 ? "" : "s"} on ${axis} axis.`,
+    plan: toPlan({
+      id: "command.distribute-selected",
+      name: "Distribute Selected Objects",
+      operations: [
+        {
+          tool: "distributeObjects",
+          args: {
+            objectIds: selectedObjects.map((objectItem) => objectItem.id),
+            axis,
           },
         },
       ],
@@ -1158,6 +1323,8 @@ export function planDeterministicCommand(
     planClearBoard,
     planDeleteSelected,
     planArrangeGrid,
+    planAlignSelected,
+    planDistributeSelected,
     planCreateStickyGrid,
     planCreateStickyBatch,
     planCreateSticky,
@@ -1181,6 +1348,6 @@ export function planDeterministicCommand(
     planned: false,
     intent: "unsupported-command",
     assistantMessage:
-      "I could not map that command yet. Try creating shapes/stickies, arranging selected objects in a grid, moving/resizing selected objects, deleting selected, clearing the board, changing selected color, or creating a SWOT template.",
+      "I could not map that command yet. Try creating shapes/stickies, arranging selected objects in a grid, aligning/distributing selected objects, moving/resizing selected objects, deleting selected, clearing the board, changing selected color, or creating a SWOT template.",
   };
 }

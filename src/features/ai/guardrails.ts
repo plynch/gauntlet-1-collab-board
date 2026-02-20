@@ -13,6 +13,12 @@ export const AI_BOARD_LOCK_TTL_MS = 15_000;
 export const AI_ROUTE_TIMEOUT_MS = 12_000;
 
 let guardrailStore: GuardrailStore | null = null;
+type LayoutToolCall = Extract<
+  BoardToolCall,
+  {
+    tool: "arrangeObjectsInGrid" | "alignObjects" | "distributeObjects";
+  }
+>;
 
 /**
  * Gets guardrail store.
@@ -47,6 +53,17 @@ function isCreateTool(toolCall: BoardToolCall): boolean {
     toolCall.tool === "createGridContainer" ||
     toolCall.tool === "createFrame" ||
     toolCall.tool === "createConnector"
+  );
+}
+
+/**
+ * Returns whether layout tool is true.
+ */
+function isLayoutTool(toolCall: BoardToolCall): toolCall is LayoutToolCall {
+  return (
+    toolCall.tool === "arrangeObjectsInGrid" ||
+    toolCall.tool === "alignObjects" ||
+    toolCall.tool === "distributeObjects"
   );
 }
 
@@ -105,14 +122,14 @@ export function validateTemplatePlan(plan: TemplatePlan):
 
   const oversizedLayout = plan.operations.find(
     (operation) =>
-      operation.tool === "arrangeObjectsInGrid" &&
+      isLayoutTool(operation) &&
       operation.args.objectIds.length > MAX_AI_LAYOUT_OBJECTS_PER_TOOL_CALL,
   );
-  if (oversizedLayout && oversizedLayout.tool === "arrangeObjectsInGrid") {
+  if (oversizedLayout && isLayoutTool(oversizedLayout)) {
     return {
       ok: false,
       status: 400,
-      error: `Grid layout operation exceeds max object ids (${MAX_AI_LAYOUT_OBJECTS_PER_TOOL_CALL}).`,
+      error: `${oversizedLayout.tool} exceeds max object ids (${MAX_AI_LAYOUT_OBJECTS_PER_TOOL_CALL}).`,
     };
   }
 

@@ -33,6 +33,14 @@ const LAYOUT_GRID_MIN_GAP = 0;
 const LAYOUT_GRID_MAX_GAP = 400;
 const LAYOUT_GRID_DEFAULT_GAP = 32;
 
+type LayoutAlignment =
+  | "left"
+  | "center"
+  | "right"
+  | "top"
+  | "middle"
+  | "bottom";
+
 type BoardToolExecutorOptions = {
   boardId: string;
   userId: string;
@@ -483,6 +491,44 @@ export class BoardToolExecutor {
   }
 
   /**
+   * Resolves selected objects by ids.
+   */
+  private async resolveSelectedObjects(
+    objectIds: string[],
+  ): Promise<BoardObjectSnapshot[]> {
+    await this.ensureLoadedObjects();
+
+    const uniqueObjectIds = Array.from(new Set(objectIds.map((value) => value.trim())))
+      .filter((value) => value.length > 0);
+
+    return uniqueObjectIds
+      .map((objectId) => this.objectsById.get(objectId))
+      .filter((objectItem): objectItem is BoardObjectSnapshot =>
+        Boolean(objectItem),
+      );
+  }
+
+  /**
+   * Sorts objects by visual position.
+   */
+  private sortObjectsByPosition(
+    objects: BoardObjectSnapshot[],
+  ): BoardObjectSnapshot[] {
+    return [...objects].sort((left, right) => {
+      if (left.y !== right.y) {
+        return left.y - right.y;
+      }
+      if (left.x !== right.x) {
+        return left.x - right.x;
+      }
+      if (left.zIndex !== right.zIndex) {
+        return left.zIndex - right.zIndex;
+      }
+      return left.id.localeCompare(right.id);
+    });
+  }
+
+  /**
    * Creates sticky note.
    */
   async createStickyNote(args: {
@@ -515,20 +561,18 @@ export class BoardToolExecutor {
     height: number;
     color: string;
   }): Promise<ExecuteToolResult> {
-    if (
-      args.type === "line" ||
-      args.type === "gridContainer" ||
-      isConnectorType(args.type)
-    ) {
+    if (args.type === "gridContainer" || isConnectorType(args.type)) {
       throw new Error("createShape only supports non-connector board shapes.");
     }
 
+    const minimumWidth = args.type === "line" ? 24 : 20;
+    const minimumHeight = args.type === "line" ? 2 : 20;
     const created = await this.createObject({
       type: args.type,
       x: args.x,
       y: args.y,
-      width: Math.max(20, args.width),
-      height: Math.max(20, args.height),
+      width: Math.max(minimumWidth, args.width),
+      height: Math.max(minimumHeight, args.height),
       color: args.color,
     });
 
@@ -718,34 +762,13 @@ export class BoardToolExecutor {
     originX?: number;
     originY?: number;
   }): Promise<ExecuteToolResult> {
-    await this.ensureLoadedObjects();
-
-    const uniqueObjectIds = Array.from(
-      new Set(args.objectIds.map((value) => value.trim())),
-    ).filter((value) => value.length > 0);
-
-    const selectedObjects = uniqueObjectIds
-      .map((objectId) => this.objectsById.get(objectId))
-      .filter((objectItem): objectItem is BoardObjectSnapshot =>
-        Boolean(objectItem),
-      );
+    const selectedObjects = await this.resolveSelectedObjects(args.objectIds);
 
     if (selectedObjects.length < 2) {
       return { tool: "arrangeObjectsInGrid" };
     }
 
-    const sortedObjects = [...selectedObjects].sort((left, right) => {
-      if (left.y !== right.y) {
-        return left.y - right.y;
-      }
-      if (left.x !== right.x) {
-        return left.x - right.x;
-      }
-      if (left.zIndex !== right.zIndex) {
-        return left.zIndex - right.zIndex;
-      }
-      return left.id.localeCompare(right.id);
-    });
+    const sortedObjects = this.sortObjectsByPosition(selectedObjects);
 
     const columns = toGridDimension(
       args.columns,
@@ -790,6 +813,128 @@ export class BoardToolExecutor {
     }
 
     return { tool: "arrangeObjectsInGrid" };
+  }
+
+  /**
+   * Aligns objects.
+   */
+  async alignObjects(args: {
+    objectIds: string[];
+    alignment: LayoutAlignment;
+  }): Promise<ExecuteToolResult> {
+    const selectedObjects = await this.resolveSelectedObjects(args.objectIds);
+    if (selectedObjects.length < 2) {
+      return { tool: "alignObjects" };
+    }
+
+    const minLeft = Math.min(...selectedObjects.map((objectItem) => objectItem.x));
+    const maxRight = Math.max(
+      ...selectedObjects.map((objectItem) => objectItem.x + objectItem.width),
+    );
+    const minTop = Math.min(...selectedObjects.map((objectItem) => objectItem.y));
+    const maxBottom = Math.max(
+      ...selectedObjects.map((objectItem) => objectItem.y + objectItem.height),
+    );
+    const centerX = (minLeft + maxRight) / 2;
+    const centerY = (minTop + maxBottom) / 2;
+
+    for (const objectItem of selectedObjects) {
+      if (args.alignment === "left") {
+        await this.updateObject(objectItem.id, { x: minLeft });
+        continue;
+      }
+
+      if (args.alignment === "center") {
+        await this.updateObject(objectItem.id, {
+          x: centerX - objectItem.width / 2,
+        });
+        continue;
+      }
+
+      if (args.alignment === "right") {
+        await this.updateObject(objectItem.id, {
+          x: maxRight - objectItem.width,
+        });
+        continue;
+      }
+
+      if (args.alignment === "top") {
+        await this.updateObject(objectItem.id, { y: minTop });
+        continue;
+      }
+
+      if (args.alignment === "middle") {
+        await this.updateObject(objectItem.id, {
+          y: centerY - objectItem.height / 2,
+        });
+        continue;
+      }
+
+      await this.updateObject(objectItem.id, {
+        y: maxBottom - objectItem.height,
+      });
+    }
+
+    return { tool: "alignObjects" };
+  }
+
+  /**
+   * Distributes objects.
+   */
+  async distributeObjects(args: {
+    objectIds: string[];
+    axis: "horizontal" | "vertical";
+  }): Promise<ExecuteToolResult> {
+    const selectedObjects = await this.resolveSelectedObjects(args.objectIds);
+    if (selectedObjects.length < 3) {
+      return { tool: "distributeObjects" };
+    }
+
+    const sortedObjects = [...selectedObjects].sort((left, right) => {
+      const leftCenter = toObjectCenter(left);
+      const rightCenter = toObjectCenter(right);
+      if (args.axis === "horizontal" && leftCenter.x !== rightCenter.x) {
+        return leftCenter.x - rightCenter.x;
+      }
+      if (args.axis === "vertical" && leftCenter.y !== rightCenter.y) {
+        return leftCenter.y - rightCenter.y;
+      }
+      if (left.zIndex !== right.zIndex) {
+        return left.zIndex - right.zIndex;
+      }
+      return left.id.localeCompare(right.id);
+    });
+
+    const first = sortedObjects[0];
+    const last = sortedObjects[sortedObjects.length - 1];
+    if (!first || !last) {
+      return { tool: "distributeObjects" };
+    }
+
+    const firstCenter = toObjectCenter(first);
+    const lastCenter = toObjectCenter(last);
+    const span =
+      args.axis === "horizontal"
+        ? lastCenter.x - firstCenter.x
+        : lastCenter.y - firstCenter.y;
+    const step = span / (sortedObjects.length - 1);
+
+    for (let index = 1; index < sortedObjects.length - 1; index += 1) {
+      const objectItem = sortedObjects[index];
+      const nextCenter = (args.axis === "horizontal" ? firstCenter.x : firstCenter.y) + step * index;
+
+      if (args.axis === "horizontal") {
+        await this.updateObject(objectItem.id, {
+          x: nextCenter - objectItem.width / 2,
+        });
+      } else {
+        await this.updateObject(objectItem.id, {
+          y: nextCenter - objectItem.height / 2,
+        });
+      }
+    }
+
+    return { tool: "distributeObjects" };
   }
 
   /**
@@ -914,6 +1059,10 @@ export class BoardToolExecutor {
         return this.createConnector(toolCall.args);
       case "arrangeObjectsInGrid":
         return this.arrangeObjectsInGrid(toolCall.args);
+      case "alignObjects":
+        return this.alignObjects(toolCall.args);
+      case "distributeObjects":
+        return this.distributeObjects(toolCall.args);
       case "moveObject":
         return this.moveObject(toolCall.args);
       case "resizeObject":

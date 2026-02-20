@@ -116,4 +116,35 @@ describe("parseOpenAiPlannerOutput", () => {
     expect(parsed.planned).toBe(true);
     expect(parsed.operations).toHaveLength(1);
   });
+
+  it("accepts align/distribute operations", () => {
+    const parsed = parseOpenAiPlannerOutput(
+      JSON.stringify({
+        intent: "layout-pack",
+        planned: true,
+        assistantMessage: "Aligned and distributed selection.",
+        operations: [
+          {
+            tool: "alignObjects",
+            args: {
+              objectIds: ["obj-1", "obj-2", "obj-3"],
+              alignment: "left",
+            },
+          },
+          {
+            tool: "distributeObjects",
+            args: {
+              objectIds: ["obj-1", "obj-2", "obj-3"],
+              axis: "horizontal",
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(parsed.planned).toBe(true);
+    expect(parsed.operations).toHaveLength(2);
+    expect(parsed.operations[0]?.tool).toBe("alignObjects");
+    expect(parsed.operations[1]?.tool).toBe("distributeObjects");
+  });
 });

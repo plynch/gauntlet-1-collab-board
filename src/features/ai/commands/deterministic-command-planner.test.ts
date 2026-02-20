@@ -178,6 +178,91 @@ describe("planDeterministicCommand", () => {
     expect(result.assistantMessage).toContain("Select two or more objects");
   });
 
+  it("plans align-objects command when selected objects exist", () => {
+    const result = planDeterministicCommand({
+      message: "Align selected objects left",
+      boardState: BOARD_STATE,
+      selectedObjectIds: ["obj-1", "obj-2"],
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("align-objects");
+      expect(result.plan.operations).toHaveLength(1);
+      expect(result.plan.operations[0]?.tool).toBe("alignObjects");
+      if (result.plan.operations[0]?.tool === "alignObjects") {
+        expect(result.plan.operations[0].args.alignment).toBe("left");
+        expect(result.plan.operations[0].args.objectIds).toEqual([
+          "obj-1",
+          "obj-2",
+        ]);
+      }
+    }
+  });
+
+  it("returns actionable message when align has no selection", () => {
+    const result = planDeterministicCommand({
+      message: "Align selected objects left",
+      boardState: BOARD_STATE,
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(false);
+    expect(result.intent).toBe("align-objects");
+    expect(result.assistantMessage).toContain("Select two or more objects");
+  });
+
+  it("plans distribute-objects command when selected objects exist", () => {
+    const boardState = [
+      ...BOARD_STATE,
+      {
+        id: "obj-3",
+        type: "sticky" as const,
+        zIndex: 3,
+        x: 720,
+        y: 120,
+        width: 220,
+        height: 170,
+        rotationDeg: 0,
+        color: "#fde68a",
+        text: "Third",
+        updatedAt: null,
+      },
+    ];
+    const result = planDeterministicCommand({
+      message: "Distribute selected objects horizontally",
+      boardState,
+      selectedObjectIds: ["obj-1", "obj-2", "obj-3"],
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("distribute-objects");
+      expect(result.plan.operations).toHaveLength(1);
+      expect(result.plan.operations[0]?.tool).toBe("distributeObjects");
+      if (result.plan.operations[0]?.tool === "distributeObjects") {
+        expect(result.plan.operations[0].args.axis).toBe("horizontal");
+        expect(result.plan.operations[0].args.objectIds).toEqual([
+          "obj-1",
+          "obj-2",
+          "obj-3",
+        ]);
+      }
+    }
+  });
+
+  it("returns actionable message when distribute has too few selected objects", () => {
+    const result = planDeterministicCommand({
+      message: "Distribute selected objects horizontally",
+      boardState: BOARD_STATE,
+      selectedObjectIds: ["obj-1", "obj-2"],
+    });
+
+    expect(result.planned).toBe(false);
+    expect(result.intent).toBe("distribute-objects");
+    expect(result.assistantMessage).toContain("Select three or more objects");
+  });
+
   it("plans create-sticky-grid for 2x3 prompt", () => {
     const result = planDeterministicCommand({
       message: "Create a 2x3 grid of sticky notes for pros and cons",
@@ -219,6 +304,24 @@ describe("planDeterministicCommand", () => {
       expect(result.intent).toBe("move-selected");
       expect(result.plan.operations).toHaveLength(2);
       expect(result.plan.operations[0]?.tool).toBe("moveObject");
+    }
+  });
+
+  it("plans line shape creation commands", () => {
+    const result = planDeterministicCommand({
+      message: "Create a line at position 240, 200 size 280 by 12",
+      boardState: BOARD_STATE,
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("create-line");
+      expect(result.plan.operations).toHaveLength(1);
+      expect(result.plan.operations[0]?.tool).toBe("createShape");
+      if (result.plan.operations[0]?.tool === "createShape") {
+        expect(result.plan.operations[0].args.type).toBe("line");
+      }
     }
   });
 

@@ -36,7 +36,10 @@ import {
   reserveOpenAiBudget,
 } from "@/features/ai/openai/openai-cost-controls";
 import { getOpenAiPlannerConfig } from "@/features/ai/openai/openai-client";
-import { planBoardCommandWithOpenAi } from "@/features/ai/openai/openai-command-planner";
+import {
+  type OpenAiPlannerFailureError,
+  planBoardCommandWithOpenAi,
+} from "@/features/ai/openai/openai-command-planner";
 import { instantiateLocalTemplate } from "@/features/ai/templates/local-template-provider";
 import { SWOT_TEMPLATE_ID } from "@/features/ai/templates/template-types";
 import { BoardToolExecutor } from "@/features/ai/tools/board-tools";
@@ -222,7 +225,43 @@ type OpenAiPlanAttempt =
   | {
       status: "error";
       reason: string;
+      totalSpentUsd?: number;
+      usage?: {
+        model: string;
+        inputTokens: number;
+        outputTokens: number;
+        totalTokens: number;
+        estimatedCostUsd: number;
+      };
     };
+
+/**
+ * Gets openai usage from planner error.
+ */
+function getOpenAiUsageFromError(error: unknown): {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
+} | null {
+  const usage = (error as OpenAiPlannerFailureError | null)?.usage;
+  if (!usage) {
+    return null;
+  }
+
+  if (
+    typeof usage.model !== "string" ||
+    typeof usage.inputTokens !== "number" ||
+    typeof usage.outputTokens !== "number" ||
+    typeof usage.totalTokens !== "number" ||
+    typeof usage.estimatedCostUsd !== "number"
+  ) {
+    return null;
+  }
+
+  return usage;
+}
 
 /**
  * Returns whether openai is required for stub commands is true.
@@ -358,17 +397,42 @@ async function attemptOpenAiPlanner(options: {
       usage: plannerResult.usage,
     };
   } catch (error) {
+    const usage = getOpenAiUsageFromError(error);
+    let totalSpentUsd: number | undefined;
+
     if (reservationOpen) {
-      await releaseOpenAiBudgetReservation(budgetReservation.reservedUsd);
+      if (usage) {
+        const finalized = await finalizeOpenAiBudgetReservation({
+          reservedUsd: budgetReservation.reservedUsd,
+          actualUsd:
+            usage.estimatedCostUsd > 0
+              ? usage.estimatedCostUsd
+              : config.reserveUsdPerCall,
+        });
+        totalSpentUsd = finalized.totalSpentUsd;
+      } else {
+        await releaseOpenAiBudgetReservation(budgetReservation.reservedUsd);
+      }
     }
 
     const reason = getErrorReason(error);
     openAiSpan.fail("OpenAI planner failed.", {
       reason,
+      ...(usage
+        ? {
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            totalTokens: usage.totalTokens,
+            estimatedCostUsd: usage.estimatedCostUsd,
+          }
+        : {}),
+      ...(typeof totalSpentUsd === "number" ? { totalSpentUsd } : {}),
     });
     return {
       status: "error",
       reason,
+      ...(usage ? { usage } : {}),
+      ...(typeof totalSpentUsd === "number" ? { totalSpentUsd } : {}),
     };
   }
 }

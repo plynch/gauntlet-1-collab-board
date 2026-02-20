@@ -532,6 +532,10 @@ export type OpenAiPlannerResult = {
   usage: OpenAiPlannerUsage;
 };
 
+export type OpenAiPlannerFailureError = Error & {
+  usage?: OpenAiPlannerUsage;
+};
+
 /**
  * Handles to board context object.
  */
@@ -564,6 +568,45 @@ function extractJsonCandidate(content: string): string {
   }
 
   return content.trim();
+}
+
+/**
+ * Gets openai planner usage from completion.
+ */
+function getOpenAiPlannerUsage(input: {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  inputCostPerMillionUsd: number;
+  outputCostPerMillionUsd: number;
+}): OpenAiPlannerUsage {
+  const totalTokens = input.inputTokens + input.outputTokens;
+  const estimatedCostUsd = estimateOpenAiCostUsd({
+    inputTokens: input.inputTokens,
+    outputTokens: input.outputTokens,
+    inputCostPerMillionUsd: input.inputCostPerMillionUsd,
+    outputCostPerMillionUsd: input.outputCostPerMillionUsd,
+  });
+
+  return {
+    model: input.model,
+    inputTokens: input.inputTokens,
+    outputTokens: input.outputTokens,
+    totalTokens,
+    estimatedCostUsd,
+  };
+}
+
+/**
+ * Handles create planner failure error.
+ */
+function createOpenAiPlannerFailureError(
+  reason: string,
+  usage: OpenAiPlannerUsage,
+): OpenAiPlannerFailureError {
+  const error = new Error(reason) as OpenAiPlannerFailureError;
+  error.usage = usage;
+  return error;
 }
 
 /**
@@ -636,21 +679,32 @@ export async function planBoardCommandWithOpenAi(input: {
     ],
   });
 
-  const content = completion.choices[0]?.message?.content;
-  if (typeof content !== "string" || content.trim().length === 0) {
-    throw new Error("OpenAI planner returned empty content.");
-  }
-
-  const parsed = parseOpenAiPlannerOutput(content);
-  const inputTokens = completion.usage?.prompt_tokens ?? 0;
-  const outputTokens = completion.usage?.completion_tokens ?? 0;
-  const totalTokens = completion.usage?.total_tokens ?? inputTokens + outputTokens;
-  const estimatedCostUsd = estimateOpenAiCostUsd({
-    inputTokens,
-    outputTokens,
+  const usage = getOpenAiPlannerUsage({
+    model: config.model,
+    inputTokens: completion.usage?.prompt_tokens ?? 0,
+    outputTokens: completion.usage?.completion_tokens ?? 0,
     inputCostPerMillionUsd: config.inputCostPerMillionUsd,
     outputCostPerMillionUsd: config.outputCostPerMillionUsd,
   });
+
+  const content = completion.choices[0]?.message?.content;
+  if (typeof content !== "string" || content.trim().length === 0) {
+    throw createOpenAiPlannerFailureError(
+      "OpenAI planner returned empty content.",
+      usage,
+    );
+  }
+
+  let parsed: ReturnType<typeof parseOpenAiPlannerOutput>;
+  try {
+    parsed = parseOpenAiPlannerOutput(content);
+  } catch (error) {
+    const reason =
+      error instanceof Error && error.message.trim().length > 0
+        ? error.message
+        : "OpenAI planner returned invalid JSON output.";
+    throw createOpenAiPlannerFailureError(reason, usage);
+  }
 
   return {
     intent: parsed.intent,
@@ -663,12 +717,6 @@ export async function planBoardCommandWithOpenAi(input: {
           operations: parsed.operations,
         }
       : null,
-    usage: {
-      model: config.model,
-      inputTokens,
-      outputTokens,
-      totalTokens,
-      estimatedCostUsd,
-    },
+    usage,
   };
 }

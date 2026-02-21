@@ -198,6 +198,49 @@ Env notes:
   - optional `AI_GUARDRAIL_STORE=memory|firestore`
 - hard app-level spend guardrail: `$10.00`
 
+## Golden Evals (Manual Acceptance)
+
+Run these commands in the AI drawer as the canonical live QA set.
+
+Important selection prerequisites:
+- Commands using "these/elements" require manual multi-select first.
+- `Arrange these sticky notes in a grid` requires at least 2 selected objects.
+- `Space these elements evenly` requires at least 3 selected objects.
+- Sticky colors (red/pink/yellow) are matched to the closest app palette colors.
+
+Suggested execution order:
+`1, 2, 3, 6, 8, 9, 10, 4, 5, 7`
+
+1. `Add a yellow sticky note that says 'User Research'`
+Expected result: exactly one new sticky is created with text `User Research` and yellow-family palette color.
+
+2. `Create a blue rectangle at position 100,200`
+Expected result: exactly one blue rectangle is created near x=100, y=200.
+
+3. `Add a frame called "Sprint Planning"`
+Expected result: exactly one frame is created with title `Sprint Planning`.
+
+4. `Move all the pink sticky notes to the right side`
+Expected result: all pink stickies shift right (x increases); non-pink objects are not moved.
+
+5. `Arrange these sticky notes in a grid`
+Expected result: selected stickies are repositioned into a grid pattern (not a no-op).
+
+6. `Create a 2x3 grid of sticky notes for pros and cons`
+Expected result: six stickies are created in a 2x3 layout with `pros and cons`-style seeded text.
+
+7. `Space these elements evenly`
+Expected result: selected elements are redistributed with even spacing along an inferred axis.
+
+8. `Create a SWOT analysis template with four quadrants`
+Expected result: one 2x2 SWOT container appears with quadrant labels (`Strengths`, `Weaknesses`, `Opportunities`, `Threats`).
+
+9. `Build a user journey map with 5 stages`
+Expected result: one journey-map frame with five stage stickies appears.
+
+10. `Set up a retrospective board with What Went Well, What Didn't, and Action Items columns`
+Expected result: one retrospective frame appears with the three named columns.
+
 On-demand AI test suites:
 
 - Fallback matrix (20 commands, no paid LLM):

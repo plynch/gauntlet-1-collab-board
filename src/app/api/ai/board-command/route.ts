@@ -45,6 +45,7 @@ import {
   flushOpenAiTraces,
   runBoardCommandWithOpenAiAgents,
 } from "@/features/ai/openai/agents/openai-agents-runner";
+import { parseMessageIntentHints } from "@/features/ai/openai/agents/message-intent-hints";
 import { getOpenAiRequiredErrorResponse } from "@/features/ai/openai/openai-required-response";
 import { BoardToolExecutor } from "@/features/ai/tools/board-tools";
 import type {
@@ -335,6 +336,7 @@ function createsObject(toolCall: BoardToolCall): boolean {
     toolCall.tool === "createStickyNote" ||
     toolCall.tool === "createStickyBatch" ||
     toolCall.tool === "createShape" ||
+    toolCall.tool === "createShapeBatch" ||
     toolCall.tool === "createGridContainer" ||
     toolCall.tool === "createFrame" ||
     toolCall.tool === "createConnector"
@@ -353,6 +355,16 @@ type OpenAiPlanAttempt =
       model: string;
       runtime: "agents-sdk" | "chat-completions";
       assistantMessage: string;
+      totalSpentUsd: number;
+    }
+  | {
+      status: "policy-blocked";
+      model: string;
+      runtime: "agents-sdk" | "chat-completions";
+      intent: "create-object-limit-exceeded";
+      assistantMessage: string;
+      requestedCount: number;
+      maxAllowedCount: number;
       totalSpentUsd: number;
     }
   | {
@@ -516,11 +528,87 @@ function buildToolCallArgTraceFields(toolCall: BoardToolCall): {
 }
 
 /**
+ * Builds assistant message from actual execution outcome.
+ */
+function buildOutcomeAssistantMessageFromExecution(input: {
+  fallbackAssistantMessage: string;
+  operations: BoardToolCall[];
+  createdObjectIds: string[];
+  results: Awaited<ReturnType<BoardToolExecutor["executeToolCall"]>>[];
+}): string {
+  const createdCount = input.createdObjectIds.length;
+  const deletedCount = input.results.reduce((total, result) => {
+    const count =
+      typeof result.deletedCount === "number" && Number.isFinite(result.deletedCount)
+        ? Math.max(0, result.deletedCount)
+        : 0;
+    return total + count;
+  }, 0);
+
+  const createdStickyCount = input.operations.reduce((total, operation) => {
+    if (operation.tool === "createStickyBatch") {
+      return total + Math.max(0, Math.floor(operation.args.count));
+    }
+    return total + (operation.tool === "createStickyNote" ? 1 : 0);
+  }, 0);
+  const createdShapeCount = input.operations.reduce((total, operation) => {
+    if (operation.tool === "createShapeBatch") {
+      return total + Math.max(0, Math.floor(operation.args.count));
+    }
+    return total + (operation.tool === "createShape" ? 1 : 0);
+  }, 0);
+  const createToolKinds = new Set(
+    input.operations
+      .filter((operation) =>
+        operation.tool.startsWith("create"),
+      )
+      .map((operation) => operation.tool),
+  );
+  const hasMixedCreateTypes = createToolKinds.size > 1;
+
+  if (hasMixedCreateTypes && createdCount > 0) {
+    return createdCount === 1
+      ? "Created 1 object."
+      : `Created ${createdCount} objects.`;
+  }
+
+  if (createdStickyCount > 0) {
+    return createdCount === 1
+      ? "Created 1 sticky note."
+      : `Created ${createdCount} sticky notes.`;
+  }
+
+  if (createdShapeCount > 0) {
+    return createdCount === 1
+      ? "Created 1 shape."
+      : `Created ${createdCount} shapes.`;
+  }
+
+  const hasDeleteOperation = input.operations.some(
+    (operation) => operation.tool === "deleteObjects",
+  );
+  if (hasDeleteOperation) {
+    return deletedCount === 1
+      ? "Deleted 1 object."
+      : `Deleted ${deletedCount} objects.`;
+  }
+
+  const message = input.fallbackAssistantMessage.trim();
+  return message.length > 0 ? message : "Completed your board command.";
+}
+
+/**
  * Builds openai execution summary.
  */
 function buildOpenAiExecutionSummary(openAiAttempt: OpenAiPlanAttempt): {
   attempted: boolean;
-  status: "disabled" | "budget-blocked" | "planned" | "not-planned" | "error";
+  status:
+    | "disabled"
+    | "budget-blocked"
+    | "policy-blocked"
+    | "planned"
+    | "not-planned"
+    | "error";
   model: string;
   runtime: "agents-sdk" | "chat-completions";
   traceId?: string;
@@ -541,6 +629,17 @@ function buildOpenAiExecutionSummary(openAiAttempt: OpenAiPlanAttempt): {
     return {
       attempted: true,
       status: "budget-blocked",
+      model: openAiAttempt.model,
+      runtime: openAiAttempt.runtime,
+      estimatedCostUsd: 0,
+      totalSpentUsd: openAiAttempt.totalSpentUsd,
+    };
+  }
+
+  if (openAiAttempt.status === "policy-blocked") {
+    return {
+      attempted: true,
+      status: "policy-blocked",
       model: openAiAttempt.model,
       runtime: openAiAttempt.runtime,
       estimatedCostUsd: 0,
@@ -681,6 +780,7 @@ async function attemptOpenAiPlanner(options: {
 
   let reservationOpen = true;
   const coordinateHints = parseCoordinateHintsFromMessage(options.message);
+  const messageIntentHints = parseMessageIntentHints(options.message);
   const openAiSpan = options.trace.startSpan("openai.call", {
     model: config.model,
     runtime: config.runtime,
@@ -689,6 +789,12 @@ async function attemptOpenAiPlanner(options: {
     messagePreview: options.message.slice(0, 240),
     hintedX: coordinateHints.hintedX,
     hintedY: coordinateHints.hintedY,
+    requestedCreateCount: messageIntentHints.requestedCreateCount,
+    stickyRequestedCount: messageIntentHints.stickyRequestedCount,
+    shapeRequestedCount: messageIntentHints.shapeRequestedCount,
+    requestedColumns: messageIntentHints.stickyLayoutHints.columns ?? null,
+    requestedGapX: messageIntentHints.stickyLayoutHints.gapX ?? null,
+    requestedGapY: messageIntentHints.stickyLayoutHints.gapY ?? null,
   });
 
   try {
@@ -727,7 +833,8 @@ async function attemptOpenAiPlanner(options: {
           : config.reserveUsdPerCall;
       const finalized = await finalizeOpenAiBudgetReservation({
         reservedUsd: budgetReservation.reservedUsd,
-        actualUsd,
+        actualUsd:
+          agentsRunResult.policyBlocked && actualUsd > 0 ? 0 : actualUsd,
       });
       reservationOpen = false;
 
@@ -748,7 +855,23 @@ async function attemptOpenAiPlanner(options: {
         firstOperationTool: planTraceFields.firstOperationTool,
         firstOperationX: planTraceFields.firstOperationX,
         firstOperationY: planTraceFields.firstOperationY,
+        policyBlocked: Boolean(agentsRunResult.policyBlocked),
+        requestedCount: agentsRunResult.policyBlocked?.requestedCreateCount ?? null,
+        maxAllowedCount: agentsRunResult.policyBlocked?.maxAllowedCount ?? null,
       });
+
+      if (agentsRunResult.policyBlocked) {
+        return {
+          status: "policy-blocked",
+          model: config.model,
+          runtime: config.runtime,
+          intent: "create-object-limit-exceeded",
+          assistantMessage: agentsRunResult.assistantMessage,
+          requestedCount: agentsRunResult.policyBlocked.requestedCreateCount,
+          maxAllowedCount: agentsRunResult.policyBlocked.maxAllowedCount,
+          totalSpentUsd: finalized.totalSpentUsd,
+        };
+      }
 
       if (!agentsRunResult.planned) {
         return {
@@ -1286,6 +1409,14 @@ export async function POST(request: NextRequest) {
             };
             llmUsed = true;
             mcpUsed = false;
+          } else if (openAiAttempt.status === "policy-blocked") {
+            plannerResult = {
+              planned: false,
+              intent: openAiAttempt.intent,
+              assistantMessage: openAiAttempt.assistantMessage,
+            };
+            llmUsed = true;
+            mcpUsed = false;
           } else if (
             shouldAttemptOpenAi &&
             (openAiAttempt.status === "not-planned" ||
@@ -1298,7 +1429,8 @@ export async function POST(request: NextRequest) {
           if (
             requireOpenAi &&
             !shouldExecuteDeterministic &&
-            openAiAttempt.status !== "planned"
+            openAiAttempt.status !== "planned" &&
+            openAiAttempt.status !== "policy-blocked"
           ) {
             const failure = getOpenAiRequiredErrorResponse(openAiAttempt);
             throw createHttpError(failure.status, failure.message);
@@ -1417,6 +1549,7 @@ export async function POST(request: NextRequest) {
             createdObjectIds: string[];
           };
           let executedOperationCount = 0;
+          let executedOperations: BoardToolCall[] = [];
 
           if (openAiAttempt.status === "planned" && openAiAttempt.executedDirectly) {
             if (!openAiAttempt.directExecution) {
@@ -1429,6 +1562,7 @@ export async function POST(request: NextRequest) {
               results: openAiAttempt.directExecution.results,
               createdObjectIds: openAiAttempt.directExecution.createdObjectIds,
             };
+            executedOperations = openAiAttempt.directExecution.operationsExecuted;
             executedOperationCount =
               openAiAttempt.directExecution.operationsExecuted.length;
           } else {
@@ -1447,6 +1581,7 @@ export async function POST(request: NextRequest) {
               trace: activeTrace,
               operations: executionPlan.operations,
             });
+            executedOperations = executionPlan.operations;
             executedOperationCount = executionPlan.operations.length;
           }
 
@@ -1481,6 +1616,13 @@ export async function POST(request: NextRequest) {
                 objectCountBeforeExecution - remainingObjectIds.length,
               ),
               remainingCount: remainingObjectIds.length,
+            });
+          } else if (llmUsed) {
+            assistantMessage = buildOutcomeAssistantMessageFromExecution({
+              fallbackAssistantMessage: plannerResult.assistantMessage,
+              operations: executedOperations,
+              createdObjectIds: executionResult.createdObjectIds,
+              results: executionResult.results,
             });
           }
 

@@ -9,6 +9,7 @@ import { z } from "zod";
 
 import { BOARD_AI_TOOLS } from "@/features/ai/board-tool-schema";
 import { parseCoordinateHintsFromMessage } from "@/features/ai/commands/coordinate-hints";
+import { MAX_AI_CREATED_OBJECTS_PER_COMMAND } from "@/features/ai/guardrails";
 import { estimateOpenAiCostUsd } from "@/features/ai/openai/openai-cost-controls";
 import {
   getOpenAiClient,
@@ -16,6 +17,7 @@ import {
 } from "@/features/ai/openai/openai-client";
 import type { AiTraceRun } from "@/features/ai/observability/trace-run";
 import { createBoardAgentTools } from "@/features/ai/openai/agents/board-agent-tools";
+import { parseMessageIntentHints } from "@/features/ai/openai/agents/message-intent-hints";
 import { BoardToolExecutor } from "@/features/ai/tools/board-tools";
 import type { BoardObjectSnapshot, BoardToolCall, ViewportBounds } from "@/features/ai/types";
 
@@ -49,6 +51,10 @@ export type OpenAiAgentsRunnerResult = {
   usage: OpenAiAgentsRunnerUsage;
   responseId?: string;
   traceId?: string;
+  policyBlocked?: {
+    requestedCreateCount: number;
+    maxAllowedCount: number;
+  };
 };
 
 export type OpenAiAgentsRunnerError = Error & {
@@ -65,49 +71,6 @@ type RunBoardCommandWithOpenAiAgentsInput = {
   executor: BoardToolExecutor;
   trace: AiTraceRun;
 };
-
-type OpenAiMessageIntentHints = {
-  stickyCreateRequest: boolean;
-  stickyColorHint: string | null;
-};
-
-/**
- * Parses message intent hints.
- */
-function parseMessageIntentHints(message: string): OpenAiMessageIntentHints {
-  const normalized = message.trim().toLowerCase();
-  const stickyColorHint =
-    ([
-      ["yellow", "#fde68a"],
-      ["orange", "#fdba74"],
-      ["red", "#fca5a5"],
-      ["pink", "#f9a8d4"],
-      ["purple", "#c4b5fd"],
-      ["blue", "#93c5fd"],
-      ["teal", "#99f6e4"],
-      ["green", "#86efac"],
-      ["gray", "#d1d5db"],
-      ["grey", "#d1d5db"],
-      ["tan", "#d2b48c"],
-    ] as const).find(([colorName]) =>
-      new RegExp(`\\b${colorName}\\b`, "i").test(normalized),
-    )?.[1] ?? null;
-  const stickyMentioned = /\bstick(?:y|ies)\b/.test(normalized);
-  const createVerbMentioned =
-    /\b(create|add|make|new)\b/.test(normalized) ||
-    /\bset\s+up\b/.test(normalized);
-  const destructiveOrEditVerbMentioned = /\b(change|update|edit|delete|remove|move|resize|recolor|recolour)\b/.test(
-    normalized,
-  );
-
-  return {
-    stickyCreateRequest:
-      stickyMentioned &&
-      createVerbMentioned &&
-      !destructiveOrEditVerbMentioned,
-    stickyColorHint,
-  };
-}
 
 /**
  * Handles to board context object.
@@ -164,6 +127,19 @@ function createOpenAiAgentsRunnerError(
   return error;
 }
 
+/**
+ * Creates empty usage object for policy-blocked runs with no model call.
+ */
+function createEmptyUsage(model: string): OpenAiAgentsRunnerUsage {
+  return {
+    model,
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    estimatedCostUsd: 0,
+  };
+}
+
 const OPENAI_AGENTS_SYSTEM_PROMPT = [
   "You are the CollabBoard AI command agent.",
   "Your job is to execute board operations through tools and then return a concise final result object.",
@@ -173,6 +149,8 @@ const OPENAI_AGENTS_SYSTEM_PROMPT = [
   "For line creation, use createShape with type='line'.",
   "When user asks to create/add sticky notes, you must create new stickies via createStickyNote or createStickyBatch.",
   "Do not satisfy create-sticky requests by mutating existing selected objects.",
+  "Never create more than 50 objects from one command.",
+  "If user asks to create more than 50 objects, return planned=false and explain the 50-object limit.",
   "When user provides explicit coordinates, preserve them in tool arguments.",
   "When user asks for selected objects and selectedObjectIds are provided, use those IDs.",
   "Use getBoardState if you need fresh IDs before mutating the board.",
@@ -195,6 +173,28 @@ export async function runBoardCommandWithOpenAiAgents(
     throw new Error("OpenAI planner is not enabled.");
   }
 
+  const messageIntentHints = parseMessageIntentHints(input.message);
+  if (
+    typeof messageIntentHints.requestedCreateCount === "number" &&
+    messageIntentHints.requestedCreateCount > MAX_AI_CREATED_OBJECTS_PER_COMMAND
+  ) {
+    return {
+      intent: "create-object-limit-exceeded",
+      planned: false,
+      assistantMessage: `I can create up to ${MAX_AI_CREATED_OBJECTS_PER_COMMAND} objects per command. You asked for ${messageIntentHints.requestedCreateCount}. Try: "create 50 sticky notes", then run another command if needed.`,
+      operationsExecuted: [],
+      results: [],
+      createdObjectIds: [],
+      deletedCount: 0,
+      toolCalls: 0,
+      usage: createEmptyUsage(config.model),
+      policyBlocked: {
+        requestedCreateCount: messageIntentHints.requestedCreateCount,
+        maxAllowedCount: MAX_AI_CREATED_OBJECTS_PER_COMMAND,
+      },
+    };
+  }
+
   setDefaultOpenAIClient(client);
 
   const contextObjects = input.boardState
@@ -214,7 +214,6 @@ export async function runBoardCommandWithOpenAiAgents(
     boardObjects: contextObjects,
   };
   const coordinateHints = parseCoordinateHintsFromMessage(input.message);
-  const messageIntentHints = parseMessageIntentHints(input.message);
 
   const boardAgentTools = createBoardAgentTools({
     executor: input.executor,

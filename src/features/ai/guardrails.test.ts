@@ -106,6 +106,53 @@ describe("validateTemplatePlan", () => {
     }
   });
 
+  it("accepts createShapeBatch when count is within limit", () => {
+    const result = validateTemplatePlan({
+      templateId: SWOT_TEMPLATE_ID,
+      templateName: "Create shape batch",
+      operations: [
+        {
+          tool: "createShapeBatch",
+          args: {
+            count: 25,
+            type: "rect",
+            originX: 80,
+            originY: 120,
+          },
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.objectsCreated).toBe(25);
+    }
+  });
+
+  it("rejects oversized createShapeBatch calls", () => {
+    const result = validateTemplatePlan({
+      templateId: SWOT_TEMPLATE_ID,
+      templateName: "Create shape batch",
+      operations: [
+        {
+          tool: "createShapeBatch",
+          args: {
+            count: 51,
+            type: "rect",
+            originX: 80,
+            originY: 120,
+          },
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(400);
+      expect(result.error).toContain("createShapeBatch");
+    }
+  });
+
   it("rejects oversized deleteObjects calls", () => {
     const result = validateTemplatePlan({
       templateId: SWOT_TEMPLATE_ID,

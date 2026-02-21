@@ -62,5 +62,6 @@ Fallback compatibility mode:
 
 - Explicit coordinates in user text should carry through into tool arguments (`x`, `y`, or `originX`/`originY`).
 - High-cardinality commands should prefer `createStickyBatch` and `moveObjects` to minimize per-call overhead.
+- Any create request above 50 objects is policy-blocked (200 response, no mutation) with guidance to split into multiple commands.
 - Selection-aware commands should use `selectedObjectIds` when available.
 - For viewport-side movement, include viewport bounds when provided by the client payload.

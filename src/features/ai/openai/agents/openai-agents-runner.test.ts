@@ -94,6 +94,44 @@ afterEach(() => {
 });
 
 describe("runBoardCommandWithOpenAiAgents", () => {
+  it("returns policy-blocked guidance for over-limit create requests", async () => {
+    createBoardAgentToolsMock.mockReturnValue({
+      tools: [],
+      getExecutionSnapshot: () => ({
+        operationsExecuted: [],
+        results: [],
+        createdObjectIds: [],
+        deletedCount: 0,
+        toolCalls: 0,
+      }),
+    });
+
+    const result = await runBoardCommandWithOpenAiAgents({
+      message: "create 500 sticky notes",
+      boardId: "board-1",
+      userId: "user-1",
+      boardState: [],
+      selectedObjectIds: [],
+      viewportBounds: null,
+      executor: {} as never,
+      trace: {
+        traceId: "lf-trace-limit",
+      } as never,
+    });
+
+    expect(result.planned).toBe(false);
+    expect(result.intent).toBe("create-object-limit-exceeded");
+    expect(result.assistantMessage).toContain("up to 50 objects per command");
+    expect(result.policyBlocked).toEqual({
+      requestedCreateCount: 500,
+      maxAllowedCount: 50,
+    });
+    expect(result.usage.totalTokens).toBe(0);
+    expect(createBoardAgentToolsMock).not.toHaveBeenCalled();
+    expect(runMock).not.toHaveBeenCalled();
+    expect(setDefaultOpenAIClientMock).not.toHaveBeenCalled();
+  });
+
   it("returns planned success with tool execution snapshot", async () => {
     createBoardAgentToolsMock.mockReturnValue({
       tools: [],

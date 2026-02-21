@@ -3,8 +3,10 @@ import { z } from "zod";
 
 import { BOARD_AI_TOOLS } from "@/features/ai/board-tool-schema";
 import type { CoordinateHints } from "@/features/ai/commands/coordinate-hints";
+import { MAX_AI_CREATED_OBJECTS_PER_COMMAND } from "@/features/ai/guardrails";
 import { validateTemplatePlan } from "@/features/ai/guardrails";
 import type { AiTraceRun } from "@/features/ai/observability/trace-run";
+import type { OpenAiMessageIntentHints } from "@/features/ai/openai/agents/message-intent-hints";
 import { BoardToolExecutor } from "@/features/ai/tools/board-tools";
 import type {
   BoardToolCall,
@@ -29,6 +31,10 @@ const DEFAULT_GRID_COLUMNS = 3;
 const DEFAULT_BATCH_COLUMNS = 5;
 const DEFAULT_BATCH_GAP_X = 240;
 const DEFAULT_BATCH_GAP_Y = 190;
+const STICKY_WIDTH = 180;
+const STICKY_HEIGHT = 140;
+const STICKY_MIN_STEP_X = STICKY_WIDTH + 24;
+const STICKY_MIN_STEP_Y = STICKY_HEIGHT + 24;
 const DEFAULT_VIEWPORT_SIDE_PADDING = 0;
 
 type ExecuteToolResult = Awaited<ReturnType<BoardToolExecutor["executeToolCall"]>>;
@@ -47,10 +53,7 @@ type CreateBoardAgentToolsOptions = {
   selectedObjectIds: string[];
   viewportBounds: ViewportBounds | null;
   coordinateHints?: CoordinateHints | null;
-  messageIntentHints?: {
-    stickyCreateRequest: boolean;
-    stickyColorHint: string | null;
-  };
+  messageIntentHints?: OpenAiMessageIntentHints;
 };
 
 type BoardAgentToolFactoryResult = {
@@ -87,6 +90,7 @@ function createsObjects(toolCall: BoardToolCall): boolean {
     toolCall.tool === "createStickyNote" ||
     toolCall.tool === "createStickyBatch" ||
     toolCall.tool === "createShape" ||
+    toolCall.tool === "createShapeBatch" ||
     toolCall.tool === "createGridContainer" ||
     toolCall.tool === "createFrame" ||
     toolCall.tool === "createConnector"
@@ -98,6 +102,21 @@ function createsObjects(toolCall: BoardToolCall): boolean {
  */
 function toFiniteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Handles bounded integer.
+ */
+function toBoundedInt(
+  value: number | null | undefined,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(minimum, Math.min(maximum, Math.floor(value)));
 }
 
 /**
@@ -131,6 +150,122 @@ function hasExplicitCoordinateHints(
     typeof hints?.hintedY === "number" &&
     Number.isFinite(hints.hintedY)
   );
+}
+
+/**
+ * Resolves sticky batch layout.
+ */
+function resolveStickyBatchLayout(options: {
+  count: number;
+  args: {
+    originX: number | null;
+    originY: number | null;
+    columns: number | null;
+    gapX: number | null;
+    gapY: number | null;
+  };
+  viewportBounds: ViewportBounds | null;
+  defaultPoint: { x: number; y: number };
+  explicitCoordinateHints: { hintedX: number; hintedY: number } | null;
+  messageIntentHints?: OpenAiMessageIntentHints;
+}): {
+  originX: number;
+  originY: number;
+  columns: number;
+  gapX: number;
+  gapY: number;
+  layoutMode: "user-hint" | "viewport-fit";
+} {
+  const stickyLayoutHints = options.messageIntentHints?.stickyLayoutHints;
+  const hasUserLayoutHints =
+    Boolean(stickyLayoutHints?.rowRequested) ||
+    Boolean(stickyLayoutHints?.stackRequested) ||
+    typeof stickyLayoutHints?.columns === "number" ||
+    typeof stickyLayoutHints?.gapX === "number" ||
+    typeof stickyLayoutHints?.gapY === "number";
+  const layoutMode: "user-hint" | "viewport-fit" = hasUserLayoutHints
+    ? "user-hint"
+    : "viewport-fit";
+
+  const count = toBoundedInt(options.count, 1, 1, 50);
+  let resolvedColumns: number;
+  if (stickyLayoutHints?.stackRequested) {
+    resolvedColumns = 1;
+  } else if (stickyLayoutHints?.rowRequested) {
+    resolvedColumns = count;
+  } else if (typeof stickyLayoutHints?.columns === "number") {
+    resolvedColumns = stickyLayoutHints.columns;
+  } else if (typeof options.args.columns === "number") {
+    resolvedColumns = options.args.columns;
+  } else if (options.viewportBounds && count > 1) {
+    const maxColumnsByViewport = Math.max(
+      1,
+      Math.floor(
+        (options.viewportBounds.width + (STICKY_MIN_STEP_X - STICKY_WIDTH)) /
+          STICKY_MIN_STEP_X,
+      ),
+    );
+    resolvedColumns = Math.min(count, maxColumnsByViewport);
+  } else {
+    resolvedColumns = Math.min(count, DEFAULT_BATCH_COLUMNS);
+  }
+  const columns = toBoundedInt(resolvedColumns, DEFAULT_BATCH_COLUMNS, 1, 10);
+
+  const hintedGapX = toFiniteNumber(stickyLayoutHints?.gapX);
+  const hintedGapY = toFiniteNumber(stickyLayoutHints?.gapY);
+  const argsGapX = toFiniteNumber(options.args.gapX);
+  const argsGapY = toFiniteNumber(options.args.gapY);
+  const gapX = toBoundedInt(
+    typeof hintedGapX === "number"
+      ? STICKY_WIDTH + hintedGapX
+      : argsGapX ?? STICKY_MIN_STEP_X,
+    STICKY_MIN_STEP_X,
+    STICKY_WIDTH,
+    400,
+  );
+  const gapY = toBoundedInt(
+    typeof hintedGapY === "number"
+      ? STICKY_HEIGHT + hintedGapY
+      : argsGapY ?? STICKY_MIN_STEP_Y,
+    STICKY_MIN_STEP_Y,
+    STICKY_HEIGHT,
+    400,
+  );
+
+  const shouldUseViewportOrigin =
+    layoutMode === "viewport-fit" &&
+    !options.explicitCoordinateHints &&
+    typeof options.args.originX !== "number" &&
+    typeof options.args.originY !== "number";
+  const originX = toBoundedInt(
+    options.explicitCoordinateHints?.hintedX ??
+      options.args.originX ??
+      (shouldUseViewportOrigin && options.viewportBounds
+        ? options.viewportBounds.left + 40
+        : options.defaultPoint.x),
+    options.defaultPoint.x,
+    Number.MIN_SAFE_INTEGER,
+    Number.MAX_SAFE_INTEGER,
+  );
+  const originY = toBoundedInt(
+    options.explicitCoordinateHints?.hintedY ??
+      options.args.originY ??
+      (shouldUseViewportOrigin && options.viewportBounds
+        ? options.viewportBounds.top + 40
+        : options.defaultPoint.y),
+    options.defaultPoint.y,
+    Number.MIN_SAFE_INTEGER,
+    Number.MAX_SAFE_INTEGER,
+  );
+
+  return {
+    originX,
+    originY,
+    columns,
+    gapX,
+    gapY,
+    layoutMode,
+  };
 }
 
 /**
@@ -190,6 +325,7 @@ export function createBoardAgentTools(
    */
   async function executeToolCallWithGuardrails(
     toolCall: BoardToolCall,
+    traceMetadata?: Record<string, unknown>,
   ): Promise<ExecuteToolResult> {
     toolCalls += 1;
     const argsRecord = (toolCall.args as Record<string, unknown> | undefined) ?? {};
@@ -209,7 +345,11 @@ export function createBoardAgentTools(
       objectIdsCount: Array.isArray(argsRecord.objectIds)
         ? argsRecord.objectIds.length
         : 0,
+      requestedCreateCount:
+        options.messageIntentHints?.requestedCreateCount ?? null,
+      maxAllowedCount: MAX_AI_CREATED_OBJECTS_PER_COMMAND,
       runtime: "agents-sdk",
+      ...(traceMetadata ?? {}),
     });
 
     try {
@@ -382,24 +522,47 @@ export function createBoardAgentTools(
         textPrefix: z.string().max(1_000).nullable(),
       }),
       execute: async (args) =>
-        executeToolCallWithGuardrails({
-          tool: "createStickyBatch",
-          args: {
-            count: args.count,
-            color:
-              options.messageIntentHints?.stickyColorHint ??
-              args.color ??
-              DEFAULT_STICKY_COLOR,
-            originX:
-              explicitCoordinateHints?.hintedX ?? args.originX ?? defaultPoint.x,
-            originY:
-              explicitCoordinateHints?.hintedY ?? args.originY ?? defaultPoint.y,
-            columns: args.columns ?? DEFAULT_BATCH_COLUMNS,
-            gapX: args.gapX ?? DEFAULT_BATCH_GAP_X,
-            gapY: args.gapY ?? DEFAULT_BATCH_GAP_Y,
-            textPrefix: args.textPrefix ?? undefined,
-          },
-        }),
+        (() => {
+          const count = toBoundedInt(args.count, 1, 1, 50);
+          const resolvedLayout = resolveStickyBatchLayout({
+            count,
+            args: {
+              originX: args.originX,
+              originY: args.originY,
+              columns: args.columns,
+              gapX: args.gapX,
+              gapY: args.gapY,
+            },
+            viewportBounds: options.viewportBounds,
+            defaultPoint,
+            explicitCoordinateHints,
+            messageIntentHints: options.messageIntentHints,
+          });
+          return executeToolCallWithGuardrails(
+            {
+              tool: "createStickyBatch",
+              args: {
+                count,
+                color:
+                  options.messageIntentHints?.stickyColorHint ??
+                  args.color ??
+                  DEFAULT_STICKY_COLOR,
+                originX: resolvedLayout.originX,
+                originY: resolvedLayout.originY,
+                columns: resolvedLayout.columns ?? DEFAULT_BATCH_COLUMNS,
+                gapX: resolvedLayout.gapX ?? DEFAULT_BATCH_GAP_X,
+                gapY: resolvedLayout.gapY ?? DEFAULT_BATCH_GAP_Y,
+                textPrefix: args.textPrefix ?? undefined,
+              },
+            },
+            {
+              layoutMode: resolvedLayout.layoutMode,
+              resolvedColumns: resolvedLayout.columns,
+              resolvedGapX: resolvedLayout.gapX,
+              resolvedGapY: resolvedLayout.gapY,
+            },
+          );
+        })(),
     }),
     tool({
       name: "createShape",

@@ -84,6 +84,7 @@ In strict mode, the route does not silently hide OpenAI planner failures.
 - Message length max is enforced server-side.
 - Max operations per command: `50`.
 - Max created objects per command: `50`.
+- Over-limit create requests (for any object type, e.g. `create 500 rectangles`) are policy-blocked with no board mutation and guidance to split into smaller commands.
 - `createStickyBatch` max count per call: `50`.
 - Layout tool object ID cap per call: `50`.
 - `moveObjects` object ID cap per call: `500`.

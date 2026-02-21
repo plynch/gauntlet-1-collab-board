@@ -6,6 +6,7 @@ import { createMemoryGuardrailStore } from "@/features/ai/guardrail-store.memory
 export const MAX_AI_OPERATIONS_PER_COMMAND = 50;
 export const MAX_AI_CREATED_OBJECTS_PER_COMMAND = 50;
 export const MAX_AI_STICKY_BATCH_COUNT_PER_TOOL_CALL = 50;
+export const MAX_AI_SHAPE_BATCH_COUNT_PER_TOOL_CALL = 50;
 export const MAX_AI_DELETIONS_PER_TOOL_CALL = 2_000;
 export const MAX_AI_LAYOUT_OBJECTS_PER_TOOL_CALL = 50;
 export const MAX_AI_MOVE_OBJECTS_PER_TOOL_CALL = 500;
@@ -53,6 +54,7 @@ function isCreateTool(toolCall: BoardToolCall): boolean {
     toolCall.tool === "createStickyNote" ||
     toolCall.tool === "createStickyBatch" ||
     toolCall.tool === "createShape" ||
+    toolCall.tool === "createShapeBatch" ||
     toolCall.tool === "createGridContainer" ||
     toolCall.tool === "createFrame" ||
     toolCall.tool === "createConnector"
@@ -76,6 +78,9 @@ function isLayoutTool(toolCall: BoardToolCall): toolCall is LayoutToolCall {
 export function countCreatedObjects(operations: BoardToolCall[]): number {
   return operations.reduce((total, operation) => {
     if (operation.tool === "createStickyBatch") {
+      return total + Math.max(0, Math.floor(operation.args.count));
+    }
+    if (operation.tool === "createShapeBatch") {
       return total + Math.max(0, Math.floor(operation.args.count));
     }
 
@@ -115,6 +120,20 @@ export function validateTemplatePlan(plan: TemplatePlan):
       ok: false,
       status: 400,
       error: `createStickyBatch exceeds max count (${MAX_AI_STICKY_BATCH_COUNT_PER_TOOL_CALL}).`,
+    };
+  }
+
+  const oversizedShapeBatch = plan.operations.find(
+    (operation) =>
+      operation.tool === "createShapeBatch" &&
+      Math.max(0, Math.floor(operation.args.count)) >
+        MAX_AI_SHAPE_BATCH_COUNT_PER_TOOL_CALL,
+  );
+  if (oversizedShapeBatch && oversizedShapeBatch.tool === "createShapeBatch") {
+    return {
+      ok: false,
+      status: 400,
+      error: `createShapeBatch exceeds max count (${MAX_AI_SHAPE_BATCH_COUNT_PER_TOOL_CALL}).`,
     };
   }
 

@@ -166,4 +166,140 @@ describe("createBoardAgentTools", () => {
       },
     });
   });
+
+  it("uses viewport-fit sticky batch defaults without overlap", async () => {
+    const executeToolCall = vi.fn().mockResolvedValue({
+      tool: "createStickyBatch",
+      createdObjectIds: [],
+    });
+    const session = createBoardAgentTools({
+      executor: {
+        executeToolCall,
+        getBoardState: vi.fn().mockResolvedValue([]),
+      } as never,
+      trace: createTraceStub() as never,
+      selectedObjectIds: [],
+      viewportBounds: {
+        left: 0,
+        top: 0,
+        width: 1_200,
+        height: 800,
+      },
+      messageIntentHints: {
+        stickyCreateRequest: true,
+        stickyColorHint: null,
+        createRequest: true,
+        requestedCreateCount: 30,
+        stickyRequestedCount: 30,
+        shapeRequestedCount: null,
+        createLimitExceeded: false,
+        stickyLayoutHints: {
+          rowRequested: false,
+          stackRequested: false,
+        },
+      },
+    });
+
+    const createStickyBatchTool = session.tools.find(
+      (toolItem): toolItem is FunctionTool =>
+        toolItem.type === "function" && toolItem.name === "createStickyBatch",
+    );
+    if (!createStickyBatchTool) {
+      throw new Error("createStickyBatch tool missing.");
+    }
+
+    await createStickyBatchTool.invoke(
+      {} as never,
+      JSON.stringify({
+        count: 30,
+        color: null,
+        originX: null,
+        originY: null,
+        columns: null,
+        gapX: null,
+        gapY: null,
+        textPrefix: null,
+      }),
+    );
+
+    expect(executeToolCall).toHaveBeenCalledWith({
+      tool: "createStickyBatch",
+      args: expect.objectContaining({
+        count: 30,
+        originX: 40,
+        originY: 40,
+        columns: 6,
+        gapX: 204,
+        gapY: 164,
+      }),
+    });
+  });
+
+  it("applies explicit sticky layout hints over auto-layout defaults", async () => {
+    const executeToolCall = vi.fn().mockResolvedValue({
+      tool: "createStickyBatch",
+      createdObjectIds: [],
+    });
+    const session = createBoardAgentTools({
+      executor: {
+        executeToolCall,
+        getBoardState: vi.fn().mockResolvedValue([]),
+      } as never,
+      trace: createTraceStub() as never,
+      selectedObjectIds: [],
+      viewportBounds: {
+        left: 100,
+        top: 80,
+        width: 1_000,
+        height: 700,
+      },
+      messageIntentHints: {
+        stickyCreateRequest: true,
+        stickyColorHint: "#f9a8d4",
+        createRequest: true,
+        requestedCreateCount: 20,
+        stickyRequestedCount: 20,
+        shapeRequestedCount: null,
+        createLimitExceeded: false,
+        stickyLayoutHints: {
+          columns: 4,
+          gapX: 24,
+          gapY: 32,
+          rowRequested: false,
+          stackRequested: false,
+        },
+      },
+    });
+
+    const createStickyBatchTool = session.tools.find(
+      (toolItem): toolItem is FunctionTool =>
+        toolItem.type === "function" && toolItem.name === "createStickyBatch",
+    );
+    if (!createStickyBatchTool) {
+      throw new Error("createStickyBatch tool missing.");
+    }
+
+    await createStickyBatchTool.invoke(
+      {} as never,
+      JSON.stringify({
+        count: 20,
+        color: "#fde68a",
+        originX: null,
+        originY: null,
+        columns: null,
+        gapX: null,
+        gapY: null,
+        textPrefix: null,
+      }),
+    );
+
+    expect(executeToolCall).toHaveBeenCalledWith({
+      tool: "createStickyBatch",
+      args: expect.objectContaining({
+        columns: 4,
+        gapX: 204,
+        gapY: 172,
+      }),
+    });
+  });
 });

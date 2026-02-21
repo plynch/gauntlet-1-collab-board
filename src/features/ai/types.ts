@@ -289,7 +289,13 @@ export type BoardCommandExecutionSummary = {
   objectsCreated: number;
   openAi?: {
     attempted: boolean;
-    status: "disabled" | "budget-blocked" | "planned" | "not-planned" | "error";
+    status:
+      | "disabled"
+      | "budget-blocked"
+      | "policy-blocked"
+      | "planned"
+      | "not-planned"
+      | "error";
     model: string;
     runtime?: "agents-sdk" | "chat-completions";
     traceId?: string;

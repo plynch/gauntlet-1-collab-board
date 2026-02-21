@@ -67,6 +67,15 @@ npm run lint
 npm run typecheck
 npm run docs:api
 npm run build
+npm run secrets:sync:apphosting
+```
+
+Sync Firebase App Hosting secrets from `.env.local`:
+
+```bash
+npm run secrets:sync:apphosting
+# optional custom project:
+npm run secrets:sync:apphosting -- --project gauntlet-1-collab-board
 ```
 
 Playwright first-run setup:

@@ -22,7 +22,8 @@
     "test:e2e:ai-openai-smoke:nano:PAID": "npm run test:e2e:ai-agent-calls:openai-matrix:nano:PAID",
     "typecheck": "tsc --noEmit",
     "firebase:emulators": "firebase emulators:start --only auth,firestore",
-    "firebase:emulators:ui": "firebase emulators:start --only auth,firestore --ui"
+    "firebase:emulators:ui": "firebase emulators:start --only auth,firestore --ui",
+    "secrets:sync:apphosting": "node scripts/sync-apphosting-secrets.mjs"
   },
   "dependencies": {
     "@langchain/core": "^0.3.79",

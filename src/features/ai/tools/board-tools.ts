@@ -44,13 +44,11 @@ const STICKY_BATCH_DEFAULT_GAP_Y = 190;
 const SHAPE_BATCH_MIN_COUNT = 1;
 const SHAPE_BATCH_MAX_COUNT = 50;
 const SHAPE_BATCH_MIN_COLUMNS = 1;
-const SHAPE_BATCH_MAX_COLUMNS = 4;
-const SHAPE_BATCH_DEFAULT_WIDTH = 240;
+const SHAPE_BATCH_MAX_COLUMNS = 8;
+const SHAPE_BATCH_DEFAULT_WIDTH = 220;
 const SHAPE_BATCH_DEFAULT_HEIGHT = 160;
 const SHAPE_BATCH_MIN_GAP = 0;
 const SHAPE_BATCH_MAX_GAP = 400;
-const SHAPE_BATCH_DEFAULT_GAP_PADDING = 24;
-const SHAPE_BATCH_DEFAULT_COLUMNS_LARGE = 4;
 const STICKY_DEFAULT_COLOR = "#fde68a";
 const STICKY_PALETTE_COLORS = [
   "#fde68a",
@@ -327,52 +325,6 @@ function isObjectKind(value: unknown): value is BoardObjectToolKind {
     value === "triangle" ||
     value === "star"
   );
-}
-
-function getDefaultShapeDimensions(shapeType: BoardObjectToolKind): {
-  width: number;
-  height: number;
-} {
-  if (shapeType === "line") {
-    return { width: DEFAULT_SHAPE_WIDTH, height: DEFAULT_SHAPE_HEIGHT };
-  }
-
-  if (shapeType === "circle") {
-    return { width: 170, height: 170 };
-  }
-
-  if (shapeType === "triangle" || shapeType === "star") {
-    return { width: 180, height: 180 };
-  }
-
-  return { width: 220, height: 160 };
-}
-
-function toShapeCountColumns(count: number): number {
-  if (count <= 4) {
-    return count;
-  }
-
-  return Math.min(
-    SHAPE_BATCH_MAX_COLUMNS,
-    Math.ceil(Math.sqrt(Math.max(1, Math.floor(count))),
-  );
-}
-
-function toPositiveWidth(value: number | undefined, fallback: number): number {
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    return value;
-  }
-
-  return fallback;
-}
-
-function toPositiveGap(value: number | undefined, fallback: number): number {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return Math.max(SHAPE_BATCH_MIN_GAP, Math.min(SHAPE_BATCH_MAX_GAP, value));
-  }
-
-  return fallback;
 }
 
 /**
@@ -1031,6 +983,95 @@ export class BoardToolExecutor {
     });
 
     return { tool: "createShape", objectId: created.id };
+  }
+
+  /**
+   * Creates shapes in one batch.
+   */
+  async createShapeBatch(args: {
+    count: number;
+    type: "rect" | "circle" | "line" | "triangle" | "star";
+    originX: number;
+    originY: number;
+    width?: number;
+    height?: number;
+    color?: string;
+    colors?: string[];
+    columns?: number;
+    gapX?: number;
+    gapY?: number;
+  }): Promise<ExecuteToolResult> {
+    await this.ensureLoadedObjects();
+
+    const count = toGridDimension(
+      args.count,
+      SHAPE_BATCH_MIN_COUNT,
+      SHAPE_BATCH_MIN_COUNT,
+      SHAPE_BATCH_MAX_COUNT,
+    );
+    const columns = toGridDimension(
+      args.columns,
+      Math.min(SHAPE_BATCH_MAX_COLUMNS, Math.max(SHAPE_BATCH_MIN_COLUMNS, Math.ceil(Math.sqrt(count)))),
+      SHAPE_BATCH_MIN_COLUMNS,
+      SHAPE_BATCH_MAX_COLUMNS,
+    );
+    const minimumWidth = args.type === "line" ? 24 : 20;
+    const minimumHeight = args.type === "line" ? 2 : 20;
+    const width = Math.max(
+      minimumWidth,
+      toGridDimension(
+        args.width,
+        SHAPE_BATCH_DEFAULT_WIDTH,
+        minimumWidth,
+        2_000,
+      ),
+    );
+    const height = Math.max(
+      minimumHeight,
+      toGridDimension(
+        args.height,
+        SHAPE_BATCH_DEFAULT_HEIGHT,
+        minimumHeight,
+        2_000,
+      ),
+    );
+    const gapX = toGridDimension(
+      args.gapX,
+      Math.max(32, width + 24),
+      SHAPE_BATCH_MIN_GAP,
+      SHAPE_BATCH_MAX_GAP,
+    );
+    const gapY = toGridDimension(
+      args.gapY,
+      Math.max(32, height + 24),
+      SHAPE_BATCH_MIN_GAP,
+      SHAPE_BATCH_MAX_GAP,
+    );
+    const baseColor = toOptionalString(args.color, 32) ?? "#93c5fd";
+    const colorPool = (args.colors ?? [])
+      .map((value) => toOptionalString(value, 32))
+      .filter((value): value is string => Boolean(value));
+    const createdObjectIds: string[] = [];
+
+    for (let index = 0; index < count; index += 1) {
+      const row = Math.floor(index / columns);
+      const column = index % columns;
+      const created = await this.createObject({
+        type: args.type,
+        x: args.originX + column * (width + gapX),
+        y: args.originY + row * (height + gapY),
+        width,
+        height,
+        color: colorPool[index % colorPool.length] ?? baseColor,
+      });
+      createdObjectIds.push(created.id);
+    }
+
+    return {
+      tool: "createShapeBatch",
+      objectId: createdObjectIds[0],
+      createdObjectIds,
+    };
   }
 
   /**
@@ -1738,6 +1779,8 @@ export class BoardToolExecutor {
         return this.createStickyBatch(toolCall.args);
       case "createShape":
         return this.createShape(toolCall.args);
+      case "createShapeBatch":
+        return this.createShapeBatch(toolCall.args);
       case "createGridContainer":
         return this.createGridContainer(toolCall.args);
       case "createFrame":
@@ -1797,7 +1840,8 @@ export class BoardToolExecutor {
         createdObjectIds.push(result.objectId);
       }
       if (
-        operation.tool === "createStickyBatch" &&
+        (operation.tool === "createStickyBatch" ||
+          operation.tool === "createShapeBatch") &&
         result.createdObjectIds &&
         result.createdObjectIds.length > 0
       ) {

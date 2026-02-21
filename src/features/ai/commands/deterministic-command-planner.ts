@@ -490,6 +490,9 @@ function isAddToContainerCommand(message: string): boolean {
   );
 }
 
+/**
+ * Returns true when object should be treated as frame/container target.
+ */
 function isContainerObject(objectItem: BoardObjectSnapshot): boolean {
   if (objectItem.type === "gridContainer") {
     return true;
@@ -506,12 +509,18 @@ function isContainerObject(objectItem: BoardObjectSnapshot): boolean {
   );
 }
 
+/**
+ * Gets all container-like objects from board state.
+ */
 function getContainerObjects(
   boardState: BoardObjectSnapshot[],
 ): BoardObjectSnapshot[] {
   return boardState.filter(isContainerObject);
 }
 
+/**
+ * Gets selected objects that are container-like targets.
+ */
 function getSelectedContainerObjects(
   boardState: BoardObjectSnapshot[],
   selectedObjectIds: string[],
@@ -2137,11 +2146,11 @@ function planCreateStickyBatch(
           }));
 
     let point = clause.point ?? fallbackPoint;
-    if (containerTarget && !parseCoordinatePoint(clause.sourceText)) {
-      point = clampPointToFrameBounds(point, containerTarget.object);
-    }
     if (!point) {
       point = getAutoSpawnPoint(input.boardState);
+    }
+    if (containerTarget && !parseCoordinatePoint(clause.sourceText)) {
+      point = clampPointToFrameBounds(point, containerTarget.object);
     }
 
     if (index > 0 && !clause.hasExplicitPoint) {

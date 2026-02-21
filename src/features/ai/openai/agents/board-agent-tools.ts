@@ -29,6 +29,7 @@ const DEFAULT_GRID_COLUMNS = 3;
 const DEFAULT_BATCH_COLUMNS = 5;
 const DEFAULT_BATCH_GAP_X = 240;
 const DEFAULT_BATCH_GAP_Y = 190;
+const DEFAULT_VIEWPORT_SIDE_PADDING = 0;
 
 type ExecuteToolResult = Awaited<ReturnType<BoardToolExecutor["executeToolCall"]>>;
 
@@ -687,7 +688,7 @@ export function createBoardAgentTools(
                   ...args.toViewportSide,
                   viewportBounds:
                     args.toViewportSide.viewportBounds ?? options.viewportBounds ?? undefined,
-                  padding: args.toViewportSide.padding ?? undefined,
+                  padding: args.toViewportSide.padding ?? DEFAULT_VIEWPORT_SIDE_PADDING,
                 }
               : undefined,
           },

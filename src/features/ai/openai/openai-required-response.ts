@@ -79,7 +79,9 @@ export function getOpenAiRequiredErrorResponse(
   if (openAiAttempt.status === "not-planned") {
     return {
       status: 422,
-      message: `OpenAI-required mode received planned=false for intent "${openAiAttempt.intent}". ${openAiAttempt.assistantMessage}`,
+      message:
+        openAiAttempt.assistantMessage.trim() ||
+        "I could not map that command safely.",
     };
   }
 

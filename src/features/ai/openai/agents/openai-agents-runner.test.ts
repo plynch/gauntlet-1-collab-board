@@ -222,6 +222,66 @@ describe("runBoardCommandWithOpenAiAgents", () => {
     expect(result.assistantMessage).toContain("could not map");
   });
 
+  it("treats executed mutations as planned even when final output says planned=false", async () => {
+    createBoardAgentToolsMock.mockReturnValue({
+      tools: [],
+      getExecutionSnapshot: () => ({
+        operationsExecuted: [
+          {
+            tool: "createStickyBatch",
+            args: {
+              count: 5,
+              color: "#f9a8d4",
+              textPrefix: "Note",
+              originX: 120,
+              originY: 160,
+              columns: 5,
+              gapX: 240,
+              gapY: 190,
+            },
+          },
+        ],
+        results: [{ tool: "createStickyBatch", createdObjectIds: ["s1", "s2", "s3", "s4", "s5"] }],
+        createdObjectIds: ["s1", "s2", "s3", "s4", "s5"],
+        deletedCount: 0,
+        toolCalls: 1,
+      }),
+    });
+    runMock.mockResolvedValue({
+      finalOutput: {
+        intent: "create-sticky-notes",
+        planned: false,
+        assistantMessage: "5 pink sticky notes have been created.",
+      },
+      newItems: [],
+      lastResponseId: "resp_789",
+      state: {
+        usage: {
+          inputTokens: 110,
+          outputTokens: 36,
+        },
+      },
+    });
+
+    const result = await runBoardCommandWithOpenAiAgents({
+      message: "create 5 pink sticky notes",
+      boardId: "board-1",
+      userId: "user-1",
+      boardState: [],
+      selectedObjectIds: [],
+      viewportBounds: null,
+      executor: {} as never,
+      trace: {
+        traceId: "lf-trace-4",
+      } as never,
+    });
+
+    expect(result.planned).toBe(true);
+    expect(result.intent).toBe("create-sticky-notes");
+    expect(result.assistantMessage).toContain("5 pink sticky notes");
+    expect(result.operationsExecuted).toHaveLength(1);
+  });
+
   it("throws when final output says planned=true but no mutating operations ran", async () => {
     createBoardAgentToolsMock.mockReturnValue({
       tools: [],

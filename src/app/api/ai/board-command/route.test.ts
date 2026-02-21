@@ -102,7 +102,7 @@ describe("POST /api/ai/board-command", () => {
     });
 
     expect(failure.status).toBe(422);
-    expect(failure.message).toContain("OpenAI-required mode");
+    expect(failure.message).toBe("I could not map that command.");
   });
 
   it("maps strict-mode disabled planner to 503", () => {

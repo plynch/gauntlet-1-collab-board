@@ -284,7 +284,7 @@ export async function runBoardCommandWithOpenAiAgents(
 
   const plannedFromOutput = finalOutput?.planned ?? false;
   const hasMutatingOperations = executionSnapshot.operationsExecuted.length > 0;
-  const planned = plannedFromOutput && hasMutatingOperations;
+  const planned = hasMutatingOperations;
 
   if (plannedFromOutput && !hasMutatingOperations) {
     throw createOpenAiAgentsRunnerError(

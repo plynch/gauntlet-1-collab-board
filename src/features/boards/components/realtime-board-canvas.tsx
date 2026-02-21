@@ -5424,18 +5424,6 @@ export default function RealtimeBoardCanvas({
       event.preventDefault();
 
       if (event.key === "ArrowUp") {
-        if (chatInput.trim().length === 0 && chatInputHistoryIndex < 0) {
-          const previousCommand =
-            chatInputHistory[chatInputHistory.length - 1] ?? "";
-          if (previousCommand.trim().length > 0) {
-            void submitAiCommandMessage(previousCommand, {
-              appendUserMessage: true,
-              clearInput: true,
-            });
-            return;
-          }
-        }
-
         const nextIndex =
           chatInputHistoryIndex < 0
             ? chatInputHistory.length - 1
@@ -5469,7 +5457,6 @@ export default function RealtimeBoardCanvas({
       chatInputHistory,
       chatInputHistoryIndex,
       isAiSubmitting,
-      submitAiCommandMessage,
     ],
   );
 

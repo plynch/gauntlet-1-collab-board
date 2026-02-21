@@ -2094,16 +2094,20 @@ function findFrameCandidateId(input: PlannerInput): string | null {
     input.boardState,
     input.selectedObjectIds,
   );
-  const selectedRectangles = selectedObjects.filter(
-    (objectItem) => objectItem.type === "rect",
+  const selectedFrames = selectedObjects.filter(
+    (objectItem) =>
+      objectItem.type === "rect" || objectItem.type === "gridContainer",
   );
-  if (selectedRectangles.length > 0) {
-    return selectedRectangles[0].id;
+  if (selectedFrames.length > 0) {
+    return selectedFrames[0].id;
   }
 
-  const rectangles = input.boardState.filter((objectItem) => objectItem.type === "rect");
-  if (rectangles.length === 1) {
-    return rectangles[0].id;
+  const frames = input.boardState.filter(
+    (objectItem) =>
+      objectItem.type === "rect" || objectItem.type === "gridContainer",
+  );
+  if (frames.length === 1) {
+    return frames[0].id;
   }
 
   return null;

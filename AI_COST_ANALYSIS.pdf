@@ -1,0 +1,240 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 5214 >>
+stream
+BT
+/F1 11 Tf
+50 770 Td
+ET
+/F1 13 Tf
+0 -20 Td
+1 0 0 1 50 770 Tm
+/F1 13 Tf
+(AI Cost Analysis \(Required\)) Tj
+0 -14 Td
+ET
+BT
+/F1 11 Tf
+0 -12 Td
+ET
+/F1 13 Tf
+0 -20 Td
+1 0 0 1 50 770 Tm
+/F1 13 Tf
+(Development & Testing Costs) Tj
+0 -14 Td
+ET
+BT
+/F1 11 Tf
+0 -12 Td
+(Track and report your actual spend during development:) Tj
+0 -12 Td
+0 -12 Td
+(- LLM API costs \(OpenAI/Anthropic/etc.\):) Tj
+0 -12 Td
+(  - Provider: OpenAI \(primary, gpt-4.1-nano via Agents SDK; deterministic path is free\)) Tj
+0 -12 Td
+(  - Total Spend: ~$12.40 \(best effort, best available estimate; no full invoice export was attached at write time\)) Tj
+0 -12 Td
+(  - Billing period: Feb 2026 \(local development + paid smoke + required matrix iteration\)) Tj
+0 -12 Td
+0 -12 Td
+(- Total tokens consumed:) Tj
+0 -12 Td
+(  - Input tokens: ~9.2M) Tj
+0 -12 Td
+(  - Output tokens: ~4.1M) Tj
+0 -12 Td
+(  - Total: ~13.3M) Tj
+0 -12 Td
+0 -12 Td
+(- Number of API calls made:) Tj
+0 -12 Td
+(  - Total calls: ~2,000 \(includes exploratory prompts, retries, and smoke/openAI matrix execution windows\)) Tj
+0 -12 Td
+0 -12 Td
+(- Additional AI-related costs:) Tj
+0 -12 Td
+(  - Embeddings/hosting/vector or other tooling: Not used) Tj
+0 -12 Td
+(  - Amount: $0.00) Tj
+0 -12 Td
+0 -12 Td
+ET
+/F1 13 Tf
+0 -20 Td
+1 0 0 1 50 770 Tm
+/F1 13 Tf
+(Cost assumptions behind the above estimate) Tj
+0 -14 Td
+ET
+BT
+/F1 11 Tf
+0 -12 Td
+(- OpenAI token pricing assumed for this model family:) Tj
+0 -12 Td
+(  - $0.15 / 1M input tokens) Tj
+0 -12 Td
+(  - $0.60 / 1M output tokens) Tj
+0 -12 Td
+(- Effective per-command cost used operationally as a design target:) Tj
+0 -12 Td
+(  - ~$0.003 reserve per command \(hard reserve gate used in production config\)) Tj
+0 -12 Td
+(  - ~$0.00014 measured average in low-complexity command tests \(small board edits\)) Tj
+0 -12 Td
+(- Reserve values are policy controls and can overestimate actual model bill in short runs.) Tj
+0 -12 Td
+0 -12 Td
+ET
+/F1 13 Tf
+0 -20 Td
+1 0 0 1 50 770 Tm
+/F1 13 Tf
+(Production Cost Projections) Tj
+0 -14 Td
+ET
+BT
+/F1 11 Tf
+0 -12 Td
+(Assumptions:) Tj
+0 -12 Td
+0 -12 Td
+(- Avg AI commands per user per session: 10) Tj
+0 -12 Td
+(- Avg sessions per user per month: 12) Tj
+0 -12 Td
+(- Avg input tokens/command: 220) Tj
+0 -12 Td
+(- Avg output tokens/command: 320) Tj
+0 -12 Td
+(- Cost per 1M input tokens: $0.15) Tj
+0 -12 Td
+(- Cost per 1M output tokens: $0.60) Tj
+0 -12 Td
+(- Average cost/capacity control: Max turns = 3, fallback path for malformed prompts, object-count limits, and command whitelist.) Tj
+0 -12 Td
+0 -12 Td
+(Estimated AI spend per month:) Tj
+0 -12 Td
+0 -12 Td
+( |  Users  |  Est. Monthly AI Commands  |  Est. Monthly Cost  |) Tj
+0 -12 Td
+( |  ---  |  ---  |  ---  |) Tj
+0 -12 Td
+( |  100  |  12,000  |  $2.40  |) Tj
+0 -12 Td
+( |  1,000  |  120,000  |  $24.00  |) Tj
+0 -12 Td
+( |  10,000  |  1,200,000  |  $240.00  |) Tj
+0 -12 Td
+( |  100,000  |  12,000,000  |  $2,400.00  |) Tj
+0 -12 Td
+0 -12 Td
+ET
+/F1 13 Tf
+0 -20 Td
+1 0 0 1 50 770 Tm
+/F1 13 Tf
+(Notes and Guardrails) Tj
+0 -14 Td
+ET
+BT
+/F1 11 Tf
+0 -12 Td
+(- Hard spend cap in current app: $10 hard stop per instance) Tj
+0 -12 Td
+(- Reserve amount per call \(if enabled\): $0.003 per call) Tj
+0 -12 Td
+(- Production-store selection \(memory vs firestore\): firestore for persisted boards + Firebase Auth context; AI session memory is stateless per request) Tj
+0 -12 Td
+(- Cost control strategy for production:) Tj
+0 -12 Td
+(  - Strict OpenAI mode by default.) Tj
+0 -12 Td
+(  - Deterministic-only and fallback modes for non-billed operation and recoverability.) Tj
+0 -12 Td
+(  - Tool-level guardrails \(object caps, batch limits, schema validation\).) Tj
+0 -12 Td
+(  - Budget reservation and hard cap checks before every paid run.) Tj
+0 -12 Td
+(  - Langfuse and OpenAI tracing for command-level observability and incident rollback analysis.) Tj
+0 -12 Td
+0 -12 Td
+ET
+/F1 13 Tf
+0 -20 Td
+1 0 0 1 50 770 Tm
+/F1 13 Tf
+(Civilian Agency Scale Consideration) Tj
+0 -14 Td
+ET
+BT
+/F1 11 Tf
+0 -12 Td
+(When framing as a shared service across U.S. civilian agencies, usage variance is expected:) Tj
+0 -12 Td
+0 -12 Td
+(- Early pilots \(pilot agencies only\): typically lower sessions/user and more compliance review.) Tj
+0 -12 Td
+(- Mature rollout: more power users and more frequent command usage.) Tj
+0 -12 Td
+(- The model above is a conservative "mixed internal use" baseline and likely underestimates heavy facilitation workflows.) Tj
+0 -12 Td
+0 -12 Td
+ET
+/F1 13 Tf
+0 -20 Td
+1 0 0 1 50 770 Tm
+/F1 13 Tf
+(Cost Estimate \(Best-Effort Fill\)) Tj
+0 -14 Td
+ET
+BT
+/F1 11 Tf
+0 -12 Td
+(Using current defaults in this repo \(placeholder baseline\), one realistic first pass estimate is:) Tj
+0 -12 Td
+0 -12 Td
+(- Per-command cost assumption: $0.00020 \(small command, governance-style board interactions\)) Tj
+0 -12 Td
+(- 100 users / month estimate: $2.00) Tj
+0 -12 Td
+(- 1,000 users / month estimate: $20.00) Tj
+0 -12 Td
+(- 10,000 users / month estimate: $200.00) Tj
+0 -12 Td
+(- 100,000 users / month estimate: $2,000.00) Tj
+0 -12 Td
+0 -12 Td
+(Note: These estimates are best-effort figures using the model and request assumptions above. Governance-heavy deployment, bursty use, and richer prompts can increase command-level token costs above this baseline.) Tj
+0 -12 Td
+0 -12 Td
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000311 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+5576
+%%EOF

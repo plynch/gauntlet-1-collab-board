@@ -132,7 +132,7 @@ function hasExplicitCoordinateHints(
  * Handles ensure object ids.
  */
 function ensureObjectIds(
-  objectIds: string[] | undefined,
+  objectIds: string[] | null | undefined,
   selectedObjectIds: string[],
   toolName: string,
 ): string[] {
@@ -327,9 +327,9 @@ export function createBoardAgentTools(
       ),
       parameters: z.object({
         text: z.string().min(1).max(1_000),
-        x: z.number().optional(),
-        y: z.number().optional(),
-        color: z.string().optional(),
+        x: z.number().nullable(),
+        y: z.number().nullable(),
+        color: z.string().nullable(),
       }),
       execute: async (args) =>
         executeToolCallWithGuardrails({
@@ -350,13 +350,13 @@ export function createBoardAgentTools(
       ),
       parameters: z.object({
         count: z.number().int().min(1).max(50),
-        color: z.string().optional(),
-        originX: z.number().optional(),
-        originY: z.number().optional(),
-        columns: z.number().int().min(1).max(10).optional(),
-        gapX: z.number().min(0).max(400).optional(),
-        gapY: z.number().min(0).max(400).optional(),
-        textPrefix: z.string().max(1_000).optional(),
+        color: z.string().nullable(),
+        originX: z.number().nullable(),
+        originY: z.number().nullable(),
+        columns: z.number().int().min(1).max(10).nullable(),
+        gapX: z.number().min(0).max(400).nullable(),
+        gapY: z.number().min(0).max(400).nullable(),
+        textPrefix: z.string().max(1_000).nullable(),
       }),
       execute: async (args) =>
         executeToolCallWithGuardrails({
@@ -383,11 +383,11 @@ export function createBoardAgentTools(
       ),
       parameters: z.object({
         type: z.enum(["rect", "circle", "line", "triangle", "star"]),
-        x: z.number().optional(),
-        y: z.number().optional(),
-        width: z.number().optional(),
-        height: z.number().optional(),
-        color: z.string().optional(),
+        x: z.number().nullable(),
+        y: z.number().nullable(),
+        width: z.number().nullable(),
+        height: z.number().nullable(),
+        color: z.string().nullable(),
       }),
       execute: async (args) =>
         executeToolCallWithGuardrails({
@@ -413,17 +413,17 @@ export function createBoardAgentTools(
         "Create a multi-section grid container.",
       ),
       parameters: z.object({
-        x: z.number().optional(),
-        y: z.number().optional(),
-        width: z.number().optional(),
-        height: z.number().optional(),
-        rows: z.number().int().min(1).max(8).optional(),
-        cols: z.number().int().min(1).max(8).optional(),
-        gap: z.number().min(0).max(80).optional(),
-        cellColors: z.array(z.string()).optional(),
-        containerTitle: z.string().max(120).optional(),
-        sectionTitles: z.array(z.string()).optional(),
-        sectionNotes: z.array(z.string()).optional(),
+        x: z.number().nullable(),
+        y: z.number().nullable(),
+        width: z.number().nullable(),
+        height: z.number().nullable(),
+        rows: z.number().int().min(1).max(8).nullable(),
+        cols: z.number().int().min(1).max(8).nullable(),
+        gap: z.number().min(0).max(80).nullable(),
+        cellColors: z.array(z.string()).nullable(),
+        containerTitle: z.string().max(120).nullable(),
+        sectionTitles: z.array(z.string()).nullable(),
+        sectionNotes: z.array(z.string()).nullable(),
       }),
       execute: async (args) =>
         executeToolCallWithGuardrails({
@@ -450,11 +450,11 @@ export function createBoardAgentTools(
         "Create a frame rectangle with a title.",
       ),
       parameters: z.object({
-        title: z.string().max(200).optional(),
-        x: z.number().optional(),
-        y: z.number().optional(),
-        width: z.number().optional(),
-        height: z.number().optional(),
+        title: z.string().max(200).nullable(),
+        x: z.number().nullable(),
+        y: z.number().nullable(),
+        width: z.number().nullable(),
+        height: z.number().nullable(),
       }),
       execute: async (args) =>
         executeToolCallWithGuardrails({
@@ -475,11 +475,11 @@ export function createBoardAgentTools(
         "Connect two board objects by ID.",
       ),
       parameters: z.object({
-        fromId: z.string().optional(),
-        toId: z.string().optional(),
+        fromId: z.string().nullable(),
+        toId: z.string().nullable(),
         style: z
           .enum(["undirected", "one-way-arrow", "two-way-arrow"])
-          .optional(),
+          .nullable(),
       }),
       execute: async (args) => {
         const selectedIds = ensureObjectIds(
@@ -512,12 +512,12 @@ export function createBoardAgentTools(
         "Arrange selected objects into a grid.",
       ),
       parameters: z.object({
-        objectIds: z.array(z.string()).optional(),
-        columns: z.number().int().min(1).max(8).optional(),
-        gapX: z.number().min(0).max(400).optional(),
-        gapY: z.number().min(0).max(400).optional(),
-        originX: z.number().optional(),
-        originY: z.number().optional(),
+        objectIds: z.array(z.string()).nullable(),
+        columns: z.number().int().min(1).max(8).nullable(),
+        gapX: z.number().min(0).max(400).nullable(),
+        gapY: z.number().min(0).max(400).nullable(),
+        originX: z.number().nullable(),
+        originY: z.number().nullable(),
       }),
       execute: async (args) =>
         executeToolCallWithGuardrails({
@@ -540,7 +540,7 @@ export function createBoardAgentTools(
       name: "alignObjects",
       description: getToolDescription("alignObjects", "Align selected objects."),
       parameters: z.object({
-        objectIds: z.array(z.string()).optional(),
+        objectIds: z.array(z.string()).nullable(),
         alignment: z.enum(["left", "center", "right", "top", "middle", "bottom"]),
       }),
       execute: async (args) =>
@@ -563,7 +563,7 @@ export function createBoardAgentTools(
         "Distribute selected objects.",
       ),
       parameters: z.object({
-        objectIds: z.array(z.string()).optional(),
+        objectIds: z.array(z.string()).nullable(),
         axis: z.enum(["horizontal", "vertical"]),
       }),
       execute: async (args) =>
@@ -586,7 +586,7 @@ export function createBoardAgentTools(
         "Move one object to exact coordinates.",
       ),
       parameters: z.object({
-        objectId: z.string().optional(),
+        objectId: z.string().nullable(),
         x: z.number(),
         y: z.number(),
       }),
@@ -612,19 +612,19 @@ export function createBoardAgentTools(
       name: "moveObjects",
       description: getToolDescription("moveObjects", "Move multiple objects."),
       parameters: z.object({
-        objectIds: z.array(z.string()).optional(),
+        objectIds: z.array(z.string()).nullable(),
         delta: z
           .object({
             dx: z.number(),
             dy: z.number(),
           })
-          .optional(),
+          .nullable(),
         toPoint: z
           .object({
             x: z.number(),
             y: z.number(),
           })
-          .optional(),
+          .nullable(),
         toViewportSide: z
           .object({
             side: z.enum(["left", "right", "top", "bottom"]),
@@ -635,10 +635,10 @@ export function createBoardAgentTools(
                 width: z.number(),
                 height: z.number(),
               })
-              .optional(),
-            padding: z.number().optional(),
+              .nullable(),
+            padding: z.number().nullable(),
           })
-          .optional(),
+          .nullable(),
       }),
       execute: async (args) => {
         if (!args.delta && !args.toPoint && !args.toViewportSide) {
@@ -672,7 +672,7 @@ export function createBoardAgentTools(
       name: "resizeObject",
       description: getToolDescription("resizeObject", "Resize one object."),
       parameters: z.object({
-        objectId: z.string().optional(),
+        objectId: z.string().nullable(),
         width: z.number(),
         height: z.number(),
       }),
@@ -698,7 +698,7 @@ export function createBoardAgentTools(
       name: "updateText",
       description: getToolDescription("updateText", "Update object text."),
       parameters: z.object({
-        objectId: z.string().optional(),
+        objectId: z.string().nullable(),
         newText: z.string().min(1).max(1_000),
       }),
       execute: async (args) => {
@@ -722,7 +722,7 @@ export function createBoardAgentTools(
       name: "changeColor",
       description: getToolDescription("changeColor", "Change object color."),
       parameters: z.object({
-        objectId: z.string().optional(),
+        objectId: z.string().nullable(),
         color: z.string(),
       }),
       execute: async (args) => {
@@ -746,7 +746,7 @@ export function createBoardAgentTools(
       name: "deleteObjects",
       description: getToolDescription("deleteObjects", "Delete board objects."),
       parameters: z.object({
-        objectIds: z.array(z.string()).optional(),
+        objectIds: z.array(z.string()).nullable(),
       }),
       execute: async (args) =>
         executeToolCallWithGuardrails({
@@ -767,8 +767,8 @@ export function createBoardAgentTools(
         "Fit selected frame to its contents.",
       ),
       parameters: z.object({
-        frameId: z.string().optional(),
-        padding: z.number().optional(),
+        frameId: z.string().nullable(),
+        padding: z.number().nullable(),
       }),
       execute: async (args) => {
         const frameId =

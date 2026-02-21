@@ -1187,13 +1187,17 @@ export async function POST(request: NextRequest) {
                   traceId,
                   execution,
                 });
+            const payloadWithTrace = {
+              ...payload,
+              traceId: payload.traceId ?? traceId,
+            };
 
             const responseSpan = activeTrace.startSpan("ai.response.sent", {
               status: 200,
-              provider: payload.provider,
+              provider: payloadWithTrace.provider,
             });
             responseSpan.end({
-              traceId: payload.traceId ?? null,
+              traceId: payloadWithTrace.traceId ?? null,
             });
             activeTrace.finishSuccess({
               intent: plannerResult.intent,
@@ -1202,7 +1206,7 @@ export async function POST(request: NextRequest) {
               fallbackUsed,
               llmUsed,
             });
-            return payload;
+            return payloadWithTrace;
           }
 
           const clearBoardObjectIdsBeforeExecution =
@@ -1308,6 +1312,10 @@ export async function POST(request: NextRequest) {
                 traceId,
                 execution,
               });
+          const payloadWithTrace = {
+            ...payload,
+            traceId: payload.traceId ?? traceId,
+          };
 
           await writeAiAuditLogIfEnabled({
             boardId: parsedPayload.boardId,
@@ -1323,10 +1331,10 @@ export async function POST(request: NextRequest) {
 
           const responseSpan = activeTrace.startSpan("ai.response.sent", {
             status: 200,
-            provider: payload.provider,
+            provider: payloadWithTrace.provider,
           });
           responseSpan.end({
-            traceId: payload.traceId ?? null,
+            traceId: payloadWithTrace.traceId ?? null,
           });
 
           activeTrace.finishSuccess({
@@ -1338,7 +1346,7 @@ export async function POST(request: NextRequest) {
             llmUsed,
           });
 
-          return payload;
+          return payloadWithTrace;
         })(),
         AI_ROUTE_TIMEOUT_MS,
         "AI command timed out.",

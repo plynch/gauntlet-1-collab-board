@@ -89,7 +89,7 @@ const WRITE_METRICS_LOG_INTERVAL_MS = 15_000;
 const TERMINAL_FONT_FAMILY =
   'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
 const AI_HELP_MESSAGE = [
-  "CollabBoard AI Help",
+  "🤖 CollabBoard AI Help",
   "",
   "Golden eval examples:",
   "- Add a yellow sticky note that says 'User Research'",
@@ -107,6 +107,17 @@ const AI_HELP_MESSAGE = [
   "- Up/Down: command history",
   "- Enter: send command",
   "- /help or /commands: show this help",
+].join("\n");
+const AI_WELCOME_MESSAGE = [
+  "👋 Welcome to CollabBoard AI",
+  "",
+  "Try one of these:",
+  "• Add a yellow sticky note that says 'User Research'",
+  "• Create a blue rectangle at position 100,200",
+  '• Add a frame called "Sprint Planning"',
+  "• Create a SWOT analysis template with four quadrants",
+  "",
+  "Tip: type /help for the full command list ✨",
 ].join("\n");
 
 type RealtimeBoardCanvasProps = {
@@ -2320,13 +2331,22 @@ export default function RealtimeBoardCanvas({
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
   const [isSnapToGridEnabled, setIsSnapToGridEnabled] = useState(true);
-  const [isAiFooterCollapsed, setIsAiFooterCollapsed] = useState(false);
+  const [isAiFooterCollapsed, setIsAiFooterCollapsed] = useState(true);
+  const [hasAiDrawerBeenInteracted, setHasAiDrawerBeenInteracted] =
+    useState(false);
+  const [isAiDrawerNudgeActive, setIsAiDrawerNudgeActive] = useState(false);
   const [isAiFooterResizing, setIsAiFooterResizing] = useState(false);
   const [isObjectDragging, setIsObjectDragging] = useState(false);
   const [aiFooterHeight, setAiFooterHeight] = useState(
     AI_FOOTER_DEFAULT_HEIGHT,
   );
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => [
+    {
+      id: createChatMessageId("a"),
+      role: "assistant",
+      text: AI_WELCOME_MESSAGE,
+    },
+  ]);
   const [chatInput, setChatInput] = useState("");
   const [isAiSubmitting, setIsAiSubmitting] = useState(false);
   const [isSwotTemplateCreating, setIsSwotTemplateCreating] =
@@ -2507,6 +2527,44 @@ export default function RealtimeBoardCanvas({
 
     element.scrollTop = element.scrollHeight;
   }, [chatMessages, isAiFooterCollapsed, isAiSubmitting]);
+
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      !isAiFooterCollapsed ||
+      hasAiDrawerBeenInteracted
+    ) {
+      setIsAiDrawerNudgeActive(false);
+      return;
+    }
+
+    let nudgeCount = 0;
+    let pulseTimeoutId: number | null = null;
+    const triggerPulse = () => {
+      setIsAiDrawerNudgeActive(true);
+      pulseTimeoutId = window.setTimeout(() => {
+        setIsAiDrawerNudgeActive(false);
+      }, 380);
+    };
+
+    triggerPulse();
+    const intervalId = window.setInterval(() => {
+      nudgeCount += 1;
+      if (nudgeCount >= 6) {
+        window.clearInterval(intervalId);
+        return;
+      }
+      triggerPulse();
+    }, 2_800);
+
+    return () => {
+      window.clearInterval(intervalId);
+      if (pulseTimeoutId !== null) {
+        window.clearTimeout(pulseTimeoutId);
+      }
+      setIsAiDrawerNudgeActive(false);
+    };
+  }, [hasAiDrawerBeenInteracted, isAiFooterCollapsed]);
 
   useEffect(() => {
     if (
@@ -8351,6 +8409,7 @@ export default function RealtimeBoardCanvas({
         <button
           type="button"
           onClick={() => {
+            setHasAiDrawerBeenInteracted(true);
             setIsAiFooterResizing(false);
             setIsAiFooterCollapsed((previous) => !previous);
           }}
@@ -8382,8 +8441,14 @@ export default function RealtimeBoardCanvas({
             justifyContent: "center",
             gap: "0.45rem",
             flexShrink: 0,
+            transform: isAiDrawerNudgeActive
+              ? "translateY(-1px) scale(1.01)"
+              : "translateY(0) scale(1)",
+            boxShadow: isAiDrawerNudgeActive
+              ? "0 0 0 4px rgba(14, 165, 233, 0.18)"
+              : "none",
             transition:
-              "background-color 180ms ease, border-color 180ms ease, color 180ms ease",
+              "background-color 180ms ease, border-color 180ms ease, color 180ms ease, transform 220ms ease, box-shadow 260ms ease",
           }}
         >
           <span
@@ -8418,13 +8483,16 @@ export default function RealtimeBoardCanvas({
                 margin: "0 auto",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "flex-start",
+                justifyContent: "space-between",
                 gap: "0.75rem",
               }}
             >
               <strong style={{ fontSize: 13, color: "#0f172a" }}>
                 AI Assistant
               </strong>
+              <span style={{ fontSize: 12, color: "#475569" }}>
+                ✨ Open for quick commands
+              </span>
             </div>
           </div>
         ) : (

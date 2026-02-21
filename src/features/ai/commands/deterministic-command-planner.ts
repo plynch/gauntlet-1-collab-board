@@ -545,10 +545,6 @@ function parseSideTarget(message: string): "left" | "right" | "top" | "bottom" |
     return null;
   }
 
-  if (!/\b(screen|viewport|view|canvas|board)\b/.test(lower)) {
-    return null;
-  }
-
   const direction = sideMatch[1] ?? sideMatch[2];
   if (
     direction !== "left" &&

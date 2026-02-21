@@ -1168,7 +1168,15 @@ export async function POST(request: NextRequest) {
           const plannerMode = openAiConfig.plannerMode;
           const requireOpenAi =
             plannerMode === "openai-strict" || isOpenAiRequiredForStubCommands();
-          const shouldAttemptOpenAi = plannerMode !== "deterministic-only";
+          const deterministicPlanResult = planDeterministicCommand({
+            message: parsedPayload.message,
+            boardState: boardObjects,
+            selectedObjectIds,
+            viewportBounds: parsedPayload.viewportBounds ?? null,
+          });
+          const shouldAttemptOpenAi =
+            plannerMode !== "deterministic-only" &&
+            !deterministicPlanResult.planned;
 
           const openAiAttempt = shouldAttemptOpenAi
             ? await attemptOpenAiPlanner({
@@ -1186,12 +1194,17 @@ export async function POST(request: NextRequest) {
                 model: openAiConfig.model,
                 runtime: openAiConfig.runtime,
                 reason:
-                  plannerMode === "deterministic-only"
-                    ? "Skipped because AI_PLANNER_MODE=deterministic-only."
+                  deterministicPlanResult.planned
+                    ? "Skipped because deterministic planner handled this command."
+                    : plannerMode === "deterministic-only"
+                      ? "Skipped because AI_PLANNER_MODE=deterministic-only."
                     : "OpenAI planner disabled by runtime configuration.",
               };
           const openAiExecution = buildOpenAiExecutionSummary(openAiAttempt);
-          if (openAiAttempt.status === "planned") {
+          if (deterministicPlanResult.planned) {
+            plannerResult = deterministicPlanResult;
+            mcpUsed = false;
+          } else if (openAiAttempt.status === "planned") {
             plannerResult = {
               planned: true,
               intent: openAiAttempt.intent,
@@ -1209,7 +1222,11 @@ export async function POST(request: NextRequest) {
             fallbackUsed = true;
           }
 
-          if (requireOpenAi && openAiAttempt.status !== "planned") {
+          if (
+            requireOpenAi &&
+            !deterministicPlanResult.planned &&
+            openAiAttempt.status !== "planned"
+          ) {
             const failure = getOpenAiRequiredErrorResponse(openAiAttempt);
             throw createHttpError(failure.status, failure.message);
           }
@@ -1228,12 +1245,7 @@ export async function POST(request: NextRequest) {
                 fallbackUsed: true,
                 reason: "MCP_INTERNAL_TOKEN is missing.",
               });
-              plannerResult = planDeterministicCommand({
-                message: parsedPayload.message,
-                boardState: boardObjects,
-                selectedObjectIds,
-                viewportBounds: parsedPayload.viewportBounds ?? null,
-              });
+              plannerResult = deterministicPlanResult;
             } else {
               try {
                 plannerResult = await callCommandPlanTool({

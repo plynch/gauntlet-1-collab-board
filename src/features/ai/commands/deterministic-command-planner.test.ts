@@ -157,6 +157,31 @@ describe("planDeterministicCommand", () => {
     }
   });
 
+  it("plans multiple sticky batches from multiple clauses", () => {
+    const result = planDeterministicCommand({
+      message: "Create 5 pink sticky notes Create 5 blue sticky notes",
+      boardState: BOARD_STATE,
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("create-sticky-batch");
+      expect(result.plan.operations).toHaveLength(2);
+
+      const [first, second] = result.plan.operations;
+      expect(first?.tool).toBe("createStickyBatch");
+      expect(second?.tool).toBe("createStickyBatch");
+
+      if (first?.tool === "createStickyBatch" && second?.tool === "createStickyBatch") {
+        expect(first.args.count).toBe(5);
+        expect(first.args.color).toBe("#f9a8d4");
+        expect(second.args.count).toBe(5);
+        expect(second.args.color).toBe("#93c5fd");
+      }
+    }
+  });
+
   it("plans create-sticky-batch for note phrasing and bottom viewport placement", () => {
     const result = planDeterministicCommand({
       message: "Create 10 red notes on the bottom of the board",

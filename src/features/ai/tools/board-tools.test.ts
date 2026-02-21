@@ -612,8 +612,43 @@ describe("BoardToolExecutor moveObjects", () => {
     const state = await executor.getBoardState();
     const byId = new Map(state.map((objectItem) => [objectItem.id, objectItem]));
 
-    expect(byId.get("obj-1")?.x).toBe(680);
-    expect(byId.get("obj-2")?.x).toBe(840);
+    expect(byId.get("obj-1")?.x).toBe(760);
+    expect(byId.get("obj-2")?.x).toBe(760);
+    expect(byId.get("obj-1")?.y).toBe(140);
+    expect(byId.get("obj-2")?.y).toBe(272);
+  });
+
+  it("moves a group to viewport top side in a row", async () => {
+    const fakeDb = new FakeFirestore([
+      createObject("obj-1", 1, { x: 120, y: 140, width: 120, height: 100 }),
+      createObject("obj-2", 2, { x: 280, y: 140, width: 120, height: 100 }),
+    ]);
+    const executor = new BoardToolExecutor({
+      boardId: "board-1",
+      userId: "user-1",
+      db: fakeDb as unknown as Firestore,
+    });
+
+    await executor.moveObjects({
+      objectIds: ["obj-1", "obj-2"],
+      toViewportSide: {
+        side: "top",
+        viewportBounds: {
+          left: 0,
+          top: 0,
+          width: 1000,
+          height: 600,
+        },
+        padding: 40,
+      },
+    });
+    const state = await executor.getBoardState();
+    const byId = new Map(state.map((objectItem) => [objectItem.id, objectItem]));
+
+    expect(byId.get("obj-1")?.x).toBe(120);
+    expect(byId.get("obj-2")?.x).toBe(272);
+    expect(byId.get("obj-1")?.y).toBe(40);
+    expect(byId.get("obj-2")?.y).toBe(40);
   });
 });
 

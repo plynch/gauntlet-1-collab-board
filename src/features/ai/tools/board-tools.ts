@@ -75,6 +75,7 @@ const MOVE_OBJECTS_DEFAULT_PADDING = 0;
 const FRAME_FIT_MIN_PADDING = 0;
 const FRAME_FIT_MAX_PADDING = 240;
 const FRAME_FIT_DEFAULT_PADDING = 40;
+const VIEWPORT_SIDE_STACK_GAP = 32;
 
 type LayoutAlignment =
   | "left"
@@ -1434,7 +1435,6 @@ export class BoardToolExecutor {
           : args.toViewportSide.side === "bottom"
             ? targetBounds.bottom - groupHeight - padding
             : selectedBounds.top;
-
       const minLeft = targetBounds.left;
       const maxLeft = targetBounds.right - groupWidth;
       const minTop = targetBounds.top;
@@ -1447,9 +1447,59 @@ export class BoardToolExecutor {
         minTop <= maxTop
           ? Math.min(maxTop, Math.max(minTop, targetTopBase))
           : targetTopBase;
+      const isLeftOrRight =
+        args.toViewportSide.side === "left" ||
+        args.toViewportSide.side === "right";
 
-      dx = targetLeft - selectedBounds.left;
-      dy = targetTop - selectedBounds.top;
+      if (isLeftOrRight) {
+        const ordered = [...selectedObjects].sort(
+          (first, second) =>
+            (first.y - second.y) || (first.x - second.x),
+        );
+        const totalHeight =
+          ordered.reduce((sum, objectItem) => sum + objectItem.height, 0) +
+          Math.max(0, ordered.length - 1) * VIEWPORT_SIDE_STACK_GAP;
+        const stackHeightMaxTop = Math.max(minTop, targetBounds.bottom - totalHeight);
+        const startTop = Math.min(
+          stackHeightMaxTop,
+          Math.max(minTop, targetTop),
+        );
+        let yCursor = startTop;
+        ordered.forEach((objectItem) => {
+          objectItem.x = targetLeft;
+          objectItem.y = yCursor;
+          yCursor += objectItem.height + VIEWPORT_SIDE_STACK_GAP;
+        });
+      } else {
+        const ordered = [...selectedObjects].sort(
+          (first, second) =>
+            (first.x - second.x) || (first.y - second.y),
+        );
+        const totalWidth =
+          ordered.reduce((sum, objectItem) => sum + objectItem.width, 0) +
+          Math.max(0, ordered.length - 1) * VIEWPORT_SIDE_STACK_GAP;
+        const maxLeft = targetBounds.right - totalWidth;
+        const startLeft = Math.min(
+          maxLeft,
+          Math.max(minLeft, targetLeft),
+        );
+        let xCursor = startLeft;
+        ordered.forEach((objectItem) => {
+          objectItem.x = xCursor;
+          objectItem.y = targetTop;
+          xCursor += objectItem.width + VIEWPORT_SIDE_STACK_GAP;
+        });
+      }
+
+      return await this.updateObjectsInBatch(
+        selectedObjects.map((objectItem) => ({
+          objectId: objectItem.id,
+          payload: {
+            x: objectItem.x,
+            y: objectItem.y,
+          },
+        })),
+      ).then(() => ({ tool: "moveObjects" }));
     } else if (args.delta) {
       dx = args.delta.dx;
       dy = args.delta.dy;

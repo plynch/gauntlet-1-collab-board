@@ -669,6 +669,82 @@ function parseStickyBatchCount(message: string): number | null {
   return count;
 }
 
+type ParsedStickyBatchClause = {
+  sourceText: string;
+  count: number;
+  color: string;
+  textPrefix: string;
+  columns: number;
+  hasExplicitPoint: boolean;
+  point: Point | null;
+  side: "left" | "right" | "top" | "bottom" | null;
+  rows: number;
+  clusterWidth: number;
+  clusterHeight: number;
+};
+
+/**
+ * Splits a sticky batch message into create/add/create-like clauses.
+ */
+function splitStickyCreationClauses(message: string): string[] {
+  const commandStartPattern = /\b(?:create|add|make)\b/gi;
+  const matches = Array.from(message.matchAll(commandStartPattern), (entry) =>
+    entry.index ?? -1,
+  ).filter((index) => index >= 0);
+  if (matches.length === 0) {
+    return [];
+  }
+
+  const clauses = matches.map((startIndex, index) => {
+    const endIndex = matches[index + 1] ?? message.length;
+    return message.slice(startIndex, endIndex).trim();
+  });
+
+  return clauses.filter((clause) => clause.length > 0);
+}
+
+/**
+ * Parses sticky batch intent from one clause.
+ */
+function parseStickyBatchClause(
+  clause: string,
+): ParsedStickyBatchClause | null {
+  const count = parseStickyBatchCount(clause);
+  if (!count) {
+    return null;
+  }
+
+  const point = parseCoordinatePoint(clause);
+  const columns = Math.min(STICKY_BATCH_DEFAULT_COLUMNS, count);
+  const side = parseSideTarget(clause);
+  const rows = Math.max(1, Math.ceil(count / columns));
+  const stickySize = DEFAULT_SIZES.sticky;
+  const clusterWidth = Math.max(
+    stickySize.width,
+    stickySize.width + (columns - 1) * STICKY_GRID_SPACING_X,
+  );
+  const clusterHeight = Math.max(
+    stickySize.height,
+    stickySize.height + (rows - 1) * STICKY_GRID_SPACING_Y,
+  );
+
+  return {
+    sourceText: clause,
+    count,
+    color: findColor(clause) ?? COLOR_KEYWORDS.yellow,
+    textPrefix: /\b(?:that says|saying|with text|text)\b/i.test(clause)
+      ? parseStickyText(clause)
+      : "Sticky",
+    columns,
+    hasExplicitPoint: point !== null,
+    point,
+    side,
+    rows,
+    clusterWidth,
+    clusterHeight,
+  };
+}
+
 /**
  * Gets viewport-anchored origin for sticky creation.
  */
@@ -1616,12 +1692,17 @@ function planCreateSticky(
 function planCreateStickyBatch(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
-  const count = parseStickyBatchCount(input.message);
-  if (!count) {
+  const batchClauses = splitStickyCreationClauses(input.message)
+    .map((clause) => parseStickyBatchClause(clause))
+    .filter((clause): clause is ParsedStickyBatchClause => clause !== null);
+  if (batchClauses.length === 0) {
     return null;
   }
 
-  if (count > MAX_STICKY_BATCH_COUNT) {
+  const oversizedClause = batchClauses.find(
+    (clause) => clause.count > MAX_STICKY_BATCH_COUNT,
+  );
+  if (oversizedClause) {
     return {
       planned: false,
       intent: "create-sticky-batch",
@@ -1629,44 +1710,79 @@ function planCreateStickyBatch(
     };
   }
 
-  const columns = Math.min(STICKY_BATCH_DEFAULT_COLUMNS, count);
-  const point =
-    parseCoordinatePoint(input.message) ??
-    getViewportAnchoredStickyOrigin({
-      message: input.message,
-      viewportBounds: input.viewportBounds,
-      count,
-      columns,
-    }) ??
-    getAutoSpawnPoint(input.boardState);
-  const color = findColor(input.message) ?? COLOR_KEYWORDS.yellow;
-  const hasExplicitText = /\b(?:that says|saying|with text|text)\b/i.test(
-    input.message,
-  );
-  const textSeed = hasExplicitText ? parseStickyText(input.message) : "Sticky";
+  const operations: BoardToolCall[] = [];
+  let previousClause: ParsedStickyBatchClause | null = null;
+
+  batchClauses.forEach((clause, index) => {
+    const fallbackPoint =
+      parseCoordinatePoint(clause.sourceText) ??
+      getViewportAnchoredStickyOrigin({
+        message: clause.sourceText,
+        viewportBounds: input.viewportBounds,
+        count: clause.count,
+        columns: clause.columns,
+      });
+
+    let point = clause.point ?? fallbackPoint;
+    if (!point) {
+      point = getAutoSpawnPoint(input.boardState);
+    }
+
+    if (index > 0 && !clause.hasExplicitPoint) {
+      if (previousClause) {
+        const lastPoint = previousClause.point ?? getAutoSpawnPoint(input.boardState);
+        const lastSide = previousClause.side ?? null;
+
+        if (lastSide === "left" || lastSide === "right") {
+          point = {
+            x: lastPoint.x,
+            y: lastPoint.y + previousClause.clusterHeight + STICKY_GRID_SPACING_Y,
+          };
+        } else if (lastSide === "top" || lastSide === "bottom") {
+          point = {
+            x: lastPoint.x + previousClause.clusterWidth + STICKY_GRID_SPACING_X,
+            y: lastPoint.y,
+          };
+        } else {
+          point = {
+            x: lastPoint.x + previousClause.clusterWidth + STICKY_GRID_SPACING_X,
+            y: lastPoint.y,
+          };
+        }
+      }
+    }
+
+    operations.push({
+      tool: "createStickyBatch",
+      args: {
+        count: clause.count,
+        color: clause.color,
+        originX: point.x,
+        originY: point.y,
+        columns: clause.columns,
+        gapX: STICKY_GRID_SPACING_X,
+        gapY: STICKY_GRID_SPACING_Y,
+        textPrefix: clause.textPrefix,
+      },
+    });
+
+    previousClause = {
+      ...clause,
+      point,
+      rows: clause.rows,
+      clusterWidth: clause.clusterWidth,
+      clusterHeight: clause.clusterHeight,
+    };
+  });
 
   return {
     planned: true,
     intent: "create-sticky-batch",
-    assistantMessage: `Created ${count} sticky notes.`,
+    assistantMessage: `Created ${batchClauses.length} sticky note requests.`,
     plan: toPlan({
       id: "command.create-sticky-batch",
       name: "Create Sticky Notes",
-      operations: [
-        {
-          tool: "createStickyBatch",
-          args: {
-            count,
-            color,
-            originX: point.x,
-            originY: point.y,
-            columns,
-            gapX: STICKY_GRID_SPACING_X,
-            gapY: STICKY_GRID_SPACING_Y,
-            textPrefix: textSeed,
-          },
-        },
-      ],
+      operations,
     }),
   };
 }

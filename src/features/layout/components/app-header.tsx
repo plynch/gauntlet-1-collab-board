@@ -95,14 +95,16 @@ export default function AppHeader({
 
   return (
     <header
-      className="grid min-h-14 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 px-3.5"
+      className="grid min-h-14 shrink-0 grid-cols-[minmax(132px,1fr)_auto_minmax(300px,1fr)] items-center gap-3 px-3.5"
       style={{
         background: "var(--surface)",
         borderBottom: "2px solid var(--border)",
         color: "var(--text)",
       }}
     >
-      <div>{leftSlot ?? <div className="h-[34px] w-[34px]" />}</div>
+      <div className="flex min-h-[42px] items-center">
+        {leftSlot ?? <div className="h-[34px] w-[34px]" />}
+      </div>
 
       <h1 className="m-0 text-center text-xl font-bold">
         <span className="inline-flex max-w-full items-center gap-2">
@@ -113,8 +115,17 @@ export default function AppHeader({
         </span>
       </h1>
 
-      <div className="flex min-w-[34px] justify-end">
-        <div className="flex items-start gap-2">
+      <div className="flex min-h-[42px] min-w-[34px] justify-end">
+        <div className="flex items-center gap-2">
+          {user ? (
+            <span
+              className="hidden max-w-[min(26vw,360px)] overflow-hidden text-ellipsis whitespace-nowrap text-right text-[11px] leading-[1.1] md:inline"
+              title={user.email ?? user.uid}
+              style={{ color: "var(--text-muted)" }}
+            >
+              Signed in as {user.email ?? user.uid}
+            </span>
+          ) : null}
           <button
             type="button"
             onClick={toggleTheme}
@@ -140,7 +151,7 @@ export default function AppHeader({
           </button>
 
           {user ? (
-            <div className="grid justify-items-end gap-0.5">
+            <div className="flex items-center gap-2">
               {showAccountLink ? (
                 <Link
                   href="/account"
@@ -169,7 +180,7 @@ export default function AppHeader({
               ) : (
                 <div
                   aria-hidden="true"
-                  className="inline-flex h-[34px] w-[34px] items-center justify-center overflow-hidden rounded-full"
+                  className="inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center overflow-hidden rounded-full"
                   style={{
                     border: "1px solid var(--border)",
                     background: "var(--surface-subtle)",
@@ -191,14 +202,6 @@ export default function AppHeader({
                 </div>
               )}
 
-              <span
-                className="max-w-[min(64vw,920px)] overflow-hidden text-ellipsis whitespace-nowrap text-right text-[11px] leading-[1.1]"
-                title={user.email ?? user.uid}
-                style={{ color: "var(--text-muted)" }}
-              >
-                Signed in as {user.email ?? user.uid}
-              </span>
-
               {onSignOut ? (
                 <button
                   type="button"
@@ -206,10 +209,10 @@ export default function AppHeader({
                     void onSignOut();
                   }}
                   disabled={signOutDisabled}
-                  className="h-6 rounded-full px-2 text-[11px] font-semibold disabled:cursor-default disabled:opacity-60"
+                  className="h-[34px] rounded-full px-3 text-[12px] font-semibold disabled:cursor-default disabled:opacity-60"
                   style={{
                     border: "1px solid var(--border)",
-                    background: "var(--surface)",
+                    background: "var(--surface-subtle)",
                     color: "var(--text)",
                   }}
                 >

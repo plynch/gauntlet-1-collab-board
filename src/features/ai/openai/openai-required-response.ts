@@ -39,6 +39,21 @@ export type OpenAiRequiredAttempt =
     };
 
 /**
+ * Handles to safe openai reason.
+ */
+function toSafeOpenAiReason(reason: string): string {
+  const normalized = reason.toLowerCase();
+  if (
+    normalized.includes("incorrect api key provided") ||
+    normalized.includes("invalid api key")
+  ) {
+    return "OpenAI API key is invalid or revoked. Update OPENAI_API_KEY in App Hosting secrets and redeploy.";
+  }
+
+  return reason.replace(/sk-[a-z0-9_-]+/gi, "sk-REDACTED");
+}
+
+/**
  * Gets openai required error response.
  */
 export function getOpenAiRequiredErrorResponse(
@@ -70,6 +85,6 @@ export function getOpenAiRequiredErrorResponse(
 
   return {
     status: 502,
-    message: `OpenAI-required mode failed during planner call. ${openAiAttempt.reason}`,
+    message: `OpenAI-required mode failed during planner call. ${toSafeOpenAiReason(openAiAttempt.reason)}`,
   };
 }

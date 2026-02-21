@@ -559,6 +559,57 @@ function parseSideTarget(message: string): "left" | "right" | "top" | "bottom" |
 }
 
 /**
+ * Normalizes known frame title typos and preserves user intent.
+ */
+function normalizeFrameTitle(rawTitle: string): string {
+  const corrected: Record<string, string> = {
+    sprit: "sprint",
+    sprits: "sprints",
+    plannning: "planning",
+    planing: "planning",
+  };
+
+  const cleaned = rawTitle
+    .replace(/[“”"']/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const normalized = cleaned
+    .split(/\s+/)
+    .map((word) => {
+      const lowercase = word.toLowerCase();
+      const correctedWord = corrected[lowercase];
+      if (!correctedWord) {
+        return word;
+      }
+      return correctedWord;
+    })
+    .join(" ");
+
+  const shouldTitleCase =
+    normalized.length > 0 && normalized === normalized.toLowerCase();
+  if (!shouldTitleCase) {
+    return normalized;
+  }
+
+  return normalized
+    .split(/\s+/)
+    .map((word, index) => {
+      if (word.length === 0) {
+        return word;
+      }
+
+      if (index === 0 && word.toLowerCase() === "a") {
+        return word;
+      }
+
+      return word[0]?.toUpperCase() + word.slice(1);
+    })
+    .join(" ");
+}
+
+/**
  * Parses sticky text.
  */
 function parseStickyText(message: string): string {
@@ -1708,9 +1759,11 @@ function planCreateFrame(
     parseCoordinatePoint(input.message) ?? getAutoSpawnPoint(input.boardState);
   const size = parseSize(input.message) ?? { width: 520, height: 340 };
   const titleMatch = input.message.match(
-    /\b(?:called|named|title)\b\s+["“']?(.+?)["”']?$/i,
+    /\b(?:called|named|title)\b\s+["“']?([^"”'\r\n]+?)(?:["”']|\s*$)/i,
   );
-  const title = titleMatch?.[1]?.trim() || "New frame";
+  const title = titleMatch?.[1]
+    ? normalizeFrameTitle(titleMatch[1]) || "New frame"
+    : "New frame";
 
   return {
     planned: true,

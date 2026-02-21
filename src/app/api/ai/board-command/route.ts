@@ -245,11 +245,71 @@ function getAiTracingConfigurationError(): string | null {
 const DIRECT_DELETE_BATCH_CHUNK_SIZE = 400;
 const OPENAI_TRACE_OPERATIONS_PREVIEW_LIMIT = 3;
 const OPENAI_TRACE_OPERATIONS_PREVIEW_MAX_CHARS = 1_200;
+const SAFE_DETERMINISTIC_INTENT_PREFIXES = [
+  "create-",
+  "move-",
+  "clear-board",
+  "delete",
+  "align-",
+  "distribute-",
+  "fit-frame",
+  "resize-",
+  "change-color",
+  "update-text",
+] as const;
+const SAFE_DETERMINISTIC_EXACT_INTENTS = new Set([
+  "create-frame",
+  "create-sticky",
+  "create-sticky-batch",
+  "create-sticky-grid",
+  "swot-template",
+  "add-swot-item",
+  "create-journey-map",
+  "create-retrospective-board",
+  "arrange-grid",
+  "clear-board",
+  "clear-board-empty",
+  "move-selected",
+  "move-all",
+  "distribute-objects",
+  "align-objects",
+  "fit-frame-to-contents",
+  "resize-selected",
+  "change-color",
+  "update-text",
+  "delete-selected",
+]);
 const LANGCHAIN_TOOL_PLAN_SERIALIZED: Serialized = {
   lc: 1,
   type: "not_implemented",
   id: ["collabboard", "ai", "tool-plan"],
 };
+
+/**
+ * Returns whether deterministic intent is safe to execute directly.
+ */
+function isSafeDeterministicIntent(intent: string): boolean {
+  if (SAFE_DETERMINISTIC_EXACT_INTENTS.has(intent)) {
+    return true;
+  }
+  return SAFE_DETERMINISTIC_INTENT_PREFIXES.some((prefix) =>
+    intent.startsWith(prefix),
+  );
+}
+
+/**
+ * Returns whether the deterministic plan should be executed directly.
+ */
+function shouldExecuteDeterministicPlan(
+  plannerMode: string,
+  intent: string,
+): boolean {
+  if (plannerMode === "deterministic-only") {
+    return true;
+  }
+
+  return isSafeDeterministicIntent(intent);
+}
 
 /**
  * Handles to serialized tool.
@@ -1174,9 +1234,11 @@ export async function POST(request: NextRequest) {
             selectedObjectIds,
             viewportBounds: parsedPayload.viewportBounds ?? null,
           });
+          const shouldExecuteDeterministic =
+            deterministicPlanResult.planned &&
+            shouldExecuteDeterministicPlan(plannerMode, deterministicPlanResult.intent);
           const shouldAttemptOpenAi =
-            plannerMode !== "deterministic-only" &&
-            !deterministicPlanResult.planned;
+            plannerMode !== "deterministic-only" && !shouldExecuteDeterministic;
 
           const openAiAttempt = shouldAttemptOpenAi
             ? await attemptOpenAiPlanner({
@@ -1193,15 +1255,17 @@ export async function POST(request: NextRequest) {
                 status: "disabled" as const,
                 model: openAiConfig.model,
                 runtime: openAiConfig.runtime,
-                reason:
-                  deterministicPlanResult.planned
-                    ? "Skipped because deterministic planner handled this command."
+              reason:
+                deterministicPlanResult.planned && shouldExecuteDeterministic
+                  ? "Skipped because deterministic planner was used."
+                  : deterministicPlanResult.planned
+                    ? "Skipped deterministic planner to prefer OpenAI."
                     : plannerMode === "deterministic-only"
                       ? "Skipped because AI_PLANNER_MODE=deterministic-only."
                     : "OpenAI planner disabled by runtime configuration.",
-              };
+            };
           const openAiExecution = buildOpenAiExecutionSummary(openAiAttempt);
-          if (deterministicPlanResult.planned) {
+          if (shouldExecuteDeterministic) {
             plannerResult = deterministicPlanResult;
             mcpUsed = false;
           } else if (openAiAttempt.status === "planned") {
@@ -1224,7 +1288,7 @@ export async function POST(request: NextRequest) {
 
           if (
             requireOpenAi &&
-            !deterministicPlanResult.planned &&
+            !shouldExecuteDeterministic &&
             openAiAttempt.status !== "planned"
           ) {
             const failure = getOpenAiRequiredErrorResponse(openAiAttempt);

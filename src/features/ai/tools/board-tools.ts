@@ -1442,11 +1442,11 @@ export class BoardToolExecutor {
       const targetLeft =
         minLeft <= maxLeft
           ? Math.min(maxLeft, Math.max(minLeft, targetLeftBase))
-          : selectedBounds.left;
+          : targetLeftBase;
       const targetTop =
         minTop <= maxTop
           ? Math.min(maxTop, Math.max(minTop, targetTopBase))
-          : selectedBounds.top;
+          : targetTopBase;
 
       dx = targetLeft - selectedBounds.left;
       dy = targetTop - selectedBounds.top;

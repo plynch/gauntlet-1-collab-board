@@ -82,33 +82,16 @@ export async function GET(request: Request) {
     const langfuseClient = getLangfuseClient();
     const publicApi = (langfuseClient as unknown as {
       api?: {
-        traceList?: (query: {
-          page: number;
-          limit: number;
-        }) => Promise<unknown>;
         traceGet?: (traceId: string) => Promise<unknown>;
       };
     } | null)?.api;
 
-    if (!langfuseClient || !publicApi?.traceList) {
-      langfuseValidationError = "Langfuse client public API is unavailable.";
+    if (!langfuseClient) {
+      langfuseValidationError = "Langfuse client initialization failed.";
       reasons.push(langfuseValidationError);
     } else {
-      try {
-        await publicApi.traceList({
-          page: 1,
-          limit: 1,
-        });
-        langfuseValidated = true;
-      } catch (error) {
-        langfuseValidationError =
-          error instanceof Error && error.message.trim().length > 0
-            ? `Langfuse API validation failed: ${error.message}`
-            : "Langfuse API validation failed.";
-        reasons.push(langfuseValidationError);
-      }
-
-      if (runProbe && langfuseValidated) {
+      langfuseValidated = true;
+      if (runProbe) {
         probeTraceId = `probe-${randomUUID()}`;
         try {
           langfuseClient.trace({
@@ -123,8 +106,17 @@ export async function GET(request: Request) {
             },
           });
           await flushLangfuseClient();
-          if (publicApi.traceGet) {
-            await publicApi.traceGet(probeTraceId);
+
+          if (publicApi?.traceGet) {
+            try {
+              await publicApi.traceGet(probeTraceId);
+            } catch (error) {
+              reasons.push(
+                error instanceof Error && error.message.trim().length > 0
+                  ? `Langfuse trace readback failed: ${error.message}`
+                  : "Langfuse trace readback failed.",
+              );
+            }
           }
         } catch (error) {
           langfuseValidated = false;

@@ -65,5 +65,5 @@ env:
     value: "true"
     availability: [ RUNTIME ]
   - variable: AI_TRACE_FLUSH_TIMEOUT_MS
-    value: "250"
+    value: "3000"
     availability: [ RUNTIME ]

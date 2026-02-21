@@ -298,6 +298,7 @@ const DEFAULT_SWOT_SECTION_TITLES = [
   "Opportunities",
   "Threats",
 ] as const;
+const SWOT_TEMPLATE_TITLE = "SWOT Analysis";
 const GRID_CONTAINER_DEFAULT_GAP = 2;
 const GRID_CONTAINER_MAX_ROWS = 6;
 const GRID_CONTAINER_MAX_COLS = 6;
@@ -4439,6 +4440,96 @@ export default function RealtimeBoardCanvas({
     [canEdit, objectsCollectionRef, user.uid],
   );
 
+  const createSwotTemplate = useCallback(async () => {
+    if (!canEdit) {
+      return null;
+    }
+
+    const stageElement = stageRef.current;
+    if (!stageElement) {
+      return null;
+    }
+
+    const rect = stageElement.getBoundingClientRect();
+    const centerX =
+      (rect.width / 2 - viewportRef.current.x) / viewportRef.current.scale;
+    const centerY =
+      (rect.height / 2 - viewportRef.current.y) / viewportRef.current.scale;
+    const viewableWidth = rect.width / viewportRef.current.scale;
+    const viewableHeight = rect.height / viewportRef.current.scale;
+    const defaultSize = getDefaultObjectSize("gridContainer");
+    const minimumSize = getMinimumObjectSize("gridContainer");
+    const width = Math.max(
+      minimumSize.width,
+      Math.min(
+        2_400,
+        Math.max(defaultSize.width, Math.round(viewableWidth * 0.9)),
+      ),
+    );
+    const height = Math.max(
+      minimumSize.height,
+      Math.min(
+        1_600,
+        Math.max(defaultSize.height, Math.round(viewableHeight * 0.9)),
+      ),
+    );
+    const spawnIndex =
+      objectsByIdRef.current.size + objectSpawnSequenceRef.current;
+    objectSpawnSequenceRef.current += 1;
+    const spawnOffset = getSpawnOffset(spawnIndex, OBJECT_SPAWN_STEP_PX);
+    const startXRaw = centerX - width / 2 + spawnOffset.x;
+    const startYRaw = centerY - height / 2 + spawnOffset.y;
+    const startX =
+      snapToGridEnabledRef.current && isSnapEligibleObjectType("gridContainer")
+        ? snapToGrid(startXRaw)
+        : startXRaw;
+    const startY =
+      snapToGridEnabledRef.current && isSnapEligibleObjectType("gridContainer")
+        ? snapToGrid(startYRaw)
+        : startYRaw;
+    const highestZIndex = Array.from(objectsByIdRef.current.values()).reduce(
+      (maxValue, objectItem) => Math.max(maxValue, objectItem.zIndex),
+      0,
+    );
+    const lowestZIndex = Array.from(objectsByIdRef.current.values()).reduce(
+      (minValue, objectItem) => Math.min(minValue, objectItem.zIndex),
+      0,
+    );
+    const nextZIndex = isBackgroundContainerType("gridContainer")
+      ? lowestZIndex - 1
+      : highestZIndex + 1;
+
+    try {
+      const docRef = await addDoc(objectsCollectionRef, {
+        type: "gridContainer",
+        zIndex: nextZIndex,
+        x: startX,
+        y: startY,
+        width,
+        height,
+        rotationDeg: 0,
+        color: getDefaultObjectColor("gridContainer"),
+        text: "",
+        gridRows: 2,
+        gridCols: 2,
+        gridGap: 2,
+        gridCellColors: [...SWOT_SECTION_COLORS],
+        containerTitle: SWOT_TEMPLATE_TITLE,
+        gridSectionTitles: [...DEFAULT_SWOT_SECTION_TITLES],
+        gridSectionNotes: ["", "", "", ""],
+        createdBy: user.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      return docRef.id;
+    } catch (error) {
+      console.error("Failed to create SWOT template", error);
+      setBoardError(toBoardErrorMessage(error, "Failed to create SWOT template."));
+      return null;
+    }
+  }, [canEdit, objectsCollectionRef, user.uid]);
+
   const deleteObject = useCallback(
     async (objectId: string) => {
       if (!canEdit) {
@@ -5218,10 +5309,23 @@ export default function RealtimeBoardCanvas({
       return;
     }
 
-    void submitAiCommandMessage("Create a SWOT analysis", {
-      appendUserMessage: false,
-    });
-  }, [canEdit, isAiSubmitting, submitAiCommandMessage]);
+    void (async () => {
+      const swotObjectId = await createSwotTemplate();
+      if (!swotObjectId) {
+        return;
+      }
+
+      setChatMessages((previous) => [
+        ...previous,
+        {
+          id: createChatMessageId("a"),
+          role: "assistant",
+          text: "Created SWOT analysis template.",
+        },
+      ]);
+      setSelectedObjectIds([swotObjectId]);
+    })();
+  }, [canEdit, isAiSubmitting, createSwotTemplate]);
 
   const handleStagePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {

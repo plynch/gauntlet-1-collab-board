@@ -100,6 +100,11 @@ const JOURNEY_STAGE_SPACING_X = 230;
 const RETRO_COLUMN_SPACING_X = 320;
 const MAX_MOVE_OBJECTS = 500;
 const DEFAULT_FRAME_FIT_PADDING = 40;
+const STICKY_FRAME_PADDING = 24;
+const STICKY_BATCH_TOOL_SIZE = {
+  width: 180,
+  height: 140,
+};
 const STICKY_VIEWPORT_PADDING = 32;
 const SWOT_SECTION_KEYS: SwotSectionKey[] = [
   "strengths",
@@ -464,6 +469,205 @@ function parseAlignmentMode(message: string):
   }
 
   return null;
+}
+
+/**
+ * Returns true if user asked to add objects to a frame/container target.
+ */
+function isAddToContainerCommand(message: string): boolean {
+  const lower = normalizeMessage(message);
+  if (!/\b(add|create|make|generate)\b/.test(lower)) {
+    return false;
+  }
+  if (!/\bsticky(?:\s+note)?s?\b/.test(lower)) {
+    return false;
+  }
+  return (
+    /\b(?:to|into|inside|within|in)\b[\w\s]{0,6}\b(frame|container)\b/.test(
+      lower,
+    ) ||
+    /\b(frame|container)\b[\w\s]{0,6}\b(?:to|into|inside|within|in)\b/.test(lower)
+  );
+}
+
+function isContainerObject(objectItem: BoardObjectSnapshot): boolean {
+  if (objectItem.type === "gridContainer") {
+    return true;
+  }
+
+  if (objectItem.type !== "rect") {
+    return false;
+  }
+
+  return (
+    objectItem.gridRows !== undefined ||
+    objectItem.gridCols !== undefined ||
+    Boolean(objectItem.containerTitle)
+  );
+}
+
+function getContainerObjects(
+  boardState: BoardObjectSnapshot[],
+): BoardObjectSnapshot[] {
+  return boardState.filter(isContainerObject);
+}
+
+function getSelectedContainerObjects(
+  boardState: BoardObjectSnapshot[],
+  selectedObjectIds: string[],
+): BoardObjectSnapshot[] {
+  const selectedObjects = getSelectedObjects(boardState, selectedObjectIds);
+  return selectedObjects.filter(isContainerObject);
+}
+type FrameTarget = {
+  id: string;
+  object: BoardObjectSnapshot;
+  reason: "selected" | "visible" | "single-frame";
+};
+
+/**
+ * Resolves a likely target frame/container for sticky-in-frame commands.
+ */
+function resolveContainerTarget(input: PlannerInput): FrameTarget | null {
+  const selectedFrames = getSelectedContainerObjects(
+    input.boardState,
+    input.selectedObjectIds,
+  );
+  if (selectedFrames.length > 0) {
+    return {
+      id: selectedFrames[0].id,
+      object: selectedFrames[0],
+      reason: "selected",
+    };
+  }
+
+  const containers = getContainerObjects(input.boardState);
+  if (input.viewportBounds) {
+    const visibleFrames = containers.filter((objectItem) =>
+      getIntersectionBounds(objectItem, input.viewportBounds!),
+    );
+    if (visibleFrames.length === 1) {
+      return {
+        id: visibleFrames[0].id,
+        object: visibleFrames[0],
+        reason: "visible",
+      };
+    }
+  }
+
+  if (containers.length === 1) {
+    return {
+      id: containers[0].id,
+      object: containers[0],
+      reason: "single-frame",
+    };
+  }
+
+  if (containers.length > 1) {
+    return null;
+  }
+
+  return null;
+}
+
+/**
+ * Returns frame-relative origin for container-bound sticky placement.
+ */
+function resolveContainerStickyOrigin(
+  container: BoardObjectSnapshot,
+  message: string,
+  batchSize: {
+    count: number;
+    columns: number;
+    gapX: number;
+    gapY: number;
+  },
+): Point {
+  const width = Math.max(
+    1,
+    container.width - STICKY_FRAME_PADDING * 2 - STICKY_BATCH_TOOL_SIZE.width,
+  );
+  const desiredColumns = Math.max(1, Math.min(batchSize.columns, batchSize.count));
+  let columns = desiredColumns;
+  while (columns > 1) {
+    const clusterWidth =
+      STICKY_BATCH_TOOL_SIZE.width +
+      (columns - 1) * Math.max(batchSize.gapX, 1);
+    if (clusterWidth <= width) {
+      break;
+    }
+    columns -= 1;
+  }
+
+  const safeColumns = Math.max(1, columns);
+  const fallbackX = container.x + STICKY_FRAME_PADDING;
+  const fallbackY = container.y + STICKY_FRAME_PADDING;
+  const side = parseSideTarget(message);
+  if (!side) {
+    return {
+      x: fallbackX,
+      y: fallbackY,
+    };
+  }
+
+  const stickyGapColumns = safeColumns - 1;
+  const clusterWidth =
+    STICKY_BATCH_TOOL_SIZE.width + stickyGapColumns * Math.max(batchSize.gapX, 1);
+  const rows = Math.max(1, Math.ceil(batchSize.count / safeColumns));
+  const clusterHeight =
+    STICKY_BATCH_TOOL_SIZE.height +
+    Math.max(0, rows - 1) * Math.max(batchSize.gapY, 1);
+
+  const minX = container.x + STICKY_FRAME_PADDING;
+  const maxX = container.x + container.width - STICKY_FRAME_PADDING - clusterWidth;
+  const minY = container.y + STICKY_FRAME_PADDING;
+  const maxY = container.y + container.height - STICKY_FRAME_PADDING - clusterHeight;
+
+  const clampOrFallback = (value: number, min: number, max: number): number =>
+    max < min ? min : Math.min(max, Math.max(min, value));
+
+  if (side === "left") {
+    return {
+      x: clampOrFallback(minX, minX, maxX),
+      y: clampOrFallback(fallbackY, minY, maxY),
+    };
+  }
+  if (side === "right") {
+    return {
+      x: clampOrFallback(maxX, minX, maxX),
+      y: clampOrFallback(fallbackY, minY, maxY),
+    };
+  }
+  if (side === "top") {
+    return {
+      x: clampOrFallback(fallbackX, minX, maxX),
+      y: clampOrFallback(minY, minY, maxY),
+    };
+  }
+
+  return {
+    x: clampOrFallback(fallbackX, minX, maxX),
+    y: clampOrFallback(maxY, minY, maxY),
+  };
+}
+
+/**
+ * Clamps sticky origin to frame inner bounds.
+ */
+function clampPointToFrameBounds(
+  point: Point,
+  frame: BoardObjectSnapshot,
+): Point {
+  return {
+    x: Math.max(
+      frame.x + STICKY_FRAME_PADDING,
+      Math.min(point.x, frame.x + frame.width - STICKY_FRAME_PADDING - STICKY_BATCH_TOOL_SIZE.width),
+    ),
+    y: Math.max(
+      frame.y + STICKY_FRAME_PADDING,
+      Math.min(point.y, frame.y + frame.height - STICKY_FRAME_PADDING - STICKY_BATCH_TOOL_SIZE.height),
+    ),
+  };
 }
 
 /**
@@ -1899,18 +2103,43 @@ function planCreateStickyBatch(
 
   const operations: BoardToolCall[] = [];
   let previousClause: ParsedStickyBatchClause | null = null;
+  const containerTarget = isAddToContainerCommand(input.message)
+    ? resolveContainerTarget(input)
+    : null;
+  if (isAddToContainerCommand(input.message) && !containerTarget) {
+    return {
+      planned: false,
+      intent: "create-sticky-batch",
+      assistantMessage:
+        "I could not find a clear frame/container. Select a frame, make sure only one visible frame/container exists, or pass coordinates to place stickies.",
+    };
+  }
 
   batchClauses.forEach((clause, index) => {
     const fallbackPoint =
       parseCoordinatePoint(clause.sourceText) ??
-      getViewportAnchoredStickyOrigin({
-        message: clause.sourceText,
-        viewportBounds: input.viewportBounds,
-        count: clause.count,
-        columns: clause.columns,
-      });
+      (containerTarget
+        ? resolveContainerStickyOrigin(
+            containerTarget.object,
+            input.message,
+            {
+              count: clause.count,
+              columns: clause.columns,
+              gapX: STICKY_GRID_SPACING_X,
+              gapY: STICKY_GRID_SPACING_Y,
+            },
+          )
+        : getViewportAnchoredStickyOrigin({
+            message: clause.sourceText,
+            viewportBounds: input.viewportBounds,
+            count: clause.count,
+            columns: clause.columns,
+          }));
 
     let point = clause.point ?? fallbackPoint;
+    if (containerTarget && !parseCoordinatePoint(clause.sourceText)) {
+      point = clampPointToFrameBounds(point, containerTarget.object);
+    }
     if (!point) {
       point = getAutoSpawnPoint(input.boardState);
     }
@@ -1936,6 +2165,9 @@ function planCreateStickyBatch(
             y: lastPoint.y,
           };
         }
+      }
+      if (containerTarget) {
+        point = clampPointToFrameBounds(point, containerTarget.object);
       }
     }
 

@@ -33,6 +33,38 @@ const BOARD_STATE: BoardObjectSnapshot[] = [
   },
 ];
 
+const FRAME_STATE: BoardObjectSnapshot = {
+  id: "frame-1",
+  type: "gridContainer",
+  zIndex: 3,
+  x: 200,
+  y: 100,
+  width: 520,
+  height: 360,
+  rotationDeg: 0,
+  color: "#e2e8f0",
+  text: "",
+  updatedAt: null,
+  gridRows: 1,
+  gridCols: 1,
+  gridGap: 8,
+  containerTitle: "Sprint Planning",
+};
+
+const VISIBILITY_OFFSCREEN_FRAME: BoardObjectSnapshot = {
+  id: "frame-2",
+  type: "rect",
+  zIndex: 4,
+  x: 2000,
+  y: 2000,
+  width: 520,
+  height: 360,
+  rotationDeg: 0,
+  color: "#e2e8f0",
+  text: "",
+  updatedAt: null,
+};
+
 describe("planDeterministicCommand", () => {
   it("plans clear board commands", () => {
     const result = planDeterministicCommand({
@@ -301,6 +333,78 @@ describe("planDeterministicCommand", () => {
     expect(result.planned).toBe(false);
     expect(result.intent).toBe("create-sticky-batch");
     expect(result.assistantMessage).toContain("up to 50");
+  });
+
+  it("adds sticky notes to selected frame/container target", () => {
+    const result = planDeterministicCommand({
+      message: "Add 3 sticky notes to the frame",
+      boardState: [...BOARD_STATE, FRAME_STATE],
+      selectedObjectIds: ["frame-1"],
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("create-sticky-batch");
+      expect(result.plan.operations).toHaveLength(1);
+      const operation = result.plan.operations[0];
+      expect(operation.tool).toBe("createStickyBatch");
+      if (operation.tool === "createStickyBatch") {
+        expect(operation.args.count).toBe(3);
+        expect(operation.args.color).toBe("#fde68a");
+        expect(operation.args.originX).toBe(224);
+        expect(operation.args.originY).toBe(124);
+      }
+    }
+  });
+
+  it("adds sticky notes to a visible frame when no frame is selected", () => {
+    const result = planDeterministicCommand({
+      message: "Add 3 sticky notes to the frame",
+      boardState: [FRAME_STATE, VISIBILITY_OFFSCREEN_FRAME, ...BOARD_STATE],
+      selectedObjectIds: [],
+      viewportBounds: {
+        left: 0,
+        top: 0,
+        width: 1280,
+        height: 720,
+      },
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("create-sticky-batch");
+      const operation = result.plan.operations[0];
+      if (operation.tool === "createStickyBatch") {
+        expect(operation.args.originX).toBe(224);
+      }
+    }
+  });
+
+  it("returns actionable message when no single frame/container target exists", () => {
+    const anotherFrame: BoardObjectSnapshot = {
+      id: "frame-3",
+      type: "gridContainer",
+      zIndex: 5,
+      x: 300,
+      y: 140,
+      width: 420,
+      height: 280,
+      rotationDeg: 0,
+      color: "#e2e8f0",
+      text: "",
+      updatedAt: null,
+      containerTitle: "Backlog",
+    };
+
+    const result = planDeterministicCommand({
+      message: "Add 3 sticky notes to the frame",
+      boardState: [FRAME_STATE, anotherFrame, ...BOARD_STATE],
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(false);
+    expect(result.intent).toBe("create-sticky-batch");
+    expect(result.assistantMessage).toContain("I could not find a clear frame/container");
   });
 
   it("plans arrange-grid command when selected objects exist", () => {

@@ -276,9 +276,13 @@ const AI_FOOTER_COLLAPSED_HEIGHT = 34;
 const AI_FOOTER_HEIGHT_STORAGE_KEY = "collabboard-ai-footer-height-v1";
 const SNAP_TO_GRID_STORAGE_KEY = "collabboard-snap-to-grid-v1";
 const STICKY_TEXT_HOLD_DRAG_DELAY_MS = 120;
-const GRID_CELL_SIZE = 24;
+const GRID_CELL_SIZE = 20;
 const GRID_MAJOR_LINE_EVERY = 5;
 const GRID_MAJOR_SPACING = GRID_CELL_SIZE * GRID_MAJOR_LINE_EVERY;
+const GRID_SUPER_MAJOR_SPACING = GRID_MAJOR_SPACING * 10;
+const BOARD_GRID_MINOR_LINE_COLOR = "rgba(147, 197, 253, 0.35)";
+const BOARD_GRID_MAJOR_LINE_COLOR = "rgba(59, 130, 246, 0.52)";
+const BOARD_GRID_SUPER_MAJOR_LINE_COLOR = "rgba(236, 72, 153, 0.48)";
 const BOARD_COLOR_SWATCHES: ColorSwatch[] = [
   { name: "Yellow", value: "#fde68a" },
   { name: "Orange", value: "#fdba74" },
@@ -6775,9 +6779,9 @@ export default function RealtimeBoardCanvas({
               overflow: "hidden",
               backgroundColor: "#f9fafb",
               backgroundImage:
-                "linear-gradient(#cbd5e1 1px, transparent 1px), linear-gradient(90deg, #cbd5e1 1px, transparent 1px), linear-gradient(#e5e7eb 1px, transparent 1px), linear-gradient(90deg, #e5e7eb 1px, transparent 1px)",
-              backgroundSize: `${GRID_MAJOR_SPACING * viewport.scale}px ${GRID_MAJOR_SPACING * viewport.scale}px, ${GRID_MAJOR_SPACING * viewport.scale}px ${GRID_MAJOR_SPACING * viewport.scale}px, ${GRID_CELL_SIZE * viewport.scale}px ${GRID_CELL_SIZE * viewport.scale}px, ${GRID_CELL_SIZE * viewport.scale}px ${GRID_CELL_SIZE * viewport.scale}px`,
-              backgroundPosition: `${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px`,
+                `linear-gradient(${BOARD_GRID_SUPER_MAJOR_LINE_COLOR} 1px, transparent 1px), linear-gradient(90deg, ${BOARD_GRID_SUPER_MAJOR_LINE_COLOR} 1px, transparent 1px), linear-gradient(${BOARD_GRID_MAJOR_LINE_COLOR} 1px, transparent 1px), linear-gradient(90deg, ${BOARD_GRID_MAJOR_LINE_COLOR} 1px, transparent 1px), linear-gradient(${BOARD_GRID_MINOR_LINE_COLOR} 1px, transparent 1px), linear-gradient(90deg, ${BOARD_GRID_MINOR_LINE_COLOR} 1px, transparent 1px)`,
+              backgroundSize: `${GRID_SUPER_MAJOR_SPACING * viewport.scale}px ${GRID_SUPER_MAJOR_SPACING * viewport.scale}px, ${GRID_SUPER_MAJOR_SPACING * viewport.scale}px ${GRID_SUPER_MAJOR_SPACING * viewport.scale}px, ${GRID_MAJOR_SPACING * viewport.scale}px ${GRID_MAJOR_SPACING * viewport.scale}px, ${GRID_MAJOR_SPACING * viewport.scale}px ${GRID_MAJOR_SPACING * viewport.scale}px, ${GRID_CELL_SIZE * viewport.scale}px ${GRID_CELL_SIZE * viewport.scale}px, ${GRID_CELL_SIZE * viewport.scale}px ${GRID_CELL_SIZE * viewport.scale}px`,
+              backgroundPosition: `${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px`,
               touchAction: "none",
               overscrollBehavior: "contain",
             }}

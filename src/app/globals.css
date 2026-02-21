@@ -2,6 +2,52 @@
 
 :root {
   color-scheme: light;
+  --bg: #f7f8fb;
+  --surface: #ffffff;
+  --surface-muted: #f8fafc;
+  --surface-subtle: #eef3f9;
+  --text: #111827;
+  --text-muted: #475569;
+  --border: #cbd5e1;
+  --border-strong: #64748b;
+  --panel-separator: #6f8196;
+  --canvas-bg: #f9fafb;
+  --canvas-grid-minor: rgba(147, 197, 253, 0.35);
+  --canvas-grid-major: rgba(59, 130, 246, 0.52);
+  --canvas-grid-super: rgba(236, 72, 153, 0.48);
+  --canvas-axis-label-bg: rgba(248, 250, 252, 0.84);
+  --canvas-axis-label-text: #64748b;
+  --chat-user-bubble: #dbeafe;
+  --chat-ai-bubble: #e2e8f0;
+  --input-bg: #ffffff;
+  --input-border: #cbd5e1;
+  --input-placeholder: #64748b;
+  --focus-ring: rgba(56, 189, 248, 0.35);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #070b11;
+  --surface: #101722;
+  --surface-muted: #151f2f;
+  --surface-subtle: #1d293d;
+  --text: #f1f5f9;
+  --text-muted: #a7b4c5;
+  --border: #2f3f57;
+  --border-strong: #4f617f;
+  --panel-separator: #314259;
+  --canvas-bg: #03070d;
+  --canvas-grid-minor: rgba(56, 132, 255, 0.22);
+  --canvas-grid-major: rgba(108, 176, 255, 0.32);
+  --canvas-grid-super: rgba(244, 114, 182, 0.4);
+  --canvas-axis-label-bg: rgba(9, 15, 24, 0.86);
+  --canvas-axis-label-text: #b8c5d9;
+  --chat-user-bubble: #1f4a81;
+  --chat-ai-bubble: #1d293d;
+  --input-bg: #0f1725;
+  --input-border: #334155;
+  --input-placeholder: #8da0ba;
+  --focus-ring: rgba(56, 189, 248, 0.45);
 }
 
 @layer base {
@@ -14,12 +60,40 @@
     margin: 0;
     padding: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: #f7f8fb;
-    color: #111827;
+    background: var(--bg);
+    color: var(--text);
+    transition: background-color 220ms ease, color 220ms ease;
   }
 
   main {
     min-height: 100vh;
+  }
+
+  input,
+  textarea,
+  select {
+    border: 1px solid var(--input-border);
+    border-radius: 8px;
+    background: var(--input-bg);
+    color: var(--text);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--input-placeholder);
+  }
+
+  button {
+    color: var(--text);
+  }
+
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible,
+  button:focus-visible,
+  a:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
   }
 
   button:not(:disabled),
@@ -43,8 +117,8 @@
   left: 50%;
   bottom: calc(100% + 8px);
   transform: translateX(-50%);
-  background: #0f172a;
-  color: #fff;
+  background: var(--surface-subtle);
+  color: var(--text);
   font-size: 11px;
   line-height: 1;
   white-space: nowrap;

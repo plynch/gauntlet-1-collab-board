@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { User } from "firebase/auth";
 import type { ReactNode } from "react";
+import { useTheme } from "@/features/theme/use-theme";
 
 type HeaderBackLinkProps = {
   href: string;
@@ -20,6 +21,41 @@ type AppHeaderProps = {
 };
 
 /**
+ * Handles moon icon.
+ */
+function MoonIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 20 20" aria-hidden="true">
+      <path
+        d="M12.6 2.6a7.5 7.5 0 1 0 4.8 13.2A7 7 0 0 1 12.6 2.6z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/**
+ * Handles sun icon.
+ */
+function SunIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 20 20" aria-hidden="true">
+      <circle cx="10" cy="10" r="3.5" stroke="currentColor" strokeWidth="1.6" fill="none" />
+      <path
+        d="M10 1.9v2.2M10 15.9v2.2M1.9 10h2.2M15.9 10h2.2M4.1 4.1l1.6 1.6M14.3 14.3l1.6 1.6M15.9 4.1l-1.6 1.6M5.7 14.3l-1.6 1.6"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/**
  * Handles header back link.
  */
 export function HeaderBackLink({ href, label }: HeaderBackLinkProps) {
@@ -28,7 +64,12 @@ export function HeaderBackLink({ href, label }: HeaderBackLinkProps) {
       href={href}
       title={label}
       aria-label={label}
-      className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-full border border-slate-300 bg-slate-50 text-lg text-slate-900 no-underline"
+      className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-full text-lg no-underline"
+      style={{
+        border: "1px solid var(--border)",
+        background: "var(--surface-subtle)",
+        color: "var(--text)",
+      }}
     >
       {"<"}
     </Link>
@@ -47,12 +88,20 @@ export default function AppHeader({
   title = "CollabBoard",
   titleAction,
 }: AppHeaderProps) {
+  const { resolvedTheme, toggleTheme } = useTheme();
   const profileLabel =
     user?.displayName?.trim() || user?.email?.trim() || user?.uid || "Account";
   const avatarInitial = profileLabel[0]?.toUpperCase() ?? "A";
 
   return (
-    <header className="grid min-h-14 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b-2 border-slate-300 px-3.5">
+    <header
+      className="grid min-h-14 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 px-3.5"
+      style={{
+        background: "var(--surface)",
+        borderBottom: "2px solid var(--border)",
+        color: "var(--text)",
+      }}
+    >
       <div>{leftSlot ?? <div className="h-[34px] w-[34px]" />}</div>
 
       <h1 className="m-0 text-center text-xl font-bold">
@@ -65,71 +114,113 @@ export default function AppHeader({
       </h1>
 
       <div className="flex min-w-[34px] justify-end">
-        {user ? (
-          <div className="grid justify-items-end gap-0.5">
-            {showAccountLink ? (
-              <Link
-                href="/account"
-                aria-label="Open account settings"
-                title="Account settings"
-                className="inline-flex h-[34px] w-[34px] items-center justify-center overflow-hidden rounded-full border border-slate-300 bg-slate-200 text-slate-900 no-underline"
-              >
-                {user.photoURL ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={user.photoURL}
-                    alt={profileLabel}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <span className="text-sm font-semibold uppercase">
-                    {avatarInitial}
-                  </span>
-                )}
-              </Link>
-            ) : (
-              <div
-                aria-hidden="true"
-                className="inline-flex h-[34px] w-[34px] items-center justify-center overflow-hidden rounded-full border border-slate-300 bg-slate-200 text-slate-900"
-              >
-                {user.photoURL ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={user.photoURL}
-                    alt={profileLabel}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <span className="text-sm font-semibold uppercase">
-                    {avatarInitial}
-                  </span>
-                )}
-              </div>
-            )}
+        <div className="flex items-start gap-2">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={
+              resolvedTheme === "dark"
+                ? "Switch to light mode"
+                : "Switch to dark mode"
+            }
+            title={
+              resolvedTheme === "dark"
+                ? "Switch to light mode"
+                : "Switch to dark mode"
+            }
+            className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-full transition-all duration-200"
+            style={{
+              border: "1px solid var(--border)",
+              background: "var(--surface-subtle)",
+              color: resolvedTheme === "dark" ? "#facc15" : "#0f766e",
+              transform: "translateZ(0)",
+            }}
+          >
+            {resolvedTheme === "dark" ? <SunIcon /> : <MoonIcon />}
+          </button>
 
-            <span
-              className="max-w-[min(64vw,920px)] overflow-hidden text-ellipsis whitespace-nowrap text-right text-[11px] leading-[1.1] text-slate-500"
-              title={user.email ?? user.uid}
-            >
-              Signed in as {user.email ?? user.uid}
-            </span>
+          {user ? (
+            <div className="grid justify-items-end gap-0.5">
+              {showAccountLink ? (
+                <Link
+                  href="/account"
+                  aria-label="Open account settings"
+                  title="Account settings"
+                  className="inline-flex h-[34px] w-[34px] items-center justify-center overflow-hidden rounded-full no-underline"
+                  style={{
+                    border: "1px solid var(--border)",
+                    background: "var(--surface-subtle)",
+                    color: "var(--text)",
+                  }}
+                >
+                  {user.photoURL ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={user.photoURL}
+                      alt={profileLabel}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-sm font-semibold uppercase">
+                      {avatarInitial}
+                    </span>
+                  )}
+                </Link>
+              ) : (
+                <div
+                  aria-hidden="true"
+                  className="inline-flex h-[34px] w-[34px] items-center justify-center overflow-hidden rounded-full"
+                  style={{
+                    border: "1px solid var(--border)",
+                    background: "var(--surface-subtle)",
+                    color: "var(--text)",
+                  }}
+                >
+                  {user.photoURL ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={user.photoURL}
+                      alt={profileLabel}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-sm font-semibold uppercase">
+                      {avatarInitial}
+                    </span>
+                  )}
+                </div>
+              )}
 
-            {onSignOut ? (
-              <button
-                type="button"
-                onClick={() => {
-                  void onSignOut();
-                }}
-                disabled={signOutDisabled}
-                className="h-6 rounded-full border border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-900 disabled:cursor-default disabled:opacity-60"
+              <span
+                className="max-w-[min(64vw,920px)] overflow-hidden text-ellipsis whitespace-nowrap text-right text-[11px] leading-[1.1]"
+                title={user.email ?? user.uid}
+                style={{ color: "var(--text-muted)" }}
               >
-                {signOutDisabled ? "Signing out..." : "Sign out"}
-              </button>
-            ) : null}
-          </div>
-        ) : (
-          <div className="h-[34px] w-[34px]" />
-        )}
+                Signed in as {user.email ?? user.uid}
+              </span>
+
+              {onSignOut ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void onSignOut();
+                  }}
+                  disabled={signOutDisabled}
+                  className="h-6 rounded-full px-2 text-[11px] font-semibold disabled:cursor-default disabled:opacity-60"
+                  style={{
+                    border: "1px solid var(--border)",
+                    background: "var(--surface)",
+                    color: "var(--text)",
+                  }}
+                >
+                  {signOutDisabled ? "Signing out..." : "Sign out"}
+                </button>
+              ) : null}
+            </div>
+          ) : (
+            <div className="h-[34px] w-[34px]" />
+          )}
+        </div>
       </div>
     </header>
   );

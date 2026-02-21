@@ -112,7 +112,8 @@ export default function AccountWorkspace() {
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
-        background: "#ffffff",
+        background: "var(--bg)",
+        color: "var(--text)",
       }}
     >
       <AppHeader
@@ -138,9 +139,9 @@ export default function AccountWorkspace() {
         {!authLoading && user ? (
           <section
             style={{
-              border: "1px solid #d1d5db",
+              border: "1px solid var(--border)",
               borderRadius: 12,
-              background: "white",
+              background: "var(--surface)",
               padding: "1.25rem",
               display: "grid",
               gap: "1rem",
@@ -153,9 +154,9 @@ export default function AccountWorkspace() {
                   width: 62,
                   height: 62,
                   borderRadius: "50%",
-                  border: "1px solid #cbd5e1",
-                  background: "#e2e8f0",
-                  color: "#0f172a",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface-subtle)",
+                  color: "var(--text)",
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -180,7 +181,7 @@ export default function AccountWorkspace() {
                 )}
               </div>
               <div>
-                <p style={{ margin: 0, color: "#475569" }}>Email</p>
+                <p style={{ margin: 0, color: "var(--text-muted)" }}>Email</p>
                 <p style={{ margin: "0.2rem 0 0", fontWeight: 600 }}>
                   {user.email ?? "No email available"}
                 </p>

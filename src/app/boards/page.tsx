@@ -45,10 +45,10 @@ function getErrorMessage(payload: unknown, fallback: string): string {
 const boardActionButtonStyle: CSSProperties = {
   width: 36,
   height: 36,
-  border: "1px solid #d1d5db",
+  border: "1px solid var(--border)",
   borderRadius: 10,
-  background: "white",
-  color: "#0f172a",
+  background: "var(--surface)",
+  color: "var(--text)",
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -65,7 +65,7 @@ function ShareBoardIcon() {
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
       <path
         d="M9.5 3.2h3.3v3.3M8.9 7.1l3.9-3.9M7 3.2H4.6a1.8 1.8 0 0 0-1.8 1.8v6.4a1.8 1.8 0 0 0 1.8 1.8H11a1.8 1.8 0 0 0 1.8-1.8V9.8"
-        stroke="#0f172a"
+        stroke="currentColor"
         strokeWidth="1.4"
         fill="none"
         strokeLinecap="round"
@@ -83,7 +83,7 @@ function AccessIcon() {
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
       <path
         d="M4.3 6.8V5.2a3.7 3.7 0 0 1 7.4 0v1.6M3.4 6.8h9.2v6.1H3.4zM8 9.2v2.1"
-        stroke="#0f172a"
+        stroke="currentColor"
         strokeWidth="1.3"
         fill="none"
         strokeLinecap="round"
@@ -101,7 +101,7 @@ function EditIcon() {
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
       <path
         d="M3 11.8 3.6 9.3l6.8-6.8a1.2 1.2 0 0 1 1.7 0l1.4 1.4a1.2 1.2 0 0 1 0 1.7L6.7 12.4 4.2 13z"
-        stroke="#0f172a"
+        stroke="currentColor"
         strokeWidth="1.25"
         fill="none"
         strokeLinecap="round"
@@ -109,7 +109,7 @@ function EditIcon() {
       />
       <path
         d="M8.8 3.9 12.1 7.2"
-        stroke="#0f172a"
+        stroke="currentColor"
         strokeWidth="1.25"
         fill="none"
         strokeLinecap="round"
@@ -126,7 +126,7 @@ function DeleteIcon() {
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
       <path
         d="M3.5 4.5h9m-7.8 0 .4 8.2a1 1 0 0 0 1 .9h3a1 1 0 0 0 1-.9l.4-8.2m-4.9 0V3.2a.7.7 0 0 1 .7-.7h2.6a.7.7 0 0 1 .7.7v1.3"
-        stroke="#7f1d1d"
+        stroke="currentColor"
         strokeWidth="1.35"
         fill="none"
         strokeLinecap="round"
@@ -482,7 +482,8 @@ export default function BoardsPage() {
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
-        background: "#ffffff",
+        background: "var(--bg)",
+        color: "var(--text)",
       }}
     >
       <AppHeader
@@ -524,7 +525,7 @@ export default function BoardsPage() {
                 height: 40,
                 borderRadius: 999,
                 border: "1px solid #dadce0",
-                background: "white",
+                background: "var(--surface)",
                 color: "#3c4043",
                 display: "inline-flex",
                 alignItems: "center",
@@ -594,10 +595,11 @@ export default function BoardsPage() {
                   }}
                   onKeyDown={(event) => handleBoardRowKeyDown(event, board.id)}
                   style={{
-                    border: "1px solid #e5e7eb",
+                    border: "1px solid var(--border)",
                     borderRadius: 10,
                     padding: "0.9rem",
                     cursor: editingBoardId === board.id ? "default" : "pointer",
+                    background: "var(--surface)",
                   }}
                 >
                   <div
@@ -717,7 +719,7 @@ export default function BoardsPage() {
                             <p
                               style={{
                                 margin: "0.28rem 0 0",
-                                color: "#6b7280",
+                                color: "var(--text-muted)",
                                 fontSize: "1.05rem",
                                 lineHeight: 1.2,
                               }}
@@ -784,11 +786,12 @@ export default function BoardsPage() {
                         aria-label={`Delete board ${board.title}`}
                         style={{
                           ...boardActionButtonStyle,
-                          borderColor: "#fecaca",
+                          borderColor: "rgba(248, 113, 113, 0.55)",
                           background:
                             deletingBoardId === board.id
-                              ? "#fee2e2"
-                              : "#fef2f2",
+                              ? "rgba(239, 68, 68, 0.24)"
+                              : "rgba(239, 68, 68, 0.14)",
+                          color: "rgb(153, 27, 27)",
                           opacity: deletingBoardId === board.id ? 0.75 : 1,
                         }}
                       >

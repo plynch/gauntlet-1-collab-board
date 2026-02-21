@@ -30,10 +30,10 @@ type UpdateBoardResponse = {
 const titleActionButtonStyle: CSSProperties = {
   width: 34,
   height: 34,
-  border: "1px solid #d1d5db",
+  border: "1px solid var(--border)",
   borderRadius: 9,
-  background: "white",
-  color: "#0f172a",
+  background: "var(--surface)",
+  color: "var(--text)",
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -91,7 +91,7 @@ function ShareBoardIcon() {
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
       <path
         d="M9.5 3.2h3.3v3.3M8.9 7.1l3.9-3.9M7 3.2H4.6a1.8 1.8 0 0 0-1.8 1.8v6.4a1.8 1.8 0 0 0 1.8 1.8H11a1.8 1.8 0 0 0 1.8-1.8V9.8"
-        stroke="#0f172a"
+        stroke="currentColor"
         strokeWidth="1.4"
         fill="none"
         strokeLinecap="round"
@@ -109,7 +109,7 @@ function EditIcon() {
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
       <path
         d="M3 11.8 3.6 9.3l6.8-6.8a1.2 1.2 0 0 1 1.7 0l1.4 1.4a1.2 1.2 0 0 1 0 1.7L6.7 12.4 4.2 13z"
-        stroke="#0f172a"
+        stroke="currentColor"
         strokeWidth="1.25"
         fill="none"
         strokeLinecap="round"
@@ -117,7 +117,7 @@ function EditIcon() {
       />
       <path
         d="M8.8 3.9 12.1 7.2"
-        stroke="#0f172a"
+        stroke="currentColor"
         strokeWidth="1.25"
         fill="none"
         strokeLinecap="round"
@@ -288,7 +288,8 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
-        background: "#ffffff",
+        background: "var(--bg)",
+        color: "var(--text)",
       }}
     >
       <AppHeader
@@ -341,7 +342,7 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
         }}
       >
         {authLoading ? (
-          <div style={{ margin: "auto", color: "#475569" }}>
+          <div style={{ margin: "auto", color: "var(--text-muted)" }}>
             Checking authentication...
           </div>
         ) : null}
@@ -365,7 +366,7 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
                 height: 40,
                 borderRadius: 999,
                 border: "1px solid #dadce0",
-                background: "white",
+                background: "var(--surface)",
                 color: "#3c4043",
                 display: "inline-flex",
                 alignItems: "center",
@@ -402,7 +403,7 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
         {!authLoading && user ? (
           <>
             {boardLoading ? (
-              <div style={{ margin: "auto", color: "#475569" }}>
+              <div style={{ margin: "auto", color: "var(--text-muted)" }}>
                 Loading board...
               </div>
             ) : null}

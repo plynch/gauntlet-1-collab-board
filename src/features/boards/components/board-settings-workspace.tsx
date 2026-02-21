@@ -341,7 +341,8 @@ export default function BoardSettingsWorkspace({
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
-        background: "#ffffff",
+        background: "var(--bg)",
+        color: "var(--text)",
       }}
     >
       <AppHeader
@@ -365,7 +366,7 @@ export default function BoardSettingsWorkspace({
       >
         <h2 style={{ margin: 0, fontSize: "1.2rem" }}>
           Access Settings{" "}
-          <span style={{ color: "#6b7280", fontWeight: 400 }}>
+          <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
             ({board?.title ?? boardId})
           </span>
         </h2>
@@ -395,13 +396,14 @@ export default function BoardSettingsWorkspace({
             {!boardLoading && board && permissions && !permissions.isOwner ? (
               <section
                 style={{
-                  border: "1px solid #e5e7eb",
+                  border: "1px solid var(--border)",
                   borderRadius: 10,
                   padding: "1rem",
+                  background: "var(--surface)",
                 }}
               >
                 <h2 style={{ marginTop: 0 }}>Owner-only settings</h2>
-                <p style={{ marginTop: 0, color: "#4b5563" }}>
+                <p style={{ marginTop: 0, color: "var(--text-muted)" }}>
                   Only the board owner can manage access for this board.
                 </p>
                 <p style={{ marginBottom: 0 }}>
@@ -414,9 +416,10 @@ export default function BoardSettingsWorkspace({
               <section style={{ display: "grid", gap: "1rem" }}>
                 <section
                   style={{
-                    border: "1px solid #d1d5db",
+                    border: "1px solid var(--border)",
                     borderRadius: 10,
                     padding: "1rem",
+                    background: "var(--surface)",
                   }}
                 >
                   <h2 style={{ marginTop: 0 }}>Edit Access</h2>
@@ -438,7 +441,7 @@ export default function BoardSettingsWorkspace({
                     Open edit mode (any signed-in user can edit)
                   </label>
 
-                  <p style={{ color: "#6b7280" }}>
+                  <p style={{ color: "var(--text-muted)" }}>
                     {board.openEdit
                       ? "Open edit is on. Editor allowlist still persists if you later turn it off."
                       : "Open edit is off. Only you and users in editor allowlist can edit."}
@@ -483,7 +486,7 @@ export default function BoardSettingsWorkspace({
                       <li
                         key={editor.uid}
                         style={{
-                          border: "1px solid #e5e7eb",
+                          border: "1px solid var(--border)",
                           borderRadius: 8,
                           padding: "0.5rem",
                           display: "flex",
@@ -491,6 +494,7 @@ export default function BoardSettingsWorkspace({
                           alignItems: "center",
                           gap: "0.75rem",
                           flexWrap: "wrap",
+                          background: "var(--surface)",
                         }}
                       >
                         <span>{getProfileLabel(editor)}</span>
@@ -504,7 +508,7 @@ export default function BoardSettingsWorkspace({
                       </li>
                     ))}
                     {editorProfiles.length === 0 ? (
-                      <li style={{ color: "#6b7280" }}>
+                      <li style={{ color: "var(--text-muted)" }}>
                         No editors in allowlist.
                       </li>
                     ) : null}
@@ -513,9 +517,10 @@ export default function BoardSettingsWorkspace({
 
                 <section
                   style={{
-                    border: "1px solid #d1d5db",
+                    border: "1px solid var(--border)",
                     borderRadius: 10,
                     padding: "1rem",
+                    background: "var(--surface)",
                   }}
                 >
                   <h2 style={{ marginTop: 0 }}>Read Access</h2>
@@ -537,7 +542,7 @@ export default function BoardSettingsWorkspace({
                     Open read mode (any signed-in user can view)
                   </label>
 
-                  <p style={{ color: "#6b7280" }}>
+                  <p style={{ color: "var(--text-muted)" }}>
                     {board.openRead
                       ? "Open read is on. Reader allowlist still persists if you later turn it off."
                       : "Open read is off. Only you, editors, and reader allowlist users can view."}
@@ -582,7 +587,7 @@ export default function BoardSettingsWorkspace({
                       <li
                         key={reader.uid}
                         style={{
-                          border: "1px solid #e5e7eb",
+                          border: "1px solid var(--border)",
                           borderRadius: 8,
                           padding: "0.5rem",
                           display: "flex",
@@ -590,6 +595,7 @@ export default function BoardSettingsWorkspace({
                           alignItems: "center",
                           gap: "0.75rem",
                           flexWrap: "wrap",
+                          background: "var(--surface)",
                         }}
                       >
                         <span>{getProfileLabel(reader)}</span>
@@ -603,7 +609,7 @@ export default function BoardSettingsWorkspace({
                       </li>
                     ))}
                     {readerProfiles.length === 0 ? (
-                      <li style={{ color: "#6b7280" }}>
+                      <li style={{ color: "var(--text-muted)" }}>
                         No readers in allowlist.
                       </li>
                     ) : null}
@@ -616,7 +622,9 @@ export default function BoardSettingsWorkspace({
             board &&
             permissions?.isOwner &&
             profilesLoading ? (
-              <p style={{ color: "#6b7280" }}>Refreshing access profiles...</p>
+              <p style={{ color: "var(--text-muted)" }}>
+                Refreshing access profiles...
+              </p>
             ) : null}
           </>
         ) : null}

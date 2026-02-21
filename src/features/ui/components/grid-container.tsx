@@ -51,6 +51,10 @@ type GridContainerProps = {
   minCols?: number;
   maxCols?: number;
   renderCellContent?: (cellIndex: number) => ReactNode;
+  chromeTone?: "light" | "dark";
+  sectionTitleTextColor?: string;
+  sectionBodyTextColor?: string;
+  containerTitleTextColor?: string;
 };
 
 /**
@@ -61,7 +65,7 @@ function PencilEditIcon() {
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
       <path
         d="M3 11.8 3.6 9.3l6.8-6.8a1.2 1.2 0 0 1 1.7 0l1.4 1.4a1.2 1.2 0 0 1 0 1.7L6.7 12.4 4.2 13z"
-        stroke="#0f172a"
+        stroke="currentColor"
         strokeWidth="1.25"
         fill="none"
         strokeLinecap="round"
@@ -69,7 +73,7 @@ function PencilEditIcon() {
       />
       <path
         d="M8.8 3.9 12.1 7.2"
-        stroke="#0f172a"
+        stroke="currentColor"
         strokeWidth="1.25"
         fill="none"
         strokeLinecap="round"
@@ -147,6 +151,10 @@ export function GridContainer({
   minCols = 1,
   maxCols = 6,
   renderCellContent,
+  chromeTone = "light",
+  sectionTitleTextColor = "var(--text)",
+  sectionBodyTextColor = "var(--text-muted)",
+  containerTitleTextColor = "var(--text)",
 }: GridContainerProps) {
   const safeMinRows = clampDimension(minRows);
   const safeMaxRows = Math.max(safeMinRows, clampDimension(maxRows));
@@ -221,6 +229,7 @@ export function GridContainer({
     internalSectionNotes.length > 0 ? internalSectionNotes : fallbackNotes,
     cellCount,
   );
+  const isDarkChrome = chromeTone === "dark";
   /**
    * Handles commit grid dimensions.
    */
@@ -381,11 +390,14 @@ export function GridContainer({
   return (
     <div
       className={cn(
-        "flex h-full min-h-0 flex-col rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm",
+        "flex h-full min-h-0 flex-col rounded-2xl p-4 shadow-sm",
         className,
       )}
       style={{
         backgroundColor: containerColor ?? "rgba(255,255,255,0.8)",
+        border: isDarkChrome
+          ? "1px solid rgba(148, 163, 184, 0.46)"
+          : "1px solid rgba(51, 65, 85, 0.28)",
       }}
     >
       <div className="mb-3">
@@ -409,7 +421,12 @@ export function GridContainer({
                 }
               }}
               autoFocus
-              className="mx-auto block w-full max-w-[360px] rounded-md border border-slate-300 px-2 py-1 text-center text-sm font-semibold text-slate-900"
+              className="mx-auto block w-full max-w-[360px] rounded-md px-2 py-1 text-center text-sm font-semibold"
+              style={{
+                border: "1px solid var(--input-border)",
+                background: "var(--input-bg)",
+                color: containerTitleTextColor,
+              }}
             />
           ) : null}
           {!isEditingContainerTitle ? (
@@ -432,20 +449,34 @@ export function GridContainer({
                       ? "Rename container title"
                       : "Add container title"
                   }
-                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md"
+                  style={{
+                    border: "1px solid var(--border)",
+                    background: "var(--surface)",
+                    color: sectionBodyTextColor,
+                  }}
                 >
                   <PencilEditIcon />
                 </button>
               ) : null}
-              <h3 className="m-0 truncate text-center text-sm font-semibold text-slate-800">
+              <h3
+                className="m-0 truncate text-center text-sm font-semibold"
+                style={{ color: containerTitleTextColor }}
+              >
                 {resolvedTitle.length > 0 ? resolvedTitle : "Add title"}
               </h3>
             </div>
           ) : null}
 
           {showGridControls && onGridDimensionsChange ? (
-            <div className="absolute right-0 top-0 z-20 flex items-center gap-2 text-[11px] text-slate-700">
-              <span className="hidden text-[11px] font-medium text-slate-600 sm:inline">
+            <div
+              className="absolute right-0 top-0 z-20 flex items-center gap-2 text-[11px]"
+              style={{ color: sectionBodyTextColor }}
+            >
+              <span
+                className="hidden text-[11px] font-medium sm:inline"
+                style={{ color: sectionBodyTextColor }}
+              >
                 Rows {previewRows} x Cols {previewCols}
               </span>
               <button
@@ -461,7 +492,12 @@ export function GridContainer({
                 }}
                 aria-label="Change grid rows and columns"
                 title="Change grid rows and columns"
-                className="inline-flex h-7 items-center justify-center rounded-md border border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-800 hover:bg-slate-50"
+                className="inline-flex h-7 items-center justify-center rounded-md px-2 text-[11px] font-semibold"
+                style={{
+                  border: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  color: sectionTitleTextColor,
+                }}
               >
                 <span className="tabular-nums">
                   {safeRows} x {safeCols}
@@ -471,9 +507,16 @@ export function GridContainer({
                 <div
                   ref={dimensionPickerRef}
                   onPointerDown={(event) => event.stopPropagation()}
-                  className="absolute right-0 top-8 w-[170px] rounded-lg border border-slate-300 bg-white/95 p-2 shadow-lg backdrop-blur"
+                  className="absolute right-0 top-8 w-[170px] rounded-lg p-2 shadow-lg backdrop-blur"
+                  style={{
+                    border: "1px solid var(--border)",
+                    background: "var(--surface)",
+                  }}
                 >
-                  <div className="mb-2 text-[11px] font-semibold text-slate-700">
+                  <div
+                    className="mb-2 text-[11px] font-semibold"
+                    style={{ color: sectionBodyTextColor }}
+                  >
                     Drag to resize: {previewRows} x {previewCols}
                   </div>
                   <div
@@ -574,12 +617,15 @@ export function GridContainer({
             <div
               key={cellIndex}
               className={cn(
-                "relative flex h-full min-h-0 flex-col rounded-xl border border-slate-300 p-3 shadow-inner transition-colors",
+                "relative flex h-full min-h-0 flex-col rounded-xl p-3 shadow-inner transition-colors",
                 cellClassName,
               )}
               style={{
                 background: isTransparentCell ? "transparent" : cellColor,
                 minHeight: minCellHeight,
+                border: isDarkChrome
+                  ? "1px solid rgba(148, 163, 184, 0.5)"
+                  : "1px solid rgba(51, 65, 85, 0.35)",
               }}
             >
               <div className="relative mb-2 min-h-12">
@@ -645,7 +691,12 @@ export function GridContainer({
                         }
                       }}
                       autoFocus
-                      className="w-full max-w-[280px] rounded-md border border-slate-300 px-2 py-1 text-center text-sm font-semibold text-slate-900"
+                      className="w-full max-w-[280px] rounded-md px-2 py-1 text-center text-sm font-semibold"
+                      style={{
+                        border: "1px solid var(--input-border)",
+                        background: "var(--input-bg)",
+                        color: sectionTitleTextColor,
+                      }}
                     />
                   ) : (
                     <div className="mx-auto flex min-h-6 w-fit max-w-full items-center justify-center gap-1.5">
@@ -663,12 +714,20 @@ export function GridContainer({
                           }}
                           title="Rename section title"
                           aria-label="Rename section title"
-                          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md"
+                          style={{
+                            border: "1px solid var(--border)",
+                            background: "var(--surface)",
+                            color: sectionBodyTextColor,
+                          }}
                         >
                           <PencilEditIcon />
                         </button>
                       ) : null}
-                      <strong className="max-w-[220px] truncate text-center text-sm font-semibold text-slate-800">
+                      <strong
+                        className="max-w-[220px] truncate text-center text-sm font-semibold"
+                        style={{ color: sectionTitleTextColor }}
+                      >
                         {cellTitle}
                       </strong>
                     </div>
@@ -677,14 +736,25 @@ export function GridContainer({
               </div>
 
               {showSectionStickyNotes ? (
-                <div className="rounded-lg border border-amber-300 bg-amber-100/95 p-2 shadow-sm">
+                <div
+                  className="rounded-lg p-2 shadow-sm"
+                  style={{
+                    border: isDarkChrome
+                      ? "1px solid rgba(245, 158, 11, 0.58)"
+                      : "1px solid rgba(217, 119, 6, 0.52)",
+                    background: isDarkChrome
+                      ? "rgba(120, 53, 15, 0.46)"
+                      : "rgba(254, 243, 199, 0.95)",
+                  }}
+                >
                   <textarea
                     value={cellNote}
                     onPointerDown={(event) => event.stopPropagation()}
                     onChange={(event) =>
                       handleSectionNoteChange(cellIndex, event.target.value)
                     }
-                    className="min-h-[72px] w-full resize-none border-none bg-transparent p-0 text-sm text-slate-800 outline-none placeholder:text-slate-500"
+                    className="min-h-[72px] w-full resize-none border-none bg-transparent p-0 text-sm outline-none"
+                    style={{ color: sectionTitleTextColor }}
                     placeholder={stickyPlaceholder}
                   />
                 </div>
@@ -693,11 +763,10 @@ export function GridContainer({
               {renderCellContent ? (
                 <div
                   className={cn(
-                    "min-h-0 flex-1",
-                    showSectionStickyNotes
-                      ? "mt-2 text-sm text-slate-700"
-                      : "text-sm text-slate-700",
+                    "min-h-0 flex-1 text-sm",
+                    showSectionStickyNotes ? "mt-2" : "",
                   )}
+                  style={{ color: sectionBodyTextColor }}
                 >
                   {renderCellContent(cellIndex)}
                 </div>

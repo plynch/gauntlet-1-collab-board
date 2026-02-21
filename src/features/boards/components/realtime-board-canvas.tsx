@@ -62,6 +62,7 @@ import {
   isWriteMetricsDebugEnabled,
 } from "@/features/boards/lib/realtime-write-metrics";
 import { GridContainer } from "@/features/ui/components/grid-container";
+import { useTheme } from "@/features/theme/use-theme";
 import { getFirebaseClientDb } from "@/lib/firebase/client";
 
 // Cost/perf tradeoff: keep cursors smooth while cutting high-frequency write churn.
@@ -86,38 +87,28 @@ const ZOOM_BUTTON_STEP_PERCENT = 5;
 const ZOOM_WHEEL_INTENSITY = 0.0065;
 const ZOOM_WHEEL_MAX_EFFECTIVE_DELTA = 180;
 const WRITE_METRICS_LOG_INTERVAL_MS = 15_000;
-const TERMINAL_FONT_FAMILY =
-  'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
 const AI_HELP_MESSAGE = [
-  "🤖 CollabBoard AI Help",
-  "",
-  "Golden eval examples:",
-  "- Add a yellow sticky note that says 'User Research'",
-  "- Create a blue rectangle at position 100,200",
-  '- Add a frame called "Sprint Planning"',
-  "- Move all the pink sticky notes to the right side",
-  "- Arrange these sticky notes in a grid",
-  "- Create a 2x3 grid of sticky notes for pros and cons",
-  "- Space these elements evenly",
-  "- Create a SWOT analysis template with four quadrants",
-  "- Build a user journey map with 5 stages",
-  "- Set up a retrospective board with What Went Well, What Didn't, and Action Items columns",
-  "",
-  "Terminal controls:",
-  "- Up/Down: command history",
-  "- Enter: send command",
-  "- /help or /commands: show this help",
-].join("\n");
-const AI_WELCOME_MESSAGE = [
-  "👋 Welcome to CollabBoard AI",
+  "🤖 Quick AI Help",
   "",
   "Try one of these:",
+  "- Add a yellow sticky note that says 'User Research'",
+  "- Create a blue rectangle at position 100,200",
+  "- Move all the pink sticky notes to the right side",
+  "- Create a SWOT analysis template",
+  "",
+  "You can ask in plain language anytime.",
+  "Tip: Up/Down recalls command history.",
+].join("\n");
+const AI_WELCOME_MESSAGE = [
+  "👋 Hi! I can edit this board with natural language.",
+  "",
+  "Examples:",
   "• Add a yellow sticky note that says 'User Research'",
   "• Create a blue rectangle at position 100,200",
-  '• Add a frame called "Sprint Planning"',
-  "• Create a SWOT analysis template with four quadrants",
+  "• Move all the pink sticky notes to the right side",
+  "• Create a SWOT analysis template",
   "",
-  "Tip: type /help for the full command list ✨",
+  "Use normal language first. Type /help if you want quick examples ✨",
 ].join("\n");
 
 type RealtimeBoardCanvasProps = {
@@ -297,7 +288,7 @@ const LINE_MIN_LENGTH = 40;
 const SELECTED_OBJECT_HALO =
   "0 0 0 2px rgba(59, 130, 246, 0.45), 0 8px 14px rgba(0,0,0,0.14)";
 const OBJECT_SPAWN_STEP_PX = 20;
-const PANEL_SEPARATOR_COLOR = "#6f8196";
+const PANEL_SEPARATOR_COLOR = "var(--panel-separator)";
 const PANEL_SEPARATOR_WIDTH = 4;
 const LEFT_PANEL_WIDTH = 232;
 const RIGHT_PANEL_WIDTH = 238;
@@ -315,9 +306,9 @@ const GRID_CELL_SIZE = 20;
 const GRID_MAJOR_LINE_EVERY = 5;
 const GRID_MAJOR_SPACING = GRID_CELL_SIZE * GRID_MAJOR_LINE_EVERY;
 const GRID_SUPER_MAJOR_SPACING = GRID_MAJOR_SPACING * 10;
-const BOARD_GRID_MINOR_LINE_COLOR = "rgba(147, 197, 253, 0.35)";
-const BOARD_GRID_MAJOR_LINE_COLOR = "rgba(59, 130, 246, 0.52)";
-const BOARD_GRID_SUPER_MAJOR_LINE_COLOR = "rgba(236, 72, 153, 0.48)";
+const BOARD_GRID_MINOR_LINE_COLOR = "var(--canvas-grid-minor)";
+const BOARD_GRID_MAJOR_LINE_COLOR = "var(--canvas-grid-major)";
+const BOARD_GRID_SUPER_MAJOR_LINE_COLOR = "var(--canvas-grid-super)";
 const BOARD_COLOR_SWATCHES: ColorSwatch[] = [
   { name: "Yellow", value: "#fde68a" },
   { name: "Orange", value: "#fdba74" },
@@ -796,6 +787,112 @@ function getDefaultObjectColor(kind: BoardObjectKind): string {
   }
 
   return "#1f2937";
+}
+
+/**
+ * Handles clamp rgb channel.
+ */
+function clampRgbChannel(value: number): number {
+  return Math.min(255, Math.max(0, Math.round(value)));
+}
+
+/**
+ * Parses hex color.
+ */
+function parseHexColor(color: string): {
+  red: number;
+  green: number;
+  blue: number;
+} | null {
+  const normalized = color.trim();
+  const compact = normalized.startsWith("#")
+    ? normalized.slice(1)
+    : normalized;
+  if (!/^[\da-fA-F]{3}([\da-fA-F]{3})?$/.test(compact)) {
+    return null;
+  }
+
+  if (compact.length === 3) {
+    return {
+      red: Number.parseInt(compact[0] + compact[0], 16),
+      green: Number.parseInt(compact[1] + compact[1], 16),
+      blue: Number.parseInt(compact[2] + compact[2], 16),
+    };
+  }
+
+  return {
+    red: Number.parseInt(compact.slice(0, 2), 16),
+    green: Number.parseInt(compact.slice(2, 4), 16),
+    blue: Number.parseInt(compact.slice(4, 6), 16),
+  };
+}
+
+/**
+ * Handles rgb to hex color.
+ */
+function rgbToHexColor(red: number, green: number, blue: number): string {
+  return `#${clampRgbChannel(red).toString(16).padStart(2, "0")}${clampRgbChannel(
+    green,
+  )
+    .toString(16)
+    .padStart(2, "0")}${clampRgbChannel(blue).toString(16).padStart(2, "0")}`;
+}
+
+/**
+ * Handles mix hex colors.
+ */
+function mixHexColors(baseColor: string, targetColor: string, ratio: number): string {
+  const base = parseHexColor(baseColor);
+  const target = parseHexColor(targetColor);
+  if (!base || !target) {
+    return baseColor;
+  }
+
+  const safeRatio = Math.min(1, Math.max(0, ratio));
+  const inverse = 1 - safeRatio;
+
+  return rgbToHexColor(
+    base.red * inverse + target.red * safeRatio,
+    base.green * inverse + target.green * safeRatio,
+    base.blue * inverse + target.blue * safeRatio,
+  );
+}
+
+/**
+ * Gets readable text color for a background color.
+ */
+function getReadableTextColor(backgroundColor: string): string {
+  const parsed = parseHexColor(backgroundColor);
+  if (!parsed) {
+    return "#f8fafc";
+  }
+
+  const luminance =
+    (0.299 * parsed.red + 0.587 * parsed.green + 0.114 * parsed.blue) / 255;
+  return luminance > 0.6 ? "#0f172a" : "#f8fafc";
+}
+
+/**
+ * Gets rendered object color for current theme.
+ */
+function getRenderedObjectColor(
+  color: string,
+  type: BoardObjectKind,
+  resolvedTheme: "light" | "dark",
+): string {
+  if (resolvedTheme === "light") {
+    return color;
+  }
+
+  if (isConnectorKind(type) || type === "line") {
+    return mixHexColors(color, "#e2e8f0", 0.35);
+  }
+
+  if (type === "gridContainer") {
+    return mixHexColors(color, "#0f172a", 0.22);
+  }
+
+  return mixHexColors(color, "#0b1020", 0.34);
 }
 
 /**
@@ -2030,8 +2127,8 @@ function ColorSwatchPicker({
               height: 18,
               borderRadius: "50%",
               border: isSelected
-                ? "2px solid #0f172a"
-                : "1px solid rgba(15, 23, 42, 0.25)",
+                ? "2px solid var(--text)"
+                : "1px solid var(--border)",
               boxSizing: "border-box",
               background: swatch.value,
               cursor: "pointer",
@@ -2268,6 +2365,7 @@ export default function RealtimeBoardCanvas({
   user,
   permissions,
 }: RealtimeBoardCanvasProps) {
+  const { resolvedTheme } = useTheme();
   const db = useMemo(() => getFirebaseClientDb(), []);
   const canEdit = permissions.canEdit;
 
@@ -6590,7 +6688,8 @@ export default function RealtimeBoardCanvas({
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
-        background: "white",
+        background: "var(--surface)",
+        color: "var(--text)",
       }}
     >
       <div
@@ -6607,7 +6706,7 @@ export default function RealtimeBoardCanvas({
           style={{
             minWidth: 0,
             minHeight: 0,
-            background: "#f8fafc",
+            background: "var(--surface-muted)",
             display: "flex",
             flexDirection: "column",
             overflow: "hidden",
@@ -6630,10 +6729,10 @@ export default function RealtimeBoardCanvas({
                   width: "100%",
                   height: "100%",
                   border: "none",
-                  borderRight: "1px solid #64748b",
+                  borderRight: "1px solid var(--border-strong)",
                   borderRadius: 0,
-                  background: "#dbe5f1",
-                  color: "#0f172a",
+                  background: "var(--surface-subtle)",
+                  color: "var(--text)",
                   fontWeight: 700,
                   fontSize: 12,
                   letterSpacing: 0.3,
@@ -6668,7 +6767,7 @@ export default function RealtimeBoardCanvas({
               <div
                 style={{
                   padding: 0,
-                  borderBottom: "1px solid #dbe3eb",
+                  borderBottom: "1px solid var(--border)",
                   display: "grid",
                 }}
               >
@@ -6682,9 +6781,9 @@ export default function RealtimeBoardCanvas({
                     height: 30,
                     border: "none",
                     borderRadius: 0,
-                    borderBottom: "1px solid #64748b",
-                    background: "#e5edf7",
-                    color: "#0f172a",
+                    borderBottom: "1px solid var(--border-strong)",
+                    background: "var(--surface-subtle)",
+                    color: "var(--text)",
                     fontWeight: 700,
                     fontSize: 12,
                     letterSpacing: 0.3,
@@ -6744,9 +6843,9 @@ export default function RealtimeBoardCanvas({
                         minWidth: 42,
                         maxWidth: 42,
                         minHeight: 42,
-                        border: "1px solid #d1d5db",
+                        border: "1px solid var(--border)",
                         borderRadius: 10,
-                        background: "white",
+                        background: "var(--surface)",
                         height: 42,
                         padding: 0,
                         lineHeight: 0,
@@ -6800,12 +6899,12 @@ export default function RealtimeBoardCanvas({
                       alignItems: "center",
                       justifyContent: "center",
                       gap: "0.4rem",
-                      border: "1px solid #fecaca",
-                      borderRadius: 8,
-                      background: "#fef2f2",
-                      color: "#7f1d1d",
-                      height: 34,
-                      fontSize: 12,
+                    border: "1px solid #fecaca",
+                    borderRadius: 8,
+                    background: "rgba(239, 68, 68, 0.14)",
+                    color: "#991b1b",
+                    height: 34,
+                    fontSize: 12,
                     }}
                   >
                     <TrashIcon />
@@ -6820,8 +6919,8 @@ export default function RealtimeBoardCanvas({
                     width: "100%",
                     height: 32,
                     borderRadius: 8,
-                    border: "1px solid #cbd5e1",
-                    background: "white",
+                    border: "1px solid var(--border)",
+                    background: "var(--surface)",
                     fontSize: 12,
                   }}
                 >
@@ -6836,9 +6935,9 @@ export default function RealtimeBoardCanvas({
                     gap: "0.35rem",
                     width: "100%",
                     padding: "0.2rem 0.35rem",
-                    border: "1px solid #d1d5db",
+                    border: "1px solid var(--border)",
                     borderRadius: 10,
-                    background: "white",
+                    background: "var(--surface)",
                   }}
                 >
                   <button
@@ -6850,8 +6949,8 @@ export default function RealtimeBoardCanvas({
                       width: 22,
                       height: 22,
                       borderRadius: 6,
-                      border: "1px solid #d1d5db",
-                      background: "#f8fafc",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-muted)",
                       lineHeight: 1,
                       padding: 0,
                     }}
@@ -6884,8 +6983,8 @@ export default function RealtimeBoardCanvas({
                       width: 22,
                       height: 22,
                       borderRadius: 6,
-                      border: "1px solid #d1d5db",
-                      background: "#f8fafc",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-muted)",
                       lineHeight: 1,
                       padding: 0,
                     }}
@@ -6894,7 +6993,7 @@ export default function RealtimeBoardCanvas({
                   </button>
                   <span
                     style={{
-                      color: "#6b7280",
+                      color: "var(--text-muted)",
                       fontSize: 11,
                       minWidth: 34,
                       textAlign: "right",
@@ -6912,10 +7011,10 @@ export default function RealtimeBoardCanvas({
                     gap: "0.5rem",
                     width: "100%",
                     padding: "0.45rem 0.55rem",
-                    border: "1px solid #d1d5db",
+                    border: "1px solid var(--border)",
                     borderRadius: 8,
-                    background: "white",
-                    color: "#374151",
+                    background: "var(--surface)",
+                    color: "var(--text-muted)",
                     fontSize: 12,
                     fontWeight: 500,
                     cursor: "pointer",
@@ -6940,7 +7039,10 @@ export default function RealtimeBoardCanvas({
 
                 <span
                   style={{
-                    color: selectedObjectCount > 0 ? "#111827" : "#6b7280",
+                    color:
+                      selectedObjectCount > 0
+                        ? "var(--text)"
+                        : "var(--text-muted)",
                     fontSize: 12,
                     lineHeight: 1.25,
                     wordBreak: "break-word",
@@ -6954,7 +7056,9 @@ export default function RealtimeBoardCanvas({
 
                 <span
                   style={{
-                    color: cursorBoardPosition ? "#111827" : "#6b7280",
+                    color: cursorBoardPosition
+                      ? "var(--text)"
+                      : "var(--text-muted)",
                     fontSize: 12,
                     lineHeight: 1.25,
                     fontVariantNumeric: "tabular-nums",
@@ -7002,7 +7106,7 @@ export default function RealtimeBoardCanvas({
               height: "100%",
               minHeight: 0,
               overflow: "hidden",
-              backgroundColor: "#f9fafb",
+              backgroundColor: "var(--canvas-bg)",
               backgroundImage:
                 `linear-gradient(${BOARD_GRID_SUPER_MAJOR_LINE_COLOR} 1px, transparent 1px), linear-gradient(90deg, ${BOARD_GRID_SUPER_MAJOR_LINE_COLOR} 1px, transparent 1px), linear-gradient(${BOARD_GRID_MAJOR_LINE_COLOR} 1px, transparent 1px), linear-gradient(90deg, ${BOARD_GRID_MAJOR_LINE_COLOR} 1px, transparent 1px), linear-gradient(${BOARD_GRID_MINOR_LINE_COLOR} 1px, transparent 1px), linear-gradient(90deg, ${BOARD_GRID_MINOR_LINE_COLOR} 1px, transparent 1px)`,
               backgroundSize: `${GRID_SUPER_MAJOR_SPACING * viewport.scale}px ${GRID_SUPER_MAJOR_SPACING * viewport.scale}px, ${GRID_SUPER_MAJOR_SPACING * viewport.scale}px ${GRID_SUPER_MAJOR_SPACING * viewport.scale}px, ${GRID_MAJOR_SPACING * viewport.scale}px ${GRID_MAJOR_SPACING * viewport.scale}px, ${GRID_MAJOR_SPACING * viewport.scale}px ${GRID_MAJOR_SPACING * viewport.scale}px, ${GRID_CELL_SIZE * viewport.scale}px ${GRID_CELL_SIZE * viewport.scale}px, ${GRID_CELL_SIZE * viewport.scale}px ${GRID_CELL_SIZE * viewport.scale}px`,
@@ -7030,8 +7134,8 @@ export default function RealtimeBoardCanvas({
                     top: 4,
                     padding: "0 3px",
                     borderRadius: 4,
-                    background: "rgba(248,250,252,0.84)",
-                    color: "#64748b",
+                    background: "var(--canvas-axis-label-bg)",
+                    color: "var(--canvas-axis-label-text)",
                     fontSize: 10,
                     lineHeight: 1.35,
                     fontWeight: 600,
@@ -7077,8 +7181,8 @@ export default function RealtimeBoardCanvas({
                     top: Math.round(label.screen) + 3,
                     padding: "0 3px",
                     borderRadius: 4,
-                    background: "rgba(248,250,252,0.84)",
-                    color: "#64748b",
+                    background: "var(--canvas-axis-label-bg)",
+                    color: "var(--canvas-axis-label-text)",
                     fontSize: 10,
                     lineHeight: 1.35,
                     fontWeight: 600,
@@ -7111,8 +7215,8 @@ export default function RealtimeBoardCanvas({
                   gap: "0.45rem",
                   padding: "0.4rem 0.45rem",
                   borderRadius: 10,
-                  border: "1px solid #d1d5db",
-                  background: "rgba(255,255,255,0.98)",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface)",
                   boxShadow: "0 8px 20px rgba(0,0,0,0.14)",
                   backdropFilter: "blur(2px)",
                 }}
@@ -7130,11 +7234,11 @@ export default function RealtimeBoardCanvas({
                       void resetSelectedObjectsRotation();
                     }}
                     style={{
-                      border: "1px solid #cbd5e1",
+                      border: "1px solid var(--border)",
                       borderRadius: 8,
-                      background: "white",
+                      background: "var(--surface)",
                       padding: "0.35rem 0.55rem",
-                      color: "#1f2937",
+                      color: "var(--text)",
                       fontSize: 12,
                       whiteSpace: "nowrap",
                     }}
@@ -7167,6 +7271,14 @@ export default function RealtimeBoardCanvas({
                 const isSingleSelected =
                   selectedObjectIds.length === 1 && isSelected;
                 const isConnector = isConnectorKind(objectItem.type);
+                const renderedObjectColor = getRenderedObjectColor(
+                  objectItem.color,
+                  objectItem.type,
+                  resolvedTheme,
+                );
+                const objectSurfaceColor =
+                  resolvedTheme === "dark" ? "rgba(241, 245, 249, 0.58)" : "rgba(15, 23, 42, 0.55)";
+                const objectTextColor = getReadableTextColor(renderedObjectColor);
                 const objectGeometry: ObjectGeometry = {
                   x: objectX,
                   y: objectY,
@@ -7362,7 +7474,7 @@ export default function RealtimeBoardCanvas({
                       >
                         <path
                           d={connectorPath}
-                          stroke={objectItem.color}
+                          stroke={renderedObjectColor}
                           strokeWidth={strokeWidth}
                           strokeLinecap="round"
                           strokeLinejoin="round"
@@ -7379,7 +7491,7 @@ export default function RealtimeBoardCanvas({
                               x: -startDirection.x,
                               y: -startDirection.y,
                             })}
-                            fill={objectItem.color}
+                            fill={renderedObjectColor}
                           />
                         ) : null}
                         {showToArrow ? (
@@ -7388,7 +7500,7 @@ export default function RealtimeBoardCanvas({
                               toOffset,
                               endDirection,
                             )}
-                            fill={objectItem.color}
+                            fill={renderedObjectColor}
                           />
                         ) : null}
                       </svg>
@@ -7547,8 +7659,10 @@ export default function RealtimeBoardCanvas({
                         borderRadius: 10,
                         border: isSelected
                           ? "2px solid #2563eb"
-                          : "1px solid rgba(15, 23, 42, 0.28)",
-                        background: objectItem.color,
+                          : resolvedTheme === "dark"
+                            ? "1px solid rgba(148, 163, 184, 0.45)"
+                            : "1px solid rgba(15, 23, 42, 0.28)",
+                        background: renderedObjectColor,
                         boxShadow: isSelected
                           ? SELECTED_OBJECT_HALO
                           : "0 4px 12px rgba(0,0,0,0.08)",
@@ -7722,7 +7836,7 @@ export default function RealtimeBoardCanvas({
                             resize: "none",
                             padding: "0.5rem",
                             background: "transparent",
-                            color: "#111827",
+                            color: objectTextColor,
                             fontSize: 14,
                             outline: "none",
                             cursor: canEdit
@@ -7750,7 +7864,7 @@ export default function RealtimeBoardCanvas({
                                 height: RESIZE_HANDLE_SIZE,
                                 border: "1px solid #1d4ed8",
                                 borderRadius: 2,
-                                background: "white",
+                                background: "var(--surface)",
                                 cursor: getCornerCursor(corner),
                               }}
                               aria-label={`Resize ${corner} corner`}
@@ -7789,7 +7903,7 @@ export default function RealtimeBoardCanvas({
                               height: 14,
                               borderRadius: "50%",
                               border: "1px solid #1d4ed8",
-                              background: "white",
+                              background: "var(--surface)",
                               boxShadow: "0 1px 4px rgba(15, 23, 42, 0.25)",
                               cursor: "grab",
                             }}
@@ -7867,7 +7981,7 @@ export default function RealtimeBoardCanvas({
                           isPolygonShape ||
                           isGridContainer
                             ? "none"
-                            : "2px solid rgba(15, 23, 42, 0.55)",
+                            : `2px solid ${objectSurfaceColor}`,
                         borderRadius:
                           objectItem.type === "rect"
                             ? 3
@@ -7879,7 +7993,7 @@ export default function RealtimeBoardCanvas({
                           isPolygonShape ||
                           isGridContainer
                             ? "transparent"
-                            : objectItem.color,
+                            : renderedObjectColor,
                         boxShadow:
                           objectItem.type === "line" ||
                           isPolygonShape ||
@@ -7894,7 +8008,7 @@ export default function RealtimeBoardCanvas({
                             width: "100%",
                             height: 4,
                             borderRadius: 999,
-                            background: objectItem.color,
+                            background: renderedObjectColor,
                             transform: `rotate(${objectRotationDeg}deg)`,
                             transformOrigin: "center center",
                           }}
@@ -7909,8 +8023,12 @@ export default function RealtimeBoardCanvas({
                         >
                           <polygon
                             points="50,6 94,92 6,92"
-                            fill={objectItem.color}
-                            stroke="rgba(15, 23, 42, 0.62)"
+                            fill={renderedObjectColor}
+                            stroke={
+                              resolvedTheme === "dark"
+                                ? "rgba(241, 245, 249, 0.72)"
+                                : "rgba(15, 23, 42, 0.62)"
+                            }
                             strokeWidth="5"
                             strokeLinejoin="round"
                           />
@@ -7925,8 +8043,12 @@ export default function RealtimeBoardCanvas({
                         >
                           <polygon
                             points="50,7 61,38 95,38 67,57 78,90 50,70 22,90 33,57 5,38 39,38"
-                            fill={objectItem.color}
-                            stroke="rgba(15, 23, 42, 0.62)"
+                            fill={renderedObjectColor}
+                            stroke={
+                              resolvedTheme === "dark"
+                                ? "rgba(241, 245, 249, 0.72)"
+                                : "rgba(15, 23, 42, 0.62)"
+                            }
                             strokeWidth="5"
                             strokeLinejoin="round"
                           />
@@ -7937,20 +8059,40 @@ export default function RealtimeBoardCanvas({
                           cols={gridCols}
                           gap={gridGap}
                           minCellHeight={0}
-                          className="h-full w-full rounded-[10px] border-2 border-slate-600/55 p-2 shadow-none"
-                          cellClassName="rounded-lg border-2 border-slate-700/65 p-2"
-                          containerColor={objectItem.color}
+                          className="h-full w-full rounded-[10px] border-2 p-2 shadow-none"
+                          cellClassName="rounded-lg border-2 p-2"
+                          containerColor={renderedObjectColor}
                           containerTitle={gridContainerTitle}
                           cellColors={Array.from(
                             { length: gridTotalCells },
                             (_, index) => {
-                              return (
+                              const baseColor =
                                 gridCellColors[index % gridCellColors.length] ??
-                                "#e2e8f0"
+                                "#e2e8f0";
+                              return getRenderedObjectColor(
+                                baseColor,
+                                "sticky",
+                                resolvedTheme,
                               );
                             },
                           )}
                           sectionTitles={gridSectionTitles}
+                          chromeTone={resolvedTheme}
+                          sectionTitleTextColor={
+                            resolvedTheme === "dark"
+                              ? "rgba(241, 245, 249, 0.95)"
+                              : "#1f2937"
+                          }
+                          sectionBodyTextColor={
+                            resolvedTheme === "dark"
+                              ? "rgba(226, 232, 240, 0.95)"
+                              : "#334155"
+                          }
+                          containerTitleTextColor={
+                            resolvedTheme === "dark"
+                              ? "rgba(248, 250, 252, 0.98)"
+                              : "#0f172a"
+                          }
                           showGridControls={isSingleSelected && canEdit}
                           minRows={1}
                           maxRows={GRID_CONTAINER_MAX_ROWS}
@@ -8079,7 +8221,7 @@ export default function RealtimeBoardCanvas({
                             height: 14,
                             borderRadius: "50%",
                             border: "1px solid #1d4ed8",
-                            background: "white",
+                            background: "var(--surface)",
                             boxShadow: "0 1px 4px rgba(15, 23, 42, 0.25)",
                             cursor: "grab",
                           }}
@@ -8105,7 +8247,7 @@ export default function RealtimeBoardCanvas({
                               height: RESIZE_HANDLE_SIZE,
                               border: "1px solid #1d4ed8",
                               borderRadius: 2,
-                              background: "white",
+                              background: "var(--surface)",
                               cursor: getCornerCursor(corner),
                             }}
                             aria-label={`Resize ${corner} corner`}
@@ -8141,7 +8283,7 @@ export default function RealtimeBoardCanvas({
                             height: RESIZE_HANDLE_SIZE,
                             borderRadius: "50%",
                             border: "1px solid #1d4ed8",
-                            background: "white",
+                            background: "var(--surface)",
                             cursor: "move",
                           }}
                         />
@@ -8163,7 +8305,7 @@ export default function RealtimeBoardCanvas({
                             height: RESIZE_HANDLE_SIZE,
                             borderRadius: "50%",
                             border: "1px solid #1d4ed8",
-                            background: "white",
+                            background: "var(--surface)",
                             cursor: "move",
                           }}
                         />
@@ -8185,8 +8327,8 @@ export default function RealtimeBoardCanvas({
                       width: 8,
                       height: 8,
                       borderRadius: "50%",
-                      border: "1px solid #0f172a",
-                      background: "#ffffff",
+                      border: "1px solid var(--border-strong)",
+                      background: "var(--surface)",
                       pointerEvents: "none",
                       zIndex: 38,
                     }}
@@ -8257,10 +8399,10 @@ export default function RealtimeBoardCanvas({
                   width: "100%",
                   height: "100%",
                   border: "none",
-                  borderLeft: "1px solid #64748b",
+                  borderLeft: "1px solid var(--border-strong)",
                   borderRadius: 0,
-                  background: "#dbe5f1",
-                  color: "#0f172a",
+                  background: "var(--surface-subtle)",
+                  color: "var(--text)",
                   fontWeight: 700,
                   fontSize: 12,
                   letterSpacing: 0.3,
@@ -8295,7 +8437,7 @@ export default function RealtimeBoardCanvas({
               <div
                 style={{
                   padding: 0,
-                  borderBottom: "1px solid #dbe3eb",
+                  borderBottom: "1px solid var(--border)",
                   display: "grid",
                 }}
               >
@@ -8309,9 +8451,9 @@ export default function RealtimeBoardCanvas({
                     height: 30,
                     border: "none",
                     borderRadius: 0,
-                    borderBottom: "1px solid #64748b",
-                    background: "#e5edf7",
-                    color: "#0f172a",
+                    borderBottom: "1px solid var(--border-strong)",
+                    background: "var(--surface-subtle)",
+                    color: "var(--text)",
                     fontWeight: 700,
                     fontSize: 12,
                     letterSpacing: 0.3,
@@ -8325,7 +8467,7 @@ export default function RealtimeBoardCanvas({
                   }}
                 >
                   <span>Online users</span>
-                  <span style={{ color: "#475569", fontWeight: 600 }}>
+                  <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>
                     ({onlineUsers.length})
                   </span>
                   <span
@@ -8348,7 +8490,7 @@ export default function RealtimeBoardCanvas({
                   flexDirection: "column",
                   gap: "0.45rem",
                   fontSize: 14,
-                  color: "#374151",
+                  color: "var(--text-muted)",
                 }}
               >
                 <OnlineUsersList onlineUsers={onlineUsers} />
@@ -8370,7 +8512,7 @@ export default function RealtimeBoardCanvas({
             ? AI_FOOTER_COLLAPSED_HEIGHT
             : aiFooterHeight,
           borderTop: `${PANEL_SEPARATOR_WIDTH}px solid ${PANEL_SEPARATOR_COLOR}`,
-          background: "#ffffff",
+          background: "var(--surface)",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
@@ -8385,12 +8527,12 @@ export default function RealtimeBoardCanvas({
             onPointerDown={handleAiFooterResizeStart}
             style={{
               height: 18,
-              borderBottom: "1px solid #e2e8f0",
+              borderBottom: "1px solid var(--border)",
               cursor: "ns-resize",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              background: "#f8fafc",
+              background: "var(--surface-muted)",
               touchAction: "none",
               flexShrink: 0,
             }}
@@ -8400,7 +8542,7 @@ export default function RealtimeBoardCanvas({
                 width: 38,
                 height: 3,
                 borderRadius: 999,
-                background: "#cbd5e1",
+                background: "var(--border)",
               }}
             />
           </div>
@@ -8427,10 +8569,12 @@ export default function RealtimeBoardCanvas({
             width: "100%",
             height: 30,
             border: "none",
-            borderBottom: "1px solid #64748b",
+            borderBottom: "1px solid var(--border-strong)",
             borderRadius: 0,
-            background: isAiFooterCollapsed ? "#dbe5f1" : "#e5edf7",
-            color: "#0f172a",
+            background: isAiFooterCollapsed
+              ? "var(--surface-subtle)"
+              : "var(--surface-muted)",
+            color: "var(--text)",
             fontWeight: 700,
             fontSize: 12,
             lineHeight: 1,
@@ -8487,10 +8631,10 @@ export default function RealtimeBoardCanvas({
                 gap: "0.75rem",
               }}
             >
-              <strong style={{ fontSize: 13, color: "#0f172a" }}>
+              <strong style={{ fontSize: 13, color: "var(--text)" }}>
                 AI Assistant
               </strong>
-              <span style={{ fontSize: 12, color: "#475569" }}>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
                 ✨ Open for quick commands
               </span>
             </div>
@@ -8501,7 +8645,7 @@ export default function RealtimeBoardCanvas({
               style={{
                 display: "grid",
                 padding: "0.45rem clamp(0.8rem, 2vw, 1.5rem)",
-                borderBottom: "1px solid #e5e7eb",
+                borderBottom: "1px solid var(--border)",
                 gap: "0.55rem",
               }}
             >
@@ -8516,11 +8660,11 @@ export default function RealtimeBoardCanvas({
                   flexWrap: "wrap",
                 }}
               >
-                <strong style={{ fontSize: 13, color: "#0f172a" }}>
+                <strong style={{ fontSize: 13, color: "var(--text)" }}>
                   AI Assistant
                 </strong>
-                <span style={{ fontSize: 12, color: "#475569" }}>
-                  Selected: {selectedObjectIds.length} | /help
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                  Selected: {selectedObjectIds.length} • ask naturally (/help)
                 </span>
               </div>
             </div>
@@ -8530,7 +8674,7 @@ export default function RealtimeBoardCanvas({
                 flex: 1,
                 minHeight: 0,
                 padding: "0.6rem clamp(0.8rem, 2vw, 1.5rem)",
-                background: "#0f172a",
+                background: "var(--surface-muted)",
                 overflow: "hidden",
               }}
             >
@@ -8544,7 +8688,6 @@ export default function RealtimeBoardCanvas({
                   display: "flex",
                   flexDirection: "column",
                   gap: "0.5rem",
-                  fontFamily: TERMINAL_FONT_FAMILY,
                   fontSize: 13,
                 }}
               >
@@ -8552,16 +8695,16 @@ export default function RealtimeBoardCanvas({
                   isAiSubmitting ? (
                     <div
                       style={{
-                        color: "#f8fafc",
+                        color: "var(--text-muted)",
                         lineHeight: 1.45,
                         whiteSpace: "pre-wrap",
                       }}
                     >
-                      ai&gt; thinking...
+                      Thinking...
                     </div>
                   ) : (
-                    <span style={{ color: "#93c5fd", lineHeight: 1.45 }}>
-                      ai&gt; Type /help for examples, then run a board command.
+                    <span style={{ color: "var(--text-muted)", lineHeight: 1.45 }}>
+                      Ask naturally, or type /help for example commands.
                     </span>
                   )
                 ) : (
@@ -8570,32 +8713,42 @@ export default function RealtimeBoardCanvas({
                       <div
                         key={message.id}
                         style={{
-                          color:
-                            message.role === "user" ? "#f8fafc" : "#93c5fd",
-                          lineHeight: 1.45,
-                          whiteSpace: "pre-wrap",
+                          display: "flex",
+                          justifyContent:
+                            message.role === "user" ? "flex-end" : "flex-start",
                         }}
                       >
-                        <span
+                        <div
                           style={{
+                            maxWidth: "min(88%, 700px)",
+                            border: "1px solid var(--border)",
+                            borderRadius: 10,
+                            padding: "0.5rem 0.65rem",
+                            lineHeight: 1.45,
+                            whiteSpace: "pre-wrap",
+                            background:
+                              message.role === "user"
+                                ? "var(--chat-user-bubble)"
+                                : "var(--chat-ai-bubble)",
                             color:
-                              message.role === "user" ? "#f59e0b" : "#22d3ee",
+                              message.role === "user"
+                                ? "var(--text)"
+                                : "var(--text)",
                           }}
                         >
-                          {message.role === "user" ? "you> " : "ai> "}
-                        </span>
-                        <span>{message.text}</span>
+                          {message.text}
+                        </div>
                       </div>
                     ))}
                     {isAiSubmitting ? (
                       <div
                         style={{
-                          color: "#93c5fd",
+                          color: "var(--text-muted)",
                           lineHeight: 1.45,
                           whiteSpace: "pre-wrap",
                         }}
                       >
-                        ai&gt; thinking...
+                        Thinking...
                       </div>
                     ) : null}
                   </>
@@ -8608,7 +8761,7 @@ export default function RealtimeBoardCanvas({
               style={{
                 display: "grid",
                 padding: "0.55rem clamp(0.8rem, 2vw, 1.5rem)",
-                borderTop: "1px solid #e5e7eb",
+                borderTop: "1px solid var(--border)",
               }}
             >
               <div
@@ -8620,28 +8773,21 @@ export default function RealtimeBoardCanvas({
                   alignItems: "center",
                 }}
               >
-                <span
-                  style={{
-                    fontFamily: TERMINAL_FONT_FAMILY,
-                    fontSize: 13,
-                    color: "#334155",
-                    userSelect: "none",
-                  }}
-                >
-                  &gt;
-                </span>
                 <input
                   value={chatInput}
                   onChange={handleChatInputChange}
                   onKeyDown={handleChatInputKeyDown}
                   disabled={isAiSubmitting}
-                  placeholder="Type /help or run a board command..."
+                  placeholder="Ask the AI assistant to update this board..."
                   maxLength={500}
                   style={{
                     flex: 1,
                     minWidth: 0,
                     padding: "0.48rem 0.58rem",
-                    fontFamily: TERMINAL_FONT_FAMILY,
+                    border: "1px solid var(--input-border)",
+                    borderRadius: 8,
+                    background: "var(--input-bg)",
+                    color: "var(--text)",
                   }}
                 />
                 <button

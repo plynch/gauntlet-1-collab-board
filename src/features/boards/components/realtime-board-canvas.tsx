@@ -2326,32 +2326,23 @@ function toBoardErrorMessage(error: unknown, fallback: string): string {
   if (typeof error === "object" && error !== null) {
     const candidate = error as {
       code?: unknown;
-      message?: unknown;
     };
 
     const code = typeof candidate.code === "string" ? candidate.code : null;
-    const message =
-      typeof candidate.message === "string" ? candidate.message : null;
 
     if (code === "permission-denied") {
-      return `${fallback} Firestore denied the request (permission-denied).`;
+      return "Your access to this board changed. Refresh or return to My Boards.";
     }
 
-    if (code && message) {
-      return `${fallback} (${code}: ${message})`;
+    if (code === "unauthenticated") {
+      return "Your session expired. Please sign in again.";
     }
 
-    if (code) {
-      return `${fallback} (${code})`;
+    if (code === "unavailable" || code === "deadline-exceeded") {
+      return "Realtime sync is temporarily unavailable. Please try again.";
     }
 
-    if (message) {
-      return `${fallback} (${message})`;
-    }
-  }
-
-  if (typeof error === "string" && error.length > 0) {
-    return `${fallback} (${error})`;
+    return fallback;
   }
 
   return fallback;

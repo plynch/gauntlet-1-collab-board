@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import {
   useCallback,
   useRef,
@@ -55,6 +56,13 @@ function getErrorMessage(payload: unknown, fallback: string): string {
   }
 
   return fallback;
+}
+
+/**
+ * Returns whether message indicates an access-denied board state.
+ */
+function isBoardAccessDeniedMessage(message: string): boolean {
+  return message.toLowerCase().includes("no longer have access");
 }
 
 /**
@@ -130,6 +138,7 @@ function EditIcon() {
  * Handles board workspace.
  */
 export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
+  const router = useRouter();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [renamingBoard, setRenamingBoard] = useState(false);
@@ -182,6 +191,13 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
 
     return boardError;
   }, [boardError, errorMessage]);
+  const isAccessDeniedError = useMemo(
+    () =>
+      combinedErrorMessage
+        ? isBoardAccessDeniedMessage(combinedErrorMessage)
+        : false,
+    [combinedErrorMessage],
+  );
 
   const handleShareBoard = useCallback(async () => {
     setErrorMessage(null);
@@ -386,18 +402,66 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
         ) : null}
 
         {combinedErrorMessage ? (
-          <p
+          <div
             style={{
-              color: "#b91c1c",
               margin: 0,
               position: "absolute",
               left: 12,
               top: 68,
               zIndex: 10,
+              maxWidth: "min(92vw, 560px)",
+              border: "1px solid rgba(239, 68, 68, 0.45)",
+              borderRadius: 10,
+              background: "color-mix(in oklab, var(--surface) 88%, transparent)",
+              color: "var(--text)",
+              padding: "0.7rem 0.8rem",
+              display: "grid",
+              gap: "0.4rem",
             }}
           >
-            {combinedErrorMessage}
-          </p>
+            <strong style={{ fontSize: 13, color: "#b91c1c" }}>
+              {isAccessDeniedError ? "Board access changed" : "Board sync issue"}
+            </strong>
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              {combinedErrorMessage}
+            </span>
+            {isAccessDeniedError ? (
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => router.push("/")}
+                  style={{
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    background: "var(--surface)",
+                    color: "var(--text)",
+                    height: 30,
+                    padding: "0 0.65rem",
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  Go to My Boards
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  style={{
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    background: "var(--surface)",
+                    color: "var(--text)",
+                    height: 30,
+                    padding: "0 0.65rem",
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : null}
+          </div>
         ) : null}
 
         {!authLoading && user ? (

@@ -31,21 +31,19 @@ type LiveBoardState = {
  */
 function toListenerErrorMessage(error: unknown, fallback: string): string {
   if (typeof error === "object" && error !== null) {
-    const candidate = error as { code?: unknown; message?: unknown };
+    const candidate = error as { code?: unknown };
     const code = typeof candidate.code === "string" ? candidate.code : null;
-    const message =
-      typeof candidate.message === "string" ? candidate.message : null;
 
-    if (code && message) {
-      return `${fallback} (${code}: ${message})`;
+    if (code === "permission-denied") {
+      return "You no longer have access to this board.";
     }
 
-    if (code) {
-      return `${fallback} (${code})`;
+    if (code === "unauthenticated") {
+      return "Your session expired. Please sign in again.";
     }
 
-    if (message) {
-      return `${fallback} (${message})`;
+    if (code === "unavailable" || code === "deadline-exceeded") {
+      return "Board sync is temporarily unavailable. Please try again.";
     }
   }
 

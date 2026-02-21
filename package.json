@@ -8,6 +8,7 @@
     "build": "next build",
     "build-storybook": "storybook build",
     "docs:api": "typedoc --options typedoc.json",
+    "docs:submission-pdfs": "node scripts/generate-submission-pdfs.js AI_DEVELOPMENT_LOG.md AI_COST_ANALYSIS.md",
     "start": "next start",
     "lint": "eslint .",
     "storybook": "storybook dev -p 6006",

@@ -1,0 +1,94 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+2 0 obj
+<< /Type /Pages /Count 1 /Kids [3 0 R] >>
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+4 0 obj
+<< /Length 4149 >>
+stream
+BT
+/F1 10 Tf
+1 0 0 1 0 0 Tm
+1 0 0 1 40.00 801.89 Tm (AI Cost Analysis \(Required\)) Tj
+1 0 0 1 40.00 789.89 Tm () Tj
+1 0 0 1 40.00 777.89 Tm (Development & Testing Costs) Tj
+1 0 0 1 40.00 765.89 Tm () Tj
+1 0 0 1 40.00 753.89 Tm (What was spent during development) Tj
+1 0 0 1 40.00 741.89 Tm () Tj
+1 0 0 1 40.00 729.89 Tm (CollabBoard uses:) Tj
+1 0 0 1 40.00 717.89 Tm () Tj
+1 0 0 1 40.00 705.89 Tm (* 'OPENAI_RESERVE_USD_PER_CALL=0.003' \(reserved before each OpenAI call\)) Tj
+1 0 0 1 40.00 693.89 Tm (* OpenAI pricing variables from runtime config:) Tj
+1 0 0 1 40.00 681.89 Tm (- 'OPENAI_INPUT_COST_PER_1M_USD=0.1') Tj
+1 0 0 1 40.00 669.89 Tm (- 'OPENAI_OUTPUT_COST_PER_1M_USD=0.4') Tj
+1 0 0 1 40.00 657.89 Tm (* Hard app budget guardrail:) Tj
+1 0 0 1 40.00 645.89 Tm (- 'OPENAI_HARD_SPEND_LIMIT_USD=10') Tj
+1 0 0 1 40.00 633.89 Tm () Tj
+1 0 0 1 40.00 621.89 Tm (As of this submission, the repo does not persist a local ledger of exact paid API calls, token) Tj
+1 0 0 1 40.00 609.89 Tm (counts, and dollar totals across all external test runs.) Tj
+1 0 0 1 40.00 597.89 Tm (For this reason, the development/test cost section is reported as:) Tj
+1 0 0 1 40.00 585.89 Tm () Tj
+1 0 0 1 40.00 573.89 Tm (* **Exact API calls:** not centrally logged in this codebase yet) Tj
+1 0 0 1 40.00 561.89 Tm (* **Exact input/output token totals:** not centrally logged in this codebase yet) Tj
+1 0 0 1 40.00 549.89 Tm (* **Exact development spend:** not centrally logged in this codebase yet) Tj
+1 0 0 1 40.00 537.89 Tm (* **Runtime-enforced limit impact:** each call is still capped by reserve policy and hard budget) Tj
+1 0 0 1 40.00 525.89 Tm (guardrail) Tj
+1 0 0 1 40.00 513.89 Tm () Tj
+1 0 0 1 40.00 501.89 Tm (**How to validate exact spend externally**) Tj
+1 0 0 1 40.00 489.89 Tm () Tj
+1 0 0 1 40.00 477.89 Tm (* Pull billing values from OpenAI usage endpoints \(preferred\).) Tj
+1 0 0 1 40.00 465.89 Tm (* Use request logs in Langfuse/OpenAI traces to estimate command-level token counts.) Tj
+1 0 0 1 40.00 453.89 Tm (* Export API usage summary for the project period used for grading/demo.) Tj
+1 0 0 1 40.00 441.89 Tm () Tj
+1 0 0 1 40.00 429.89 Tm (Production Cost Projections) Tj
+1 0 0 1 40.00 417.89 Tm () Tj
+1 0 0 1 40.00 405.89 Tm (Assumptions used for projection:) Tj
+1 0 0 1 40.00 393.89 Tm () Tj
+1 0 0 1 40.00 381.89 Tm (* Model: 'gpt-4.1-nano' \(OpenAI pricing currently represented by env defaults above\).) Tj
+1 0 0 1 40.00 369.89 Tm (* Average tokens per command:) Tj
+1 0 0 1 40.00 357.89 Tm (- Input: '200') Tj
+1 0 0 1 40.00 345.89 Tm (- Output: '300') Tj
+1 0 0 1 40.00 333.89 Tm (- Total: '500' tokens/command) Tj
+1 0 0 1 40.00 321.89 Tm (* Average command rate:) Tj
+1 0 0 1 40.00 309.89 Tm (- Users/Month × Sessions/User/Month × Commands/Session) Tj
+1 0 0 1 40.00 297.89 Tm (- User assumptions:) Tj
+1 0 0 1 40.00 285.89 Tm (- **100 users:** 4 sessions/user/month, 3 AI commands/session) Tj
+1 0 0 1 40.00 273.89 Tm (- **1,000 users:** 8 sessions/user/month, 3 AI commands/session) Tj
+1 0 0 1 40.00 261.89 Tm (- **10,000 users:** 12 sessions/user/month, 3 AI commands/session) Tj
+1 0 0 1 40.00 249.89 Tm (- **100,000 users:** 20 sessions/user/month, 3 AI commands/session) Tj
+1 0 0 1 40.00 237.89 Tm () Tj
+1 0 0 1 40.00 225.89 Tm (Cost per command:) Tj
+1 0 0 1 40.00 213.89 Tm () Tj
+1 0 0 1 40.00 201.89 Tm ('\(200 / 1,000,000 × $0.1\) + \(300 / 1,000,000 × $0.4\) = $0.00014') Tj
+1 0 0 1 40.00 189.89 Tm () Tj
+1 0 0 1 40.00 177.89 Tm (Projected monthly AI API cost:) Tj
+1 0 0 1 40.00 165.89 Tm () Tj
+1 0 0 1 40.00 153.89 Tm (Users Estimated Sessions/User Commands \(est.\) Estimated Monthly Cost) Tj
+1 0 0 1 40.00 141.89 Tm (---------- ---------------------- --------------- ---------------------) Tj
+1 0 0 1 40.00 129.89 Tm (100 4 1,200 '$0.17') Tj
+1 0 0 1 40.00 117.89 Tm (1,000 8 24,000 '$3.36') Tj
+1 0 0 1 40.00 105.89 Tm (10,000 12 360,000 '$50.40') Tj
+1 0 0 1 40.00 93.89 Tm (100,000 20 6,000,000 '$840.00') Tj
+1 0 0 1 40.00 81.89 Tm () Tj
+1 0 0 1 40.00 69.89 Tm (Projection notes) Tj
+1 0 0 1 40.00 57.89 Tm () Tj
+1 0 0 1 40.00 45.89 Tm (* Actual spend varies with command complexity. Long prompts and large board reads increase) Tj
+ET
+endstream
+5 0 obj
+<< /Type /Font /Subtype /Type1 /Name /F1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000051 00000 n 
+0000000101 00000 n 
+0000000226 00000 n 
+0000004420 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+4520
+%%EOF

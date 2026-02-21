@@ -1,0 +1,94 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+2 0 obj
+<< /Type /Pages /Count 1 /Kids [3 0 R] >>
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+4 0 obj
+<< /Length 4586 >>
+stream
+BT
+/F1 10 Tf
+1 0 0 1 0 0 Tm
+1 0 0 1 40.00 801.89 Tm (AI Development Log \(Required\)) Tj
+1 0 0 1 40.00 789.89 Tm () Tj
+1 0 0 1 40.00 777.89 Tm (Project Context) Tj
+1 0 0 1 40.00 765.89 Tm () Tj
+1 0 0 1 40.00 753.89 Tm (CollabBoard evolved into a collaborative whiteboard with an AI command assistant over the period) Tj
+1 0 0 1 40.00 741.89 Tm (covered by this submission. The AI layer was implemented as a board operation runtime that) Tj
+1 0 0 1 40.00 729.89 Tm (parses user commands, validates guardrails, executes deterministic board mutations, and emits) Tj
+1 0 0 1 40.00 717.89 Tm (tracing for each tool invocation.) Tj
+1 0 0 1 40.00 705.89 Tm () Tj
+1 0 0 1 40.00 693.89 Tm (Tools & Workflow) Tj
+1 0 0 1 40.00 681.89 Tm () Tj
+1 0 0 1 40.00 669.89 Tm (* **AI coding assistant:** ChatGPT/Codex \(this environment\) for planning, implementation,) Tj
+1 0 0 1 40.00 657.89 Tm (refactoring, and review.) Tj
+1 0 0 1 40.00 645.89 Tm (* **Backend stack:** Next.js App Router, Firebase Auth/Firestore, and server routes under) Tj
+1 0 0 1 40.00 633.89 Tm ('src/app/api/ai/*'.) Tj
+1 0 0 1 40.00 621.89 Tm (* **AI runtime:** OpenAI Agents SDK integration \('@openai/agents'\) with deterministic fallback) Tj
+1 0 0 1 40.00 609.89 Tm (planner in place.) Tj
+1 0 0 1 40.00 597.89 Tm (* **Tracing stack:** Langfuse \(server tracing\) and OpenAI traces \(request/agent execution) Tj
+1 0 0 1 40.00 585.89 Tm (tracing\).) Tj
+1 0 0 1 40.00 573.89 Tm (* **Validation tooling:** 'playwright' \(UI command probes\), TypeScript tests \('vitest'\), and) Tj
+1 0 0 1 40.00 561.89 Tm (manual command validation using the golden prompts.) Tj
+1 0 0 1 40.00 549.89 Tm (* **Workflow used:** command-by-command incremental commits, each change validated by local) Tj
+1 0 0 1 40.00 537.89 Tm (checks/build, then merged into the AI path and UI integration before user-facing trials.) Tj
+1 0 0 1 40.00 525.89 Tm () Tj
+1 0 0 1 40.00 513.89 Tm (MCP Usage) Tj
+1 0 0 1 40.00 501.89 Tm () Tj
+1 0 0 1 40.00 489.89 Tm (* **Template MCP client:** 'src/features/ai/mcp/template-mcp-client.ts'.) Tj
+1 0 0 1 40.00 477.89 Tm (* **Enabled MCP tools:** 'template.instantiate' and 'command.plan'.) Tj
+1 0 0 1 40.00 465.89 Tm (* **What MCP added:**) Tj
+1 0 0 1 40.00 453.89 Tm (- Canonical structured tool interface for template-specific planning.) Tj
+1 0 0 1 40.00 441.89 Tm (- Fast route to generate deterministic template operations \(for deterministic intents and) Tj
+1 0 0 1 40.00 429.89 Tm (fallback modes\).) Tj
+1 0 0 1 40.00 417.89 Tm (* **Current tradeoff:** MCP planning is retained for deterministic/template paths, while OpenAI) Tj
+1 0 0 1 40.00 405.89 Tm (Agents handles broad natural-language execution for most live commands. The MCP layer is still) Tj
+1 0 0 1 40.00 393.89 Tm (used where it improves structure and reliability.) Tj
+1 0 0 1 40.00 381.89 Tm () Tj
+1 0 0 1 40.00 369.89 Tm (Effective Prompts \(Worked Well\)) Tj
+1 0 0 1 40.00 357.89 Tm () Tj
+1 0 0 1 40.00 345.89 Tm (These prompts were directly used during iterative hardening and were reliable in the current) Tj
+1 0 0 1 40.00 333.89 Tm (implementation:) Tj
+1 0 0 1 40.00 321.89 Tm () Tj
+1 0 0 1 40.00 309.89 Tm (1. **'Add a yellow sticky note that says 'User Research''**) Tj
+1 0 0 1 40.00 297.89 Tm (2. **'Create a blue rectangle at position 100,200'**) Tj
+1 0 0 1 40.00 285.89 Tm (3. **'Add a frame called "Sprint Planning"'**) Tj
+1 0 0 1 40.00 273.89 Tm (4. **'Create a 2x3 grid of sticky notes for pros and cons'**) Tj
+1 0 0 1 40.00 261.89 Tm (5. **'Create a SWOT analysis template with four quadrants'**) Tj
+1 0 0 1 40.00 249.89 Tm () Tj
+1 0 0 1 40.00 237.89 Tm (Code Analysis: AI-Generated vs Hand-Written) Tj
+1 0 0 1 40.00 225.89 Tm () Tj
+1 0 0 1 40.00 213.89 Tm (* Estimated proportion of AI-assisted output: **~80% AI-assisted / ~20% manual** for this phase.) Tj
+1 0 0 1 40.00 201.89 Tm (- AI assistance was strongest in:) Tj
+1 0 0 1 40.00 189.89 Tm (- schema expansion and route wiring) Tj
+1 0 0 1 40.00 177.89 Tm (- deterministic planner updates) Tj
+1 0 0 1 40.00 165.89 Tm (- trace instrumentation and fallback routing) Tj
+1 0 0 1 40.00 153.89 Tm (- Manual engineering focused on:) Tj
+1 0 0 1 40.00 141.89 Tm (- edge-case fixes in UI/interaction behavior) Tj
+1 0 0 1 40.00 129.89 Tm (- guardrail tuning) Tj
+1 0 0 1 40.00 117.89 Tm (- final integration verification) Tj
+1 0 0 1 40.00 105.89 Tm () Tj
+1 0 0 1 40.00 93.89 Tm (Strengths & Limitations) Tj
+1 0 0 1 40.00 81.89 Tm () Tj
+1 0 0 1 40.00 69.89 Tm (Strengths) Tj
+1 0 0 1 40.00 57.89 Tm () Tj
+1 0 0 1 40.00 45.89 Tm (* Strong structured AI tool model with traceable execution path.) Tj
+ET
+endstream
+5 0 obj
+<< /Type /Font /Subtype /Type1 /Name /F1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000051 00000 n 
+0000000101 00000 n 
+0000000226 00000 n 
+0000004857 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+4957
+%%EOF

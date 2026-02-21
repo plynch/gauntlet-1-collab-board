@@ -80,7 +80,7 @@ type OnlineUsersListProps = {
  */
 export function OnlineUsersList({ onlineUsers }: OnlineUsersListProps) {
   if (onlineUsers.length === 0) {
-    return <span style={{ color: "#6b7280" }}>No active users yet.</span>;
+    return <span style={{ color: "var(--text-muted)" }}>No active users yet.</span>;
   }
 
   return (

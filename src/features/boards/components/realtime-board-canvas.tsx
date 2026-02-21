@@ -8646,7 +8646,7 @@ export default function RealtimeBoardCanvas({
           style={{
             minWidth: 0,
             minHeight: 0,
-            background: "#f8fafc",
+            background: "var(--surface)",
             display: "flex",
             flexDirection: "column",
             overflow: "hidden",

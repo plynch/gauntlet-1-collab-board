@@ -46,6 +46,9 @@ type CreateBoardAgentToolsOptions = {
   selectedObjectIds: string[];
   viewportBounds: ViewportBounds | null;
   coordinateHints?: CoordinateHints | null;
+  messageIntentHints?: {
+    stickyCreateRequest: boolean;
+  };
 };
 
 type BoardAgentToolFactoryResult = {
@@ -208,6 +211,17 @@ export function createBoardAgentTools(
     });
 
     try {
+      if (
+        options.messageIntentHints?.stickyCreateRequest &&
+        isMutatingToolCall(toolCall) &&
+        toolCall.tool !== "createStickyNote" &&
+        toolCall.tool !== "createStickyBatch"
+      ) {
+        throw new Error(
+          "Create-sticky request must use createStickyNote or createStickyBatch.",
+        );
+      }
+
       if (isMutatingToolCall(toolCall)) {
         const validation = validateTemplatePlan(
           buildSyntheticPlan([...operationsExecuted, toolCall]),

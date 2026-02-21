@@ -130,7 +130,7 @@ export function getOpenAiPlannerConfig(): OpenAiPlannerConfig {
     runtime,
     maxOutputTokens: parsePositiveIntegerEnv(
       process.env.OPENAI_MAX_OUTPUT_TOKENS,
-      700,
+      260,
     ),
     reserveUsdPerCall: parsePositiveNumberEnv(
       process.env.OPENAI_RESERVE_USD_PER_CALL,
@@ -150,7 +150,7 @@ export function getOpenAiPlannerConfig(): OpenAiPlannerConfig {
     ),
     agentsMaxTurns: parsePositiveIntegerEnv(
       process.env.OPENAI_AGENTS_MAX_TURNS,
-      8,
+      4,
     ),
     agentsTracing: parseBooleanEnv(process.env.OPENAI_AGENTS_TRACING, true),
     agentsTracingApiKey,

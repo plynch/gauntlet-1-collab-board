@@ -66,6 +66,31 @@ type RunBoardCommandWithOpenAiAgentsInput = {
   trace: AiTraceRun;
 };
 
+type OpenAiMessageIntentHints = {
+  stickyCreateRequest: boolean;
+};
+
+/**
+ * Parses message intent hints.
+ */
+function parseMessageIntentHints(message: string): OpenAiMessageIntentHints {
+  const normalized = message.trim().toLowerCase();
+  const stickyMentioned = /\bstick(?:y|ies)\b/.test(normalized);
+  const createVerbMentioned =
+    /\b(create|add|make|new)\b/.test(normalized) ||
+    /\bset\s+up\b/.test(normalized);
+  const destructiveOrEditVerbMentioned = /\b(change|update|edit|delete|remove|move|resize|recolor|recolour)\b/.test(
+    normalized,
+  );
+
+  return {
+    stickyCreateRequest:
+      stickyMentioned &&
+      createVerbMentioned &&
+      !destructiveOrEditVerbMentioned,
+  };
+}
+
 /**
  * Handles to board context object.
  */
@@ -127,6 +152,8 @@ const OPENAI_AGENTS_SYSTEM_PROMPT = [
   "Use only the provided tools. Never invent tool names.",
   "Use high-level tools when possible: createStickyBatch, moveObjects, fitFrameToContents, arrangeObjectsInGrid, alignObjects, distributeObjects.",
   "For line creation, use createShape with type='line'.",
+  "When user asks to create/add sticky notes, you must create new stickies via createStickyNote or createStickyBatch.",
+  "Do not satisfy create-sticky requests by mutating existing selected objects.",
   "When user provides explicit coordinates, preserve them in tool arguments.",
   "When user asks for selected objects and selectedObjectIds are provided, use those IDs.",
   "Use getBoardState if you need fresh IDs before mutating the board.",
@@ -168,6 +195,7 @@ export async function runBoardCommandWithOpenAiAgents(
     boardObjects: contextObjects,
   };
   const coordinateHints = parseCoordinateHintsFromMessage(input.message);
+  const messageIntentHints = parseMessageIntentHints(input.message);
 
   const boardAgentTools = createBoardAgentTools({
     executor: input.executor,
@@ -175,6 +203,7 @@ export async function runBoardCommandWithOpenAiAgents(
     selectedObjectIds: input.selectedObjectIds,
     viewportBounds: input.viewportBounds,
     coordinateHints,
+    messageIntentHints,
   });
 
   const agent = new Agent({

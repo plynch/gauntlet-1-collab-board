@@ -7,7 +7,6 @@ Built with Next.js and Firebase Firestore.
 ## Deployed Live
 
 - Firebase App Hosting: [https://collab-board-backend--gauntlet-1-collab-board.us-east5.hosted.app/](https://collab-board-backend--gauntlet-1-collab-board.us-east5.hosted.app/)
-- Vercel: [https://gauntlet-1-collab-board.vercel.app/](https://gauntlet-1-collab-board.vercel.app/)
 
 ## Build And Run Locally
 
@@ -58,48 +57,13 @@ npm run dev
 Useful scripts:
 
 ```bash
-npm run storybook
-npm run build-storybook
+npm run dev
+npm run build
 npm run test
-npm run test:e2e
-npm run test:e2e:emulator
 npm run lint
 npm run typecheck
-npm run docs:api
-npm run build
 npm run secrets:sync:apphosting
 ```
-
-Sync Firebase App Hosting secrets from `.env.local`:
-
-```bash
-npm run secrets:sync:apphosting
-# optional custom project:
-npm run secrets:sync:apphosting -- --project gauntlet-1-collab-board
-```
-
-Playwright first-run setup:
-
-```bash
-npx playwright install chromium
-```
-
-Firebase emulator e2e (no paid Firebase usage):
-
-```bash
-npm run test:e2e:emulator
-```
-
-Java is required for emulator-backed scripts:
-
-- `npm run firebase:emulators`
-- `npm run test:e2e:emulator`
-- `npm run test:e2e:ai-agent-calls:fallback:WIP` (fallback matrix is currently deferred)
-- `npm run test:e2e:ai-agent-calls:openai-matrix:nano:PAID`
-
-Styleguide route (component library preview in app):
-
-- `http://localhost:3000/styleguide`
 
 ## Coding Standards
 
@@ -167,46 +131,6 @@ Runtime flow:
 6. Planner mode (`AI_PLANNER_MODE`) still controls strict/fallback/deterministic behavior.
 7. Response returns assistant message + execution summary + trace ID.
 
-Langfuse spans:
-
-- `ai.request.received`
-- `mcp.call`
-- `openai.budget.reserve`
-- `openai.call`
-- `tool.execute`
-- `tool.execute.call`
-- `board.write.commit`
-- `ai.response.sent`
-
-Guardrails:
-
-- max operations per command
-- max created objects per command
-- per-tool limits (`createStickyBatch`, layout tools, `moveObjects`, `deleteObjects`)
-- per-user rate limiting window
-- per-board command lock
-- route timeout
-
-Env notes:
-
-- Required for tracing:
-  - `LANGFUSE_PUBLIC_KEY`
-  - `LANGFUSE_SECRET_KEY`
-  - optional `LANGFUSE_BASE_URL`
-- Required for OpenAI planner:
-  - `AI_ENABLE_OPENAI=true`
-  - `AI_PLANNER_MODE=openai-strict` (recommended for happy path)
-  - `OPENAI_RUNTIME=agents-sdk` (default; direct tool-calling path)
-  - `OPENAI_API_KEY=...`
-  - optional `OPENAI_MODEL=gpt-4.1-nano`
-  - optional `OPENAI_AGENTS_MAX_TURNS=3`
-  - optional `OPENAI_AGENTS_TRACING_API_KEY` (defaults to `OPENAI_API_KEY`)
-  - optional `OPENAI_AGENTS_TRACING=true`
-  - optional `OPENAI_AGENTS_WORKFLOW_NAME=collabboard-command`
-  - optional `OPENAI_RESERVE_USD_PER_CALL=0.003`
-  - optional `AI_GUARDRAIL_STORE=memory|firestore`
-- hard app-level spend guardrail: `$10.00`
-
 ## Golden Evals (Manual Acceptance)
 
 Run these commands in the AI drawer as the canonical live QA set.
@@ -256,31 +180,12 @@ Expected result: one journey-map frame with five stage stickies appears.
 12. `Set up a retrospective board with What Went Well, What Didn't, and Action Items columns`
 Expected result: one retrospective frame appears with the three named columns.
 
-On-demand AI test suites:
+AI evaluation script:
 
-- Fallback matrix (20 commands, no paid LLM):
-  - deferred follow-up work (script placeholder):
-    - `npm run test:e2e:ai-agent-calls:fallback`
-  - manual WIP execution:
-    - `npm run test:e2e:ai-agent-calls:fallback:WIP`
-- OpenAI matrix (20 paid commands, strict mode):
-  - `npm run test:e2e:ai-agent-calls:openai-matrix:nano:PAID`
-  - legacy alias: `npm run test:e2e:ai-openai-smoke:nano:PAID`
-- Required-capabilities Golden Eval suite (12 commands):
-  - `npm run test:e2e:ai-required-capabilities:openai-agents:nano:PAID`
-  - short alias: `npm run test:e2e:ai-golden-evals:openai-matrix:nano:PAID`
+- `npm run test:e2e:ai-agent-calls:openai-matrix:nano:PAID` (20-command happy-path matrix)
+- Any paid AI command script ends with `:PAID`.
 
-Naming convention:
+## Rejected / Not Priority
 
-- Any npm script that can spend paid model tokens ends with `:PAID`.
-
-## In Progress Features
-
-- 🛠️ Better testing
-
-## Features Not Added For MVP
-
-- 🚧 Email and password sign-on
-- 🚧 GitHub Auth
-- 🚧 AI agent assistance
-- 🚧 Advanced automated test coverage
+- 🚫 Email and password sign-on
+- 🚫 GitHub Auth

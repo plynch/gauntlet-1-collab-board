@@ -150,7 +150,7 @@ export function getOpenAiPlannerConfig(): OpenAiPlannerConfig {
     ),
     agentsMaxTurns: parsePositiveIntegerEnv(
       process.env.OPENAI_AGENTS_MAX_TURNS,
-      4,
+      3,
     ),
     agentsTracing: parseBooleanEnv(process.env.OPENAI_AGENTS_TRACING, true),
     agentsTracingApiKey,

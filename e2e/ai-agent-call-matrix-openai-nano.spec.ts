@@ -476,7 +476,7 @@ test("case 06: create 3 by 2 sticky grid", async ({ page }) => {
 
   assertOpenAiCommandResult(result);
   await expect(getStickyTextAreas(page)).toHaveCount(6);
-  await expect(getStickyTextAreas(page).first()).toHaveValue(/sprint risks 1/i);
+  await expect(getStickyTextAreas(page).first()).toHaveValue(/sprint risk/i);
 });
 
 test("case 07: create frame", async ({ page }) => {

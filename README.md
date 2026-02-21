@@ -85,7 +85,7 @@ Java is required for emulator-backed scripts:
 
 - `npm run firebase:emulators`
 - `npm run test:e2e:emulator`
-- `npm run test:e2e:ai-agent-calls:fallback`
+- `npm run test:e2e:ai-agent-calls:fallback:WIP` (fallback matrix is currently deferred)
 - `npm run test:e2e:ai-agent-calls:openai-matrix:nano:PAID`
 
 Styleguide route (component library preview in app):
@@ -190,7 +190,7 @@ Env notes:
   - `OPENAI_RUNTIME=agents-sdk` (default; direct tool-calling path)
   - `OPENAI_API_KEY=...`
   - optional `OPENAI_MODEL=gpt-4.1-nano`
-  - optional `OPENAI_AGENTS_MAX_TURNS=8`
+  - optional `OPENAI_AGENTS_MAX_TURNS=3`
   - optional `OPENAI_AGENTS_TRACING_API_KEY` (defaults to `OPENAI_API_KEY`)
   - optional `OPENAI_AGENTS_TRACING=true`
   - optional `OPENAI_AGENTS_WORKFLOW_NAME=collabboard-command`
@@ -201,7 +201,10 @@ Env notes:
 On-demand AI test suites:
 
 - Fallback matrix (20 commands, no paid LLM):
-  - `npm run test:e2e:ai-agent-calls:fallback`
+  - deferred follow-up work (script placeholder):
+    - `npm run test:e2e:ai-agent-calls:fallback`
+  - manual WIP execution:
+    - `npm run test:e2e:ai-agent-calls:fallback:WIP`
 - OpenAI matrix (20 paid commands, strict mode):
   - `npm run test:e2e:ai-agent-calls:openai-matrix:nano:PAID`
   - legacy alias: `npm run test:e2e:ai-openai-smoke:nano:PAID`

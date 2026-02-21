@@ -39,6 +39,8 @@ export async function GET(request: Request) {
   const searchParams = new URL(request.url).searchParams;
   const runProbe = searchParams.get("probe") === "1";
   const langfuseBaseUrl = process.env.LANGFUSE_BASE_URL?.trim() || null;
+  const langfuseEnvironment =
+    process.env.LANGFUSE_TRACING_ENVIRONMENT?.trim() || "default";
   const langfusePublicKeyPreview = getLangfusePublicKeyPreview();
   const requireTracing = parseRequiredFlag(
     process.env.AI_REQUIRE_TRACING,
@@ -144,6 +146,7 @@ export async function GET(request: Request) {
     requireOpenAiTracing,
     langfuseConfigured,
     langfuseBaseUrl,
+    langfuseEnvironment,
     langfusePublicKeyPreview,
     langfuseValidated,
     ...(langfuseValidationError ? { langfuseValidationError } : {}),

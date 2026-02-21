@@ -68,6 +68,7 @@ type RunBoardCommandWithOpenAiAgentsInput = {
 
 type OpenAiMessageIntentHints = {
   stickyCreateRequest: boolean;
+  stickyColorHint: string | null;
 };
 
 /**
@@ -75,6 +76,22 @@ type OpenAiMessageIntentHints = {
  */
 function parseMessageIntentHints(message: string): OpenAiMessageIntentHints {
   const normalized = message.trim().toLowerCase();
+  const stickyColorHint =
+    ([
+      ["yellow", "#fde68a"],
+      ["orange", "#fdba74"],
+      ["red", "#fca5a5"],
+      ["pink", "#f9a8d4"],
+      ["purple", "#c4b5fd"],
+      ["blue", "#93c5fd"],
+      ["teal", "#99f6e4"],
+      ["green", "#86efac"],
+      ["gray", "#d1d5db"],
+      ["grey", "#d1d5db"],
+      ["tan", "#d2b48c"],
+    ] as const).find(([colorName]) =>
+      new RegExp(`\\b${colorName}\\b`, "i").test(normalized),
+    )?.[1] ?? null;
   const stickyMentioned = /\bstick(?:y|ies)\b/.test(normalized);
   const createVerbMentioned =
     /\b(create|add|make|new)\b/.test(normalized) ||
@@ -88,6 +105,7 @@ function parseMessageIntentHints(message: string): OpenAiMessageIntentHints {
       stickyMentioned &&
       createVerbMentioned &&
       !destructiveOrEditVerbMentioned,
+    stickyColorHint,
   };
 }
 

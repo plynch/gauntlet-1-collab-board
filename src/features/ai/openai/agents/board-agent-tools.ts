@@ -48,6 +48,7 @@ type CreateBoardAgentToolsOptions = {
   coordinateHints?: CoordinateHints | null;
   messageIntentHints?: {
     stickyCreateRequest: boolean;
+    stickyColorHint: string | null;
   };
 };
 
@@ -352,7 +353,10 @@ export function createBoardAgentTools(
             text: args.text,
             x: explicitCoordinateHints?.hintedX ?? args.x ?? defaultPoint.x,
             y: explicitCoordinateHints?.hintedY ?? args.y ?? defaultPoint.y,
-            color: args.color ?? DEFAULT_STICKY_COLOR,
+            color:
+              options.messageIntentHints?.stickyColorHint ??
+              args.color ??
+              DEFAULT_STICKY_COLOR,
           },
         }),
     }),
@@ -377,7 +381,10 @@ export function createBoardAgentTools(
           tool: "createStickyBatch",
           args: {
             count: args.count,
-            color: args.color ?? DEFAULT_STICKY_COLOR,
+            color:
+              options.messageIntentHints?.stickyColorHint ??
+              args.color ??
+              DEFAULT_STICKY_COLOR,
             originX:
               explicitCoordinateHints?.hintedX ?? args.originX ?? defaultPoint.x,
             originY:

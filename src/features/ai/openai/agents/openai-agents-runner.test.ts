@@ -169,7 +169,7 @@ describe("runBoardCommandWithOpenAiAgents", () => {
       expect.any(Object),
       expect.stringContaining("Create a sticky"),
       expect.objectContaining({
-        maxTurns: 8,
+        maxTurns: 3,
         tracing: {
           apiKey: "test-openai-tracing-key",
         },

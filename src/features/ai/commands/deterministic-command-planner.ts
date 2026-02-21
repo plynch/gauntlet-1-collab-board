@@ -8,6 +8,7 @@ import {
   clampObjectTopLeftToSection,
   getGridSectionBoundsFromGeometry,
 } from "@/features/boards/components/realtime-canvas/container-membership-geometry";
+import { buildSwotTemplatePlan } from "@/features/ai/templates/swot-template";
 
 type PlannerInput = {
   message: string;
@@ -462,20 +463,29 @@ function getBoardBounds(boardState: BoardObjectSnapshot[]): {
   right: number;
   top: number;
   bottom: number;
+  width: number;
+  height: number;
 } | null {
   if (boardState.length === 0) {
     return null;
   }
 
+  const left = Math.min(...boardState.map((objectItem) => objectItem.x));
+  const right = Math.max(
+    ...boardState.map((objectItem) => objectItem.x + objectItem.width),
+  );
+  const top = Math.min(...boardState.map((objectItem) => objectItem.y));
+  const bottom = Math.max(
+    ...boardState.map((objectItem) => objectItem.y + objectItem.height),
+  );
+
   return {
-    left: Math.min(...boardState.map((objectItem) => objectItem.x)),
-    right: Math.max(
-      ...boardState.map((objectItem) => objectItem.x + objectItem.width),
-    ),
-    top: Math.min(...boardState.map((objectItem) => objectItem.y)),
-    bottom: Math.max(
-      ...boardState.map((objectItem) => objectItem.y + objectItem.height),
-    ),
+    left,
+    right,
+    top,
+    bottom,
+    width: Math.max(0, right - left),
+    height: Math.max(0, bottom - top),
   };
 }
 
@@ -593,8 +603,12 @@ function parseStickyBatchCount(message: string): number | null {
     return null;
   }
 
-  const countMatch = message.match(
-    /\b(\d+)\s+(?:\w+\s+){0,3}(?:stick(?:y|ies)(?:\s+notes?)?|notes?)\b/i,
+  const withoutExplicitTextPayload = message
+    .replace(/\b(?:that says|saying|with text|text)\b[\s\S]*$/i, "")
+    .trim();
+
+  const countMatch = withoutExplicitTextPayload.match(
+    /\b(\d+)\s+(?:\w+\s+){0,2}(?:stick(?:y|ies)(?:\s+notes?)?|notes)\b/i,
   );
   if (!countMatch) {
     return null;
@@ -1312,6 +1326,44 @@ function planCreateStickyGrid(
           },
         },
       ],
+    }),
+  };
+}
+
+/**
+ * Returns whether create SWOT template command is true.
+ */
+function isCreateSwotTemplateCommand(message: string): boolean {
+  const lower = normalizeMessage(message);
+  const hasCreateVerb = /\b(add|create|build|set up|setup)\b/.test(lower);
+  const hasSwotLanguage = /\bswot\b/.test(lower);
+  const hasTemplateLanguage = /\b(template|analysis|board|diagram)\b/.test(
+    lower,
+  );
+
+  return hasCreateVerb && hasSwotLanguage && hasTemplateLanguage;
+}
+
+/**
+ * Handles plan create SWOT template.
+ */
+function planCreateSwotTemplate(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
+  if (!isCreateSwotTemplateCommand(input.message)) {
+    return null;
+  }
+
+  return {
+    planned: true,
+    intent: "swot-template",
+    assistantMessage: "Created SWOT analysis template.",
+    plan: buildSwotTemplatePlan({
+      templateId: "swot.v1",
+      boardBounds: getBoardBounds(input.boardState),
+      selectedObjectIds: input.selectedObjectIds,
+      existingObjectCount: input.boardState.length,
+      viewportBounds: input.viewportBounds ?? null,
     }),
   };
 }
@@ -2271,6 +2323,7 @@ export function planDeterministicCommand(
     planSummarizeSource,
     planExtractActionItems,
     planCreateStickyGrid,
+    planCreateSwotTemplate,
     planAddSwotSectionItem,
     planCreateJourneyMap,
     planCreateRetrospectiveBoard,

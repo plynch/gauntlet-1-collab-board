@@ -34,6 +34,9 @@ env:
   - variable: LANGFUSE_BASE_URL
     value: "https://us.cloud.langfuse.com"
     availability: [ RUNTIME ]
+  - variable: LANGFUSE_TRACING_ENVIRONMENT
+    value: "default"
+    availability: [ RUNTIME ]
   - variable: AI_ENABLE_OPENAI
     value: "true"
     availability: [ RUNTIME ]
@@ -51,6 +54,9 @@ env:
     availability: [ RUNTIME ]
   - variable: OPENAI_AGENTS_WORKFLOW_NAME
     value: "collabboard-command"
+    availability: [ RUNTIME ]
+  - variable: OPENAI_AGENTS_MAX_TURNS
+    value: "3"
     availability: [ RUNTIME ]
   - variable: AI_REQUIRE_TRACING
     value: "true"

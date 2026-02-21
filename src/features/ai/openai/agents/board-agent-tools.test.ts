@@ -101,7 +101,10 @@ describe("createBoardAgentTools", () => {
       throw new Error("alignObjects tool missing.");
     }
 
-    await alignTool.invoke({} as never, JSON.stringify({ alignment: "left" }));
+    await alignTool.invoke(
+      {} as never,
+      JSON.stringify({ objectIds: null, alignment: "left" }),
+    );
 
     expect(executeToolCall).toHaveBeenCalledWith({
       tool: "alignObjects",
@@ -141,7 +144,14 @@ describe("createBoardAgentTools", () => {
 
     await createShapeTool.invoke(
       {} as never,
-      JSON.stringify({ type: "rect", color: "#93c5fd" }),
+      JSON.stringify({
+        type: "rect",
+        x: null,
+        y: null,
+        width: null,
+        height: null,
+        color: "#93c5fd",
+      }),
     );
 
     expect(executeToolCall).toHaveBeenCalledWith({

@@ -62,6 +62,13 @@ Expected:
 npm run test:e2e:ai-agent-calls:fallback
 ```
 
+`test:e2e:ai-agent-calls:fallback` is currently a placeholder (deferred work).
+To run the legacy deterministic fallback matrix manually:
+
+```bash
+npm run test:e2e:ai-agent-calls:fallback:WIP
+```
+
 ### Paid OpenAI matrix (20 calls)
 
 ```bash

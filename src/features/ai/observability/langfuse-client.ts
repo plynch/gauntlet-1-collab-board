@@ -10,10 +10,13 @@ function getLangfuseConfig(): {
   publicKey: string;
   secretKey: string;
   baseUrl?: string;
+  environment: string;
 } | null {
   const publicKey = process.env.LANGFUSE_PUBLIC_KEY?.trim();
   const secretKey = process.env.LANGFUSE_SECRET_KEY?.trim();
   const baseUrl = process.env.LANGFUSE_BASE_URL?.trim();
+  const environment =
+    process.env.LANGFUSE_TRACING_ENVIRONMENT?.trim() || "default";
 
   if (!publicKey || !secretKey) {
     return null;
@@ -22,6 +25,7 @@ function getLangfuseConfig(): {
   return {
     publicKey,
     secretKey,
+    environment,
     ...(baseUrl ? { baseUrl } : {}),
   };
 }
@@ -72,6 +76,7 @@ export function getLangfuseClient(): Langfuse | null {
   langfuseClient = new Langfuse({
     publicKey: config.publicKey,
     secretKey: config.secretKey,
+    environment: config.environment,
     ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
   });
   return langfuseClient;

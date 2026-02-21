@@ -123,6 +123,20 @@ describe("planDeterministicCommand", () => {
     }
   });
 
+  it("does not interpret sticky text numbers as sticky batch count", () => {
+    const result = planDeterministicCommand({
+      message: "Add a pink sticky note at position 520, 280 that says Case 02 note",
+      boardState: BOARD_STATE,
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("create-sticky");
+      expect(result.plan.operations[0]?.tool).toBe("createStickyNote");
+    }
+  });
+
   it("plans create-sticky-batch for count and color prompts", () => {
     const result = planDeterministicCommand({
       message: "Create 25 red stickies",
@@ -316,6 +330,32 @@ describe("planDeterministicCommand", () => {
       if (result.plan.operations[0]?.tool === "createStickyBatch") {
         expect(result.plan.operations[0].args.count).toBe(6);
         expect(result.plan.operations[0].args.columns).toBe(3);
+      }
+    }
+  });
+
+  it("plans SWOT template creation command", () => {
+    const result = planDeterministicCommand({
+      message: "Create a SWOT analysis template",
+      boardState: BOARD_STATE,
+      selectedObjectIds: [],
+      viewportBounds: {
+        left: 0,
+        top: 0,
+        width: 1_200,
+        height: 900,
+      },
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("swot-template");
+      expect(result.plan.operations).toHaveLength(1);
+      expect(result.plan.operations[0]?.tool).toBe("createGridContainer");
+      if (result.plan.operations[0]?.tool === "createGridContainer") {
+        expect(result.plan.operations[0].args.containerTitle).toBe(
+          "SWOT Analysis",
+        );
       }
     }
   });

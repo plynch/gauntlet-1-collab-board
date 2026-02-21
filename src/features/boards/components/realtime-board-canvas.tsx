@@ -6,7 +6,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent as ReactChangeEvent,
   type FormEvent as ReactFormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { User } from "firebase/auth";
@@ -2305,6 +2307,10 @@ export default function RealtimeBoardCanvas({
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [isAiSubmitting, setIsAiSubmitting] = useState(false);
+  const [isSwotTemplateCreating, setIsSwotTemplateCreating] =
+    useState(false);
+  const [chatInputHistory, setChatInputHistory] = useState<string[]>([]);
+  const [chatInputHistoryIndex, setChatInputHistoryIndex] = useState(-1);
   const [cursorBoardPosition, setCursorBoardPosition] = useState<BoardPoint | null>(
     null,
   );
@@ -2313,6 +2319,7 @@ export default function RealtimeBoardCanvas({
     width: 0,
     height: 0,
   });
+  const chatInputHistoryDraftRef = useRef("");
 
   const boardColor = useMemo(() => hashToColor(user.uid), [user.uid]);
   const objectsCollectionRef = useMemo(
@@ -5191,9 +5198,19 @@ export default function RealtimeBoardCanvas({
             text: nextMessage,
           },
         ]);
+
+        setChatInputHistory((previous) => {
+          const filtered = previous.filter((item) => item !== nextMessage);
+          filtered.push(nextMessage);
+          return filtered.slice(-50);
+        });
+        setChatInputHistoryIndex(-1);
+        chatInputHistoryDraftRef.current = "";
       }
       if (clearInput) {
         setChatInput("");
+        setChatInputHistoryIndex(-1);
+        chatInputHistoryDraftRef.current = "";
       }
 
       setIsAiSubmitting(true);
@@ -5308,28 +5325,97 @@ export default function RealtimeBoardCanvas({
     [chatInput, isAiSubmitting, submitAiCommandMessage],
   );
 
+  const handleChatInputChange = useCallback(
+    (event: ReactChangeEvent<HTMLInputElement>) => {
+      setChatInput(event.target.value);
+      setChatInputHistoryIndex(-1);
+      chatInputHistoryDraftRef.current = event.target.value;
+    },
+    [],
+  );
+
+  const handleChatInputKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
+        return;
+      }
+
+      if (chatInputHistory.length === 0 || isAiSubmitting) {
+        return;
+      }
+
+      event.preventDefault();
+
+      if (event.key === "ArrowUp") {
+        const nextIndex =
+          chatInputHistoryIndex < 0
+            ? chatInputHistory.length - 1
+            : Math.max(0, chatInputHistoryIndex - 1);
+
+        if (chatInputHistoryIndex < 0) {
+          chatInputHistoryDraftRef.current = chatInput;
+        }
+
+        setChatInputHistoryIndex(nextIndex);
+        setChatInput(chatInputHistory[nextIndex] ?? "");
+        return;
+      }
+
+      if (chatInputHistoryIndex < 0) {
+        return;
+      }
+
+      if (chatInputHistoryIndex >= chatInputHistory.length - 1) {
+        setChatInputHistoryIndex(-1);
+        setChatInput(chatInputHistoryDraftRef.current);
+        return;
+      }
+
+      const nextIndex = chatInputHistoryIndex + 1;
+      setChatInputHistoryIndex(nextIndex);
+      setChatInput(chatInputHistory[nextIndex] ?? "");
+    },
+    [
+      chatInput,
+      chatInputHistory,
+      chatInputHistoryIndex,
+      isAiSubmitting,
+    ],
+  );
+
   const handleCreateSwotButtonClick = useCallback(() => {
-    if (!canEdit || isAiSubmitting) {
+    if (!canEdit || isAiSubmitting || isSwotTemplateCreating) {
       return;
     }
 
     void (async () => {
-      const swotObjectId = await createSwotTemplate();
-      if (!swotObjectId) {
-        return;
-      }
+      setIsAiSubmitting(false);
+      setIsSwotTemplateCreating(true);
 
-      setChatMessages((previous) => [
-        ...previous,
-        {
-          id: createChatMessageId("a"),
-          role: "assistant",
-          text: "Created SWOT analysis template.",
-        },
-      ]);
-      setSelectedObjectIds([swotObjectId]);
+      try {
+        const swotObjectId = await createSwotTemplate();
+
+        if (!swotObjectId) {
+          return;
+        }
+
+        setChatMessages((previous) => [
+          ...previous,
+          {
+            id: createChatMessageId("a"),
+            role: "assistant",
+            text: "Created SWOT analysis template.",
+          },
+        ]);
+        setSelectedObjectIds([swotObjectId]);
+      } finally {
+        setIsSwotTemplateCreating(false);
+        setIsAiSubmitting(false);
+        setChatInputHistoryIndex(-1);
+        chatInputHistoryDraftRef.current = "";
+      }
     })();
-  }, [canEdit, isAiSubmitting, createSwotTemplate]);
+  }, [canEdit, isAiSubmitting, createSwotTemplate, isSwotTemplateCreating]);
 
   const handleStagePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -6540,7 +6626,7 @@ export default function RealtimeBoardCanvas({
                 <button
                   type="button"
                   onClick={handleCreateSwotButtonClick}
-                  disabled={!canEdit || isAiSubmitting}
+                  disabled={!canEdit || isAiSubmitting || isSwotTemplateCreating}
                   title="Create SWOT analysis"
                   style={{
                     width: "100%",
@@ -6551,13 +6637,17 @@ export default function RealtimeBoardCanvas({
                     border: "1px solid #c7d2fe",
                     borderRadius: 8,
                     background:
-                      !canEdit || isAiSubmitting ? "#eef2ff" : "#e0e7ff",
+                      !canEdit || isAiSubmitting || isSwotTemplateCreating
+                        ? "#eef2ff"
+                        : "#e0e7ff",
                     color: "#312e81",
                     height: 34,
                     fontSize: 12,
                     fontWeight: 600,
                     cursor:
-                      !canEdit || isAiSubmitting ? "not-allowed" : "pointer",
+                      !canEdit || isAiSubmitting || isSwotTemplateCreating
+                        ? "not-allowed"
+                        : "pointer",
                   }}
                 >
                   <BriefcaseIcon />
@@ -8396,7 +8486,8 @@ export default function RealtimeBoardCanvas({
               >
                 <input
                   value={chatInput}
-                  onChange={(event) => setChatInput(event.target.value)}
+                  onChange={handleChatInputChange}
+                  onKeyDown={handleChatInputKeyDown}
                   disabled={isAiSubmitting}
                   placeholder="Ask AI agent..."
                   maxLength={500}

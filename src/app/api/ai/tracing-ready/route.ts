@@ -11,6 +11,8 @@ import {
   isLangfuseConfigured,
 } from "@/features/ai/observability/langfuse-client";
 
+const TRACE_READY_SCHEMA_VERSION = "2026-02-24-a";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -133,6 +135,7 @@ export async function GET(request: Request) {
   const ready = reasons.length === 0;
 
   return NextResponse.json({
+    schemaVersion: TRACE_READY_SCHEMA_VERSION,
     ready,
     requireTracing,
     requireOpenAiTracing,
@@ -143,6 +146,7 @@ export async function GET(request: Request) {
     langfuseValidated,
     ...(langfuseValidationError ? { langfuseValidationError } : {}),
     ...(probeTraceId ? { probeTraceId } : {}),
+    source: "api/ai/tracing-ready",
     openAi: {
       enabled: openAiConfig.enabled,
       plannerMode: openAiConfig.plannerMode,

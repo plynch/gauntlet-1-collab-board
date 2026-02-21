@@ -120,6 +120,20 @@ describe("planDeterministicCommand", () => {
     }
   });
 
+  it("treats clear all as clear-board command", () => {
+    const result = planDeterministicCommand({
+      message: "clear all",
+      boardState: BOARD_STATE,
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("clear-board");
+      expect(result.plan.operations[0]?.tool).toBe("deleteObjects");
+    }
+  });
+
   it("plans delete selected command", () => {
     const result = planDeterministicCommand({
       message: "delete selected",

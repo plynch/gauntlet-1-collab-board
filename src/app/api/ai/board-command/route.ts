@@ -1366,9 +1366,16 @@ export async function POST(request: NextRequest) {
             selectedObjectIds,
             viewportBounds: parsedPayload.viewportBounds ?? null,
           });
+          const forceDeterministicForClearIntent =
+            deterministicPlanResult.intent === "clear-board" ||
+            deterministicPlanResult.intent === "clear-board-empty";
           const shouldExecuteDeterministic =
-            deterministicPlanResult.planned &&
-            shouldExecuteDeterministicPlan(plannerMode, deterministicPlanResult.intent);
+            forceDeterministicForClearIntent ||
+            (deterministicPlanResult.planned &&
+              shouldExecuteDeterministicPlan(
+                plannerMode,
+                deterministicPlanResult.intent,
+              ));
           const shouldAttemptOpenAi =
             plannerMode !== "deterministic-only" && !shouldExecuteDeterministic;
 
@@ -1388,10 +1395,10 @@ export async function POST(request: NextRequest) {
                 model: openAiConfig.model,
                 runtime: openAiConfig.runtime,
               reason:
-                deterministicPlanResult.planned && shouldExecuteDeterministic
+                shouldExecuteDeterministic
                   ? "Skipped because deterministic planner was used."
-                  : deterministicPlanResult.planned
-                    ? "Skipped deterministic planner to prefer OpenAI."
+                : deterministicPlanResult.planned
+                  ? "Skipped deterministic planner to prefer OpenAI."
                     : plannerMode === "deterministic-only"
                       ? "Skipped because AI_PLANNER_MODE=deterministic-only."
                     : "OpenAI planner disabled by runtime configuration.",

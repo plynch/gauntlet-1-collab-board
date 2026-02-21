@@ -1321,6 +1321,7 @@ function isClearBoardCommand(message: string): boolean {
   const lower = normalizeMessage(message);
   return (
     /\bclear(?:\s+the)?\s+board\b/.test(lower) ||
+    /\bclear\s+all(?:\s+objects?)?(?:\s+on\s+the\s+board)?\b/.test(lower) ||
     /\bdelete\s+all\s+shapes\b/.test(lower) ||
     /\bremove\s+all\s+shapes\b/.test(lower) ||
     /\b(?:delete|remove)\s+everything(?:\s+on\s+the\s+board)?\b/.test(lower) ||

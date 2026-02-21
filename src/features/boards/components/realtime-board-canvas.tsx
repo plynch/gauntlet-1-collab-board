@@ -8416,11 +8416,13 @@ export default function RealtimeBoardCanvas({
                         style={{
                           position: "absolute",
                           left: "50%",
-                          top: "50%",
+                          top: objectItem.type === "triangle" ? "66%" : "50%",
                           transform: "translate(-50%, -50%)",
                           maxWidth:
                             objectItem.type === "line"
                               ? Math.max(120, objectWidth - 24)
+                              : objectItem.type === "triangle"
+                                ? Math.max(96, objectWidth * 0.74)
                               : Math.max(76, objectWidth - 18),
                           padding:
                             objectItem.type === "line" ? "0.2rem 0.45rem" : "0.1rem 0.2rem",

@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 
 import {
   getOpenAiPlannerConfig,
 } from "@/features/ai/openai/openai-client";
-import { isLangfuseConfigured } from "@/features/ai/observability/langfuse-client";
+import {
+  flushLangfuseClient,
+  getLangfuseClient,
+  getLangfusePublicKeyPreview,
+  isLangfuseConfigured,
+} from "@/features/ai/observability/langfuse-client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,8 +35,11 @@ function parseRequiredFlag(value: string | undefined, fallback: boolean): boolea
 /**
  * Handles get.
  */
-export async function GET() {
+export async function GET(request: Request) {
+  const searchParams = new URL(request.url).searchParams;
+  const runProbe = searchParams.get("probe") === "1";
   const langfuseBaseUrl = process.env.LANGFUSE_BASE_URL?.trim() || null;
+  const langfusePublicKeyPreview = getLangfusePublicKeyPreview();
   const requireTracing = parseRequiredFlag(
     process.env.AI_REQUIRE_TRACING,
     process.env.NODE_ENV === "production",
@@ -41,6 +50,9 @@ export async function GET() {
   );
   const openAiConfig = getOpenAiPlannerConfig();
   const langfuseConfigured = isLangfuseConfigured();
+  let langfuseValidated = false;
+  let langfuseValidationError: string | null = null;
+  let probeTraceId: string | null = null;
 
   const reasons: string[] = [];
   if (requireTracing && !langfuseConfigured) {
@@ -64,6 +76,66 @@ export async function GET() {
     );
   }
 
+  if (langfuseConfigured) {
+    const langfuseClient = getLangfuseClient();
+    const publicApi = (langfuseClient as unknown as {
+      api?: {
+        traceList?: (query: {
+          page: number;
+          limit: number;
+        }) => Promise<unknown>;
+        traceGet?: (traceId: string) => Promise<unknown>;
+      };
+    } | null)?.api;
+
+    if (!langfuseClient || !publicApi?.traceList) {
+      langfuseValidationError = "Langfuse client public API is unavailable.";
+      reasons.push(langfuseValidationError);
+    } else {
+      try {
+        await publicApi.traceList({
+          page: 1,
+          limit: 1,
+        });
+        langfuseValidated = true;
+      } catch (error) {
+        langfuseValidationError =
+          error instanceof Error && error.message.trim().length > 0
+            ? `Langfuse API validation failed: ${error.message}`
+            : "Langfuse API validation failed.";
+        reasons.push(langfuseValidationError);
+      }
+
+      if (runProbe && langfuseValidated) {
+        probeTraceId = `probe-${randomUUID()}`;
+        try {
+          langfuseClient.trace({
+            id: probeTraceId,
+            name: "ai-tracing-ready-probe",
+            input: {
+              probe: true,
+              source: "api/ai/tracing-ready",
+            },
+            metadata: {
+              source: "api/ai/tracing-ready",
+            },
+          });
+          await flushLangfuseClient();
+          if (publicApi.traceGet) {
+            await publicApi.traceGet(probeTraceId);
+          }
+        } catch (error) {
+          langfuseValidated = false;
+          langfuseValidationError =
+            error instanceof Error && error.message.trim().length > 0
+              ? `Langfuse probe trace failed: ${error.message}`
+              : "Langfuse probe trace failed.";
+          reasons.push(langfuseValidationError);
+        }
+      }
+    }
+  }
+
   const ready = reasons.length === 0;
 
   return NextResponse.json({
@@ -72,6 +144,10 @@ export async function GET() {
     requireOpenAiTracing,
     langfuseConfigured,
     langfuseBaseUrl,
+    langfusePublicKeyPreview,
+    langfuseValidated,
+    ...(langfuseValidationError ? { langfuseValidationError } : {}),
+    ...(probeTraceId ? { probeTraceId } : {}),
     openAi: {
       enabled: openAiConfig.enabled,
       plannerMode: openAiConfig.plannerMode,

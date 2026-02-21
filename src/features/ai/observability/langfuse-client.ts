@@ -27,6 +27,22 @@ function getLangfuseConfig(): {
 }
 
 /**
+ * Gets langfuse public key preview.
+ */
+export function getLangfusePublicKeyPreview(): string | null {
+  const publicKey = process.env.LANGFUSE_PUBLIC_KEY?.trim();
+  if (!publicKey) {
+    return null;
+  }
+
+  if (publicKey.length <= 10) {
+    return publicKey;
+  }
+
+  return `${publicKey.slice(0, 6)}...${publicKey.slice(-4)}`;
+}
+
+/**
  * Returns whether langfuse is configured is true.
  */
 export function isLangfuseConfigured(): boolean {

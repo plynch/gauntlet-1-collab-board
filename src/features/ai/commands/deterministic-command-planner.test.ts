@@ -632,7 +632,55 @@ describe("planDeterministicCommand", () => {
         expect(result.plan.operations[0].args.y).toBeLessThanOrEqual(
           sectionBounds.bottom,
         );
+        expect(result.plan.operations[0].args.y).toBeGreaterThanOrEqual(
+          sectionBounds.top + 40,
+        );
       }
+    }
+  });
+
+  it("stacks additional SWOT section notes in the same quadrant", () => {
+    const swotContainer: BoardObjectSnapshot = {
+      id: "swot-1",
+      type: "gridContainer",
+      zIndex: 10,
+      x: 120,
+      y: 80,
+      width: 760,
+      height: 520,
+      rotationDeg: 0,
+      color: "#e2e8f0",
+      text: "",
+      gridRows: 2,
+      gridCols: 2,
+      gridGap: 2,
+      containerTitle: "SWOT Analysis",
+      gridSectionTitles: ["Strengths", "Weaknesses", "Opportunities", "Threats"],
+      updatedAt: null,
+    };
+    const existingStrengthSticky: BoardObjectSnapshot = {
+      id: "sticky-existing",
+      type: "sticky",
+      zIndex: 11,
+      x: 140,
+      y: 132,
+      width: 220,
+      height: 170,
+      rotationDeg: 0,
+      color: "#86efac",
+      text: "existing",
+      updatedAt: null,
+    };
+
+    const result = planDeterministicCommand({
+      message: "add a strength - \"second item\"",
+      boardState: [swotContainer, existingStrengthSticky],
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned && result.plan.operations[0]?.tool === "createStickyNote") {
+      expect(result.plan.operations[0].args.y).toBeGreaterThan(existingStrengthSticky.y);
     }
   });
 

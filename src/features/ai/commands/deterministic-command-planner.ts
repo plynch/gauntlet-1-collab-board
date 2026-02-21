@@ -130,6 +130,18 @@ const SWOT_SECTION_STICKY_COLORS: Record<SwotSectionKey, string> = {
   opportunities: COLOR_KEYWORDS.teal,
   threats: COLOR_KEYWORDS.orange,
 };
+const SWOT_SECTION_CONTENT_PADDING_X = 16;
+const SWOT_SECTION_CONTENT_PADDING_BOTTOM = 16;
+const SWOT_SECTION_CONTENT_TOP_PADDING = 44;
+const SWOT_SECTION_ITEM_GAP_X = 16;
+const SWOT_SECTION_ITEM_GAP_Y = 16;
+
+type Bounds = {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+};
 
 /**
  * Escapes text for regex usage.
@@ -1095,6 +1107,88 @@ function parseSwotItemText(
   }
 
   return value.slice(0, 1_000);
+}
+
+/**
+ * Gets bounds for SWOT section body area below header chrome.
+ */
+function getSwotSectionContentBounds(sectionBounds: Bounds): Bounds {
+  const left = sectionBounds.left + SWOT_SECTION_CONTENT_PADDING_X;
+  const right = sectionBounds.right - SWOT_SECTION_CONTENT_PADDING_X;
+  const top = sectionBounds.top + SWOT_SECTION_CONTENT_TOP_PADDING;
+  const bottom = sectionBounds.bottom - SWOT_SECTION_CONTENT_PADDING_BOTTOM;
+
+  return {
+    left,
+    right: Math.max(left + 1, right),
+    top,
+    bottom: Math.max(top + 1, bottom),
+  };
+}
+
+/**
+ * Returns whether point falls within bounds.
+ */
+function isPointWithinBounds(point: Point, bounds: Bounds): boolean {
+  return (
+    point.x >= bounds.left &&
+    point.x <= bounds.right &&
+    point.y >= bounds.top &&
+    point.y <= bounds.bottom
+  );
+}
+
+/**
+ * Gets object center point.
+ */
+function getObjectCenterPoint(objectItem: BoardObjectSnapshot): Point {
+  return {
+    x: objectItem.x + objectItem.width / 2,
+    y: objectItem.y + objectItem.height / 2,
+  };
+}
+
+/**
+ * Gets top-left spawn point for next SWOT sticky in section.
+ */
+function getNextSwotStickyTopLeft(options: {
+  boardState: BoardObjectSnapshot[];
+  sectionBounds: Bounds;
+  stickySize: Size;
+}): Point {
+  const contentBounds = getSwotSectionContentBounds(options.sectionBounds);
+  const existingStickiesInSection = options.boardState
+    .filter((objectItem) => objectItem.type === "sticky")
+    .filter((objectItem) =>
+      isPointWithinBounds(
+        getObjectCenterPoint(objectItem),
+        options.sectionBounds,
+      ),
+    );
+  const contentWidth = Math.max(1, contentBounds.right - contentBounds.left);
+  const columns = Math.max(
+    1,
+    Math.floor(
+      (contentWidth + SWOT_SECTION_ITEM_GAP_X) /
+        (options.stickySize.width + SWOT_SECTION_ITEM_GAP_X),
+    ),
+  );
+  const slotIndex = existingStickiesInSection.length;
+  const preferredTopLeft = {
+    x:
+      contentBounds.left +
+      (slotIndex % columns) * (options.stickySize.width + SWOT_SECTION_ITEM_GAP_X),
+    y:
+      contentBounds.top +
+      Math.floor(slotIndex / columns) *
+        (options.stickySize.height + SWOT_SECTION_ITEM_GAP_Y),
+  };
+
+  return clampObjectTopLeftToSection(
+    contentBounds,
+    options.stickySize,
+    preferredTopLeft,
+  );
 }
 
 /**
@@ -2255,14 +2349,11 @@ function planAddSwotSectionItem(
   }
 
   const stickySize = DEFAULT_SIZES.sticky;
-  const topLeft = clampObjectTopLeftToSection(
-    placement.sectionBounds,
+  const topLeft = getNextSwotStickyTopLeft({
+    boardState: input.boardState,
+    sectionBounds: placement.sectionBounds,
     stickySize,
-    {
-      x: placement.sectionBounds.left + 24,
-      y: placement.sectionBounds.top + 24,
-    },
-  );
+  });
   const color = findColor(input.message) ?? SWOT_SECTION_STICKY_COLORS[targetSection];
   const label = targetSection.slice(0, -1);
 

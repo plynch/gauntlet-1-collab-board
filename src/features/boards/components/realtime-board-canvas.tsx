@@ -62,6 +62,9 @@ import {
   isWriteMetricsDebugEnabled,
 } from "@/features/boards/lib/realtime-write-metrics";
 import { GridContainer } from "@/features/ui/components/grid-container";
+import { Input } from "@/features/ui/components/input";
+import { IconButton } from "@/features/ui/components/icon-button";
+import { Button } from "@/features/ui/components/button";
 import { useTheme } from "@/features/theme/use-theme";
 import { getFirebaseClientDb } from "@/lib/firebase/client";
 
@@ -70,6 +73,7 @@ const CURSOR_THROTTLE_MS = 120;
 const DRAG_THROTTLE_MS = 45;
 const DRAG_CLICK_SLOP_PX = 3;
 const STICKY_TEXT_SYNC_THROTTLE_MS = 180;
+const OBJECT_LABEL_MAX_LENGTH = 120;
 const PRESENCE_HEARTBEAT_MS = 10_000;
 const PRESENCE_TTL_MS = 15_000;
 // Ignore tiny pointer jitter; remote users still see smooth cursor motion.
@@ -957,6 +961,20 @@ function getRenderLayerRank(type: BoardObjectKind): number {
  */
 function canUseSelectionHudColor(objectItem: BoardObject): boolean {
   return objectItem.type !== "line";
+}
+
+/**
+ * Returns whether object type supports label text in-canvas.
+ */
+function isLabelEditableObjectType(type: BoardObjectKind): boolean {
+  return (
+    type === "rect" ||
+    type === "circle" ||
+    type === "triangle" ||
+    type === "star" ||
+    type === "line" ||
+    isConnectorKind(type)
+  );
 }
 
 /**
@@ -2186,6 +2204,22 @@ function BriefcaseIcon() {
   );
 }
 
+/**
+ * Handles clear text icon.
+ */
+function ClearTextIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M3.2 3.2l9.6 9.6M12.8 3.2l-9.6 9.6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 const CORNER_HANDLES: ResizeCorner[] = ["nw", "ne", "sw", "se"];
 
 /**
@@ -2442,6 +2476,7 @@ export default function RealtimeBoardCanvas({
     useState(false);
   const [chatInputHistory, setChatInputHistory] = useState<string[]>([]);
   const [chatInputHistoryIndex, setChatInputHistoryIndex] = useState(-1);
+  const [selectionLabelDraft, setSelectionLabelDraft] = useState("");
   const [cursorBoardPosition, setCursorBoardPosition] = useState<BoardPoint | null>(
     null,
   );
@@ -5607,6 +5642,51 @@ export default function RealtimeBoardCanvas({
     ],
   );
 
+  const persistObjectLabelText = useCallback(
+    async (objectId: string, nextText: string) => {
+      const objectItem = objectsByIdRef.current.get(objectId);
+      if (!objectItem || !isLabelEditableObjectType(objectItem.type)) {
+        return;
+      }
+
+      const previousText = objectItem.text ?? "";
+      if (nextText === previousText) {
+        return;
+      }
+
+      setObjects((previous) =>
+        previous.map((item) =>
+          item.id === objectId
+            ? {
+                ...item,
+                text: nextText,
+              }
+            : item,
+        ),
+      );
+
+      try {
+        await updateDoc(doc(db, `boards/${boardId}/objects/${objectId}`), {
+          text: nextText,
+          updatedAt: serverTimestamp(),
+        });
+      } catch (error) {
+        setObjects((previous) =>
+          previous.map((item) =>
+            item.id === objectId
+              ? {
+                  ...item,
+                  text: previousText,
+                }
+              : item,
+          ),
+        );
+        setBoardError(toBoardErrorMessage(error, "Failed to update label."));
+      }
+    },
+    [boardId, db],
+  );
+
   const handleCreateSwotButtonClick = useCallback(() => {
     if (!canEdit || isAiSubmitting || isSwotTemplateCreating) {
       return;
@@ -6497,9 +6577,29 @@ export default function RealtimeBoardCanvas({
     selectedObjects.some((selectedObject) =>
       hasMeaningfulRotation(selectedObject.geometry.rotationDeg),
     );
-  const canShowSelectionHud = canColorSelection;
   const singleSelectedObject =
     selectedObjects.length === 1 ? (selectedObjects[0]?.object ?? null) : null;
+  const canEditSelectedLabel =
+    canEdit &&
+    singleSelectedObject !== null &&
+    isLabelEditableObjectType(singleSelectedObject.type);
+  const canShowSelectionHud = canColorSelection || canEditSelectedLabel;
+  const commitSelectionLabelDraft = useCallback(async () => {
+    if (!canEditSelectedLabel || !singleSelectedObject) {
+      return;
+    }
+
+    const trimmed = selectionLabelDraft.trim();
+    const nextText =
+      trimmed.length === 0 ? "" : trimmed.slice(0, OBJECT_LABEL_MAX_LENGTH);
+    setSelectionLabelDraft(nextText);
+    await persistObjectLabelText(singleSelectedObject.id, nextText);
+  }, [
+    canEditSelectedLabel,
+    persistObjectLabelText,
+    selectionLabelDraft,
+    singleSelectedObject,
+  ]);
   const preferSidePlacement =
     singleSelectedObject !== null &&
     singleSelectedObject.type !== "line" &&
@@ -6523,6 +6623,15 @@ export default function RealtimeBoardCanvas({
     stageSize,
     viewport,
   ]);
+  useEffect(() => {
+    if (!canEditSelectedLabel || !singleSelectedObject) {
+      setSelectionLabelDraft("");
+      return;
+    }
+
+    setSelectionLabelDraft(singleSelectedObject.text ?? "");
+  }, [canEditSelectedLabel, singleSelectedObject]);
+
   const hasDeletableSelection = useMemo(
     () =>
       canEdit &&
@@ -6588,7 +6697,12 @@ export default function RealtimeBoardCanvas({
     return () => {
       resizeObserver.disconnect();
     };
-  }, [canResetSelectionRotation, canShowSelectionHud, selectedColor]);
+  }, [
+    canEditSelectedLabel,
+    canResetSelectionRotation,
+    canShowSelectionHud,
+    selectedColor,
+  ]);
 
   const zoomPercent = Math.round(viewport.scale * 100);
   const zoomSliderValue = Math.min(
@@ -7201,8 +7315,7 @@ export default function RealtimeBoardCanvas({
                   left: selectionHudPosition.x,
                   top: selectionHudPosition.y,
                   zIndex: 45,
-                  display: "flex",
-                  alignItems: "center",
+                  display: "grid",
                   gap: "0.45rem",
                   padding: "0.4rem 0.45rem",
                   borderRadius: 10,
@@ -7212,30 +7325,115 @@ export default function RealtimeBoardCanvas({
                   backdropFilter: "blur(2px)",
                 }}
               >
-                <ColorSwatchPicker
-                  currentColor={selectedColor}
-                  onSelectColor={(nextColor) => {
-                    void saveSelectedObjectsColor(nextColor);
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.45rem",
+                    flexWrap: "wrap",
                   }}
-                />
-                {canResetSelectionRotation ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void resetSelectedObjectsRotation();
-                    }}
+                >
+                  {canColorSelection ? (
+                    <ColorSwatchPicker
+                      currentColor={selectedColor}
+                      onSelectColor={(nextColor) => {
+                        void saveSelectedObjectsColor(nextColor);
+                      }}
+                    />
+                  ) : null}
+                  {canResetSelectionRotation ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        void resetSelectedObjectsRotation();
+                      }}
+                      className="h-8 rounded-md text-xs"
+                      style={{
+                        background: "var(--surface)",
+                        color: "var(--text)",
+                        borderColor: "var(--border)",
+                      }}
+                    >
+                      Reset rotation
+                    </Button>
+                  ) : null}
+                </div>
+                {canEditSelectedLabel && singleSelectedObject ? (
+                  <div
                     style={{
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      background: "var(--surface)",
-                      padding: "0.35rem 0.55rem",
-                      color: "var(--text)",
-                      fontSize: 12,
-                      whiteSpace: "nowrap",
+                      display: "grid",
+                      gap: "0.32rem",
+                      minWidth: 280,
                     }}
                   >
-                    Reset rotation
-                  </button>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: "var(--text-muted)",
+                        letterSpacing: "0.01em",
+                      }}
+                    >
+                      Label
+                    </span>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.4rem",
+                      }}
+                    >
+                      <Input
+                        value={selectionLabelDraft}
+                        onChange={(event) => {
+                          setSelectionLabelDraft(
+                            event.target.value.slice(0, OBJECT_LABEL_MAX_LENGTH),
+                          );
+                        }}
+                        onBlur={() => {
+                          void commitSelectionLabelDraft();
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void commitSelectionLabelDraft();
+                            (event.currentTarget as HTMLInputElement).blur();
+                          }
+
+                          if (event.key === "Escape") {
+                            event.preventDefault();
+                            setSelectionLabelDraft(singleSelectedObject.text ?? "");
+                            (event.currentTarget as HTMLInputElement).blur();
+                          }
+                        }}
+                        placeholder="Add label"
+                        aria-label={`Label for ${getObjectLabel(singleSelectedObject.type)}`}
+                        style={{
+                          height: 32,
+                          border: "1px solid var(--input-border)",
+                          background: "var(--input-bg)",
+                          color: "var(--text)",
+                        }}
+                      />
+                      <IconButton
+                        label="Clear label"
+                        size="sm"
+                        onClick={() => {
+                          setSelectionLabelDraft("");
+                          void persistObjectLabelText(singleSelectedObject.id, "");
+                        }}
+                        disabled={(singleSelectedObject.text ?? "").length === 0}
+                        style={{
+                          border: "1px solid var(--border)",
+                          background: "var(--surface)",
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        <ClearTextIcon />
+                      </IconButton>
+                    </div>
+                  </div>
                 ) : null}
               </div>
             ) : null}
@@ -7258,6 +7456,10 @@ export default function RealtimeBoardCanvas({
                 const objectRotationDeg =
                   draftGeometry?.rotationDeg ?? objectItem.rotationDeg;
                 const objectText = textDrafts[objectItem.id] ?? objectItem.text;
+                const objectLabelText =
+                  objectItem.type === "sticky" || objectItem.type === "gridContainer"
+                    ? ""
+                    : (objectItem.text ?? "").trim();
                 const isSelected = selectedObjectIds.includes(objectItem.id);
                 const isSingleSelected =
                   selectedObjectIds.length === 1 && isSelected;
@@ -7495,6 +7697,37 @@ export default function RealtimeBoardCanvas({
                           />
                         ) : null}
                       </svg>
+                      {objectLabelText.length > 0 ? (
+                        <div
+                          style={{
+                            position: "absolute",
+                            left:
+                              connectorRoute.geometry.midPoint.x -
+                              connectorFrame.left,
+                            top:
+                              connectorRoute.geometry.midPoint.y -
+                              connectorFrame.top,
+                            transform: "translate(-50%, -50%)",
+                            borderRadius: 8,
+                            border: "1px solid var(--border)",
+                            background: "var(--surface)",
+                            color: "var(--text)",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            lineHeight: 1.25,
+                            padding: "0.2rem 0.45rem",
+                            boxShadow: "0 2px 8px rgba(2,6,23,0.2)",
+                            maxWidth: 180,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            pointerEvents: "none",
+                          }}
+                          title={objectLabelText}
+                        >
+                          {objectLabelText}
+                        </div>
+                      ) : null}
 
                       {isSingleSelected && canEdit ? (
                         <>
@@ -8178,6 +8411,52 @@ export default function RealtimeBoardCanvas({
                         />
                       ) : null}
                     </div>
+                    {objectLabelText.length > 0 ? (
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: "50%",
+                          top: "50%",
+                          transform: "translate(-50%, -50%)",
+                          maxWidth:
+                            objectItem.type === "line"
+                              ? Math.max(120, objectWidth - 24)
+                              : Math.max(76, objectWidth - 18),
+                          padding:
+                            objectItem.type === "line" ? "0.2rem 0.45rem" : "0.1rem 0.2rem",
+                          borderRadius: objectItem.type === "line" ? 8 : 6,
+                          border:
+                            objectItem.type === "line"
+                              ? "1px solid var(--border)"
+                              : "none",
+                          background:
+                            objectItem.type === "line"
+                              ? "var(--surface)"
+                              : "transparent",
+                          color:
+                            objectItem.type === "line"
+                              ? "var(--text)"
+                              : getReadableTextColor(renderedObjectColor),
+                          fontSize: 12,
+                          fontWeight: 600,
+                          lineHeight: 1.25,
+                          textAlign: "center",
+                          textShadow:
+                            objectItem.type === "line"
+                              ? "none"
+                              : resolvedTheme === "dark"
+                                ? "0 1px 2px rgba(2,6,23,0.55)"
+                                : "0 1px 1px rgba(248,250,252,0.65)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          pointerEvents: "none",
+                        }}
+                        title={objectLabelText}
+                      >
+                        {objectLabelText}
+                      </div>
+                    ) : null}
 
                     {isSingleSelected &&
                     canEdit &&

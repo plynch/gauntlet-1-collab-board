@@ -1,56 +1,90 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
-import { GridContainer } from "@/features/ui/components/grid-container";
+type PreviewKind =
+  | "sticky"
+  | "rect"
+  | "circle"
+  | "triangle"
+  | "star"
+  | "line"
+  | "connectorUndirected"
+  | "connectorArrow"
+  | "connectorBidirectional";
 
-type Point = { x: number; y: number };
-
-const CANVAS_WIDTH = 1120;
-const CANVAS_HEIGHT = 680;
+type ShowcaseRow = {
+  kind: PreviewKind;
+  label: string;
+};
 
 /**
- * Renders story canvas frame.
+ * Returns whether kind is a connector preview.
  */
-function StoryCanvasFrame({ children }: { children: ReactNode }) {
+function isConnectorPreviewKind(
+  kind: PreviewKind,
+): kind is "connectorUndirected" | "connectorArrow" | "connectorBidirectional" {
+  return (
+    kind === "connectorUndirected" ||
+    kind === "connectorArrow" ||
+    kind === "connectorBidirectional"
+  );
+}
+
+const SHAPE_ROWS: ShowcaseRow[] = [
+  { kind: "sticky", label: "Sticky note" },
+  { kind: "rect", label: "Rectangle" },
+  { kind: "circle", label: "Circle" },
+  { kind: "triangle", label: "Triangle" },
+  { kind: "star", label: "Star" },
+  { kind: "line", label: "Line" },
+  { kind: "connectorUndirected", label: "Connector (undirected)" },
+  { kind: "connectorArrow", label: "Connector (arrow)" },
+  { kind: "connectorBidirectional", label: "Connector (two-way)" },
+];
+
+/**
+ * Renders story shell.
+ */
+function StoryShell({ children }: { children: ReactNode }) {
   return (
     <div
       style={{
         minHeight: "100vh",
         padding: "24px",
         background:
-          "radial-gradient(1200px 520px at 50% -140px, #dbeafe 0%, #e2e8f0 52%, #e2e8f0 100%)",
+          "linear-gradient(180deg, #dbeafe 0%, #e2e8f0 35%, #e2e8f0 100%)",
       }}
     >
       <div
         style={{
-          width: "min(1280px, 96vw)",
+          width: "min(1320px, 96vw)",
           margin: "0 auto",
-          borderRadius: "18px",
-          border: "1px solid rgba(51,65,85,0.35)",
+          borderRadius: 16,
+          border: "1px solid rgba(71,85,105,0.35)",
           overflow: "hidden",
-          boxShadow: "0 18px 40px rgba(15, 23, 42, 0.22)",
           background: "#f8fafc",
+          boxShadow: "0 18px 40px rgba(15, 23, 42, 0.18)",
         }}
       >
-        <div
+        <header
           style={{
-            height: 42,
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "0 14px",
-            borderBottom: "1px solid rgba(100,116,139,0.35)",
+            gap: 12,
+            padding: "12px 16px",
+            borderBottom: "1px solid rgba(100,116,139,0.3)",
             background:
-              "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(241,245,249,0.9) 100%)",
+              "linear-gradient(180deg, rgba(255,255,255,0.94) 0%, rgba(241,245,249,0.92) 100%)",
           }}
         >
           <strong style={{ fontSize: 13, color: "#0f172a" }}>
-            CollabBoard Component Library
+            CollabBoard Shape + Connector Label Gallery
           </strong>
-          <span style={{ fontSize: 12, color: "#475569" }}>
-            Board Shapes Showcase
+          <span style={{ fontSize: 12, color: "#334155" }}>
+            With/without text parity check
           </span>
-        </div>
+        </header>
         {children}
       </div>
     </div>
@@ -58,285 +92,426 @@ function StoryCanvasFrame({ children }: { children: ReactNode }) {
 }
 
 /**
- * Renders shape tag.
+ * Renders row frame.
  */
-function ShapeTag({ label }: { label: string }) {
+function RowFrame({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <span
+    <section
       style={{
-        borderRadius: 999,
-        border: "1px solid rgba(51,65,85,0.32)",
-        background: "rgba(255,255,255,0.95)",
-        color: "#1e293b",
-        fontSize: 11,
-        fontWeight: 600,
-        padding: "5px 9px",
+        border: "1px solid rgba(148,163,184,0.42)",
+        borderRadius: 12,
+        overflow: "hidden",
+        background: "rgba(255,255,255,0.8)",
       }}
     >
-      {label}
-    </span>
+      <div
+        style={{
+          padding: "8px 12px",
+          borderBottom: "1px solid rgba(148,163,184,0.3)",
+          background: "rgba(241,245,249,0.75)",
+          fontSize: 12,
+          fontWeight: 700,
+          color: "#0f172a",
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(2, minmax(260px, 1fr))",
+          gap: 10,
+          padding: 10,
+        }}
+      >
+        {children}
+      </div>
+    </section>
   );
 }
 
 /**
- * Renders connectors scene.
+ * Renders preview tile.
  */
-function ConnectorsLayer() {
-  const undirectedStart: Point = { x: 174, y: 292 };
-  const undirectedEnd: Point = { x: 346, y: 248 };
-  const oneWayStart: Point = { x: 346, y: 248 };
-  const oneWayEnd: Point = { x: 515, y: 170 };
-  const twoWayStart: Point = { x: 515, y: 170 };
-  const twoWayEnd: Point = { x: 812, y: 220 };
-
+function PreviewTile({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
   return (
-    <svg
-      width={CANVAS_WIDTH}
-      height={CANVAS_HEIGHT}
+    <article
       style={{
-        position: "absolute",
-        inset: 0,
-        pointerEvents: "none",
+        border: "1px solid rgba(148,163,184,0.35)",
+        borderRadius: 10,
+        background: "#f8fafc",
+        minHeight: 150,
+        display: "grid",
+        gridTemplateRows: "auto 1fr",
       }}
     >
-      <defs>
-        <marker
-          id="arrow-head"
-          markerWidth="10"
-          markerHeight="10"
-          refX="8.8"
-          refY="5"
-          orient="auto"
-        >
-          <path d="M0,0 L10,5 L0,10 Z" fill="#0f172a" />
-        </marker>
-        <marker
-          id="arrow-head-mint"
-          markerWidth="10"
-          markerHeight="10"
-          refX="8.8"
-          refY="5"
-          orient="auto"
-        >
-          <path d="M0,0 L10,5 L0,10 Z" fill="#0f766e" />
-        </marker>
-      </defs>
-
-      <path
-        d={`M ${undirectedStart.x} ${undirectedStart.y} C 230 292, 260 260, ${undirectedEnd.x} ${undirectedEnd.y}`}
-        stroke="#334155"
-        strokeWidth="3"
-        fill="none"
-      />
-      <path
-        d={`M ${oneWayStart.x} ${oneWayStart.y} C 396 236, 440 196, ${oneWayEnd.x} ${oneWayEnd.y}`}
-        stroke="#0f172a"
-        strokeWidth="3"
-        fill="none"
-        markerEnd="url(#arrow-head)"
-      />
-      <path
-        d={`M ${twoWayStart.x} ${twoWayStart.y} C 604 186, 708 192, ${twoWayEnd.x} ${twoWayEnd.y}`}
-        stroke="#0f766e"
-        strokeWidth="3"
-        fill="none"
-        markerStart="url(#arrow-head-mint)"
-        markerEnd="url(#arrow-head-mint)"
-      />
-    </svg>
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 700,
+          color: "#334155",
+          letterSpacing: "0.01em",
+          padding: "8px 10px",
+          borderBottom: "1px solid rgba(148,163,184,0.24)",
+          background: "rgba(248,250,252,0.8)",
+        }}
+      >
+        {title}
+      </div>
+      <div
+        style={{
+          position: "relative",
+          overflow: "hidden",
+          background:
+            "linear-gradient(to right, rgba(59,130,246,0.1) 1px, transparent 1px), linear-gradient(to bottom, rgba(59,130,246,0.1) 1px, transparent 1px)",
+          backgroundSize: "20px 20px",
+        }}
+      >
+        {children}
+      </div>
+    </article>
   );
 }
 
 /**
- * Renders all board shapes on a styled canvas.
+ * Renders centered label pill.
  */
-function ShapeShowcaseCanvas() {
+function LabelPill({ text }: { text: string }) {
   return (
     <div
       style={{
-        position: "relative",
-        width: CANVAS_WIDTH,
-        height: CANVAS_HEIGHT,
-        backgroundColor: "#eef2f7",
-        backgroundImage:
-          "linear-gradient(to right, rgba(148,163,184,0.24) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,0.24) 1px, transparent 1px)",
-        backgroundSize: "40px 40px",
+        position: "absolute",
+        left: "50%",
+        top: "50%",
+        transform: "translate(-50%, -50%)",
+        borderRadius: 8,
+        border: "1px solid rgba(100,116,139,0.4)",
+        background: "rgba(255,255,255,0.92)",
+        color: "#0f172a",
+        fontSize: 12,
+        fontWeight: 600,
+        lineHeight: 1.25,
+        padding: "0.2rem 0.45rem",
+        boxShadow: "0 2px 6px rgba(15,23,42,0.14)",
       }}
     >
-      <ConnectorsLayer />
+      {text}
+    </div>
+  );
+}
 
-      <div
-        style={{
-          position: "absolute",
-          left: 24,
-          top: 20,
-          display: "flex",
-          gap: 8,
-          flexWrap: "wrap",
-          maxWidth: 760,
-        }}
-      >
-        <ShapeTag label="sticky" />
-        <ShapeTag label="rect" />
-        <ShapeTag label="circle" />
-        <ShapeTag label="triangle" />
-        <ShapeTag label="star" />
-        <ShapeTag label="connector-undirected" />
-        <ShapeTag label="connector-arrow" />
-        <ShapeTag label="connector-bidirectional" />
-        <ShapeTag label="gridContainer" />
-      </div>
+/**
+ * Renders connector preview.
+ */
+function ConnectorPreview({
+  variant,
+  text,
+}: {
+  variant: "connectorUndirected" | "connectorArrow" | "connectorBidirectional";
+  text: string | null;
+}) {
+  const strokeColor =
+    variant === "connectorArrow"
+      ? "#1d4ed8"
+      : variant === "connectorBidirectional"
+        ? "#0f766e"
+        : "#334155";
+  const markerId = `${variant}-${text ? "label" : "plain"}`;
+  const leftNodeStyle: CSSProperties = {
+    position: "absolute",
+    left: 30,
+    top: 48,
+    width: 38,
+    height: 38,
+    borderRadius: "999px",
+    border: "2px solid rgba(15,23,42,0.28)",
+    background: "#86efac",
+  };
+  const rightNodeStyle: CSSProperties = {
+    position: "absolute",
+    right: 28,
+    top: 44,
+    width: 56,
+    height: 46,
+    borderRadius: 8,
+    border: "2px solid rgba(15,23,42,0.28)",
+    background: "#93c5fd",
+  };
 
-      <div
-        style={{
-          position: "absolute",
-          left: 72,
-          top: 120,
-          width: 204,
-          height: 142,
-          borderRadius: 12,
-          border: "1px solid rgba(146, 64, 14, 0.45)",
-          background: "#fde68a",
-          boxShadow: "0 8px 20px rgba(146, 64, 14, 0.16)",
-          padding: "12px 14px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-        }}
-      >
-        <strong style={{ fontSize: 13, color: "#78350f" }}>Sticky note</strong>
-        <span style={{ fontSize: 12, lineHeight: 1.35, color: "#92400e" }}>
-          Stakeholder-ready
-          <br />
-          future UI library
-        </span>
-      </div>
-
-      <div
-        style={{
-          position: "absolute",
-          left: 286,
-          top: 214,
-          width: 120,
-          height: 70,
-          borderRadius: 12,
-          border: "2px solid rgba(30, 64, 175, 0.55)",
-          background: "#93c5fd",
-          boxShadow: "0 8px 14px rgba(30, 64, 175, 0.2)",
-        }}
-      />
-
-      <div
-        style={{
-          position: "absolute",
-          left: 458,
-          top: 116,
-          width: 110,
-          height: 110,
-          borderRadius: "999px",
-          border: "2px solid rgba(6, 95, 70, 0.58)",
-          background: "#86efac",
-          boxShadow: "0 8px 14px rgba(6, 95, 70, 0.17)",
-        }}
-      />
-
+  return (
+    <>
+      <div style={leftNodeStyle} />
+      <div style={rightNodeStyle} />
       <svg
-        width="142"
-        height="122"
-        viewBox="0 0 142 122"
+        viewBox="0 0 320 140"
+        width="100%"
+        height="100%"
         style={{
           position: "absolute",
-          left: 740,
-          top: 138,
+          inset: 0,
           overflow: "visible",
+          pointerEvents: "none",
         }}
       >
-        <polygon
-          points="71,8 134,111 8,111"
-          fill="#c4b5fd"
-          stroke="rgba(55, 48, 163, 0.65)"
+        <defs>
+          <marker
+            id={markerId}
+            markerWidth="10"
+            markerHeight="10"
+            refX="8"
+            refY="5"
+            orient="auto"
+          >
+            <path d="M0 0 L10 5 L0 10 Z" fill={strokeColor} />
+          </marker>
+        </defs>
+        <path
+          d="M 68 67 C 118 67, 188 67, 236 66"
+          stroke={strokeColor}
           strokeWidth="4"
-          strokeLinejoin="round"
+          fill="none"
+          markerStart={
+            variant === "connectorBidirectional" ? `url(#${markerId})` : undefined
+          }
+          markerEnd={
+            variant !== "connectorUndirected" ? `url(#${markerId})` : undefined
+          }
         />
       </svg>
+      {text ? <LabelPill text={text} /> : null}
+    </>
+  );
+}
 
-      <svg
-        width="180"
-        height="170"
-        viewBox="0 0 180 170"
-        style={{
-          position: "absolute",
-          left: 830,
-          top: 320,
-          overflow: "visible",
-        }}
-      >
-        <polygon
-          points="90,8 110,64 170,64 122,100 140,160 90,124 40,160 58,100 10,64 70,64"
-          fill="#fde047"
-          stroke="rgba(51, 65, 85, 0.75)"
-          strokeWidth="6"
-          strokeLinejoin="round"
+/**
+ * Renders non-connector preview.
+ */
+function PrimitivePreview({
+  kind,
+  text,
+}: {
+  kind: Exclude<
+    PreviewKind,
+    "connectorUndirected" | "connectorArrow" | "connectorBidirectional"
+  >;
+  text: string | null;
+}) {
+  const baseShapeStyle: CSSProperties = {
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    transform: "translate(-50%, -50%)",
+  };
+
+  if (kind === "sticky") {
+    return (
+      <>
+        <div
+          style={{
+            ...baseShapeStyle,
+            width: 136,
+            height: 102,
+            borderRadius: 10,
+            border: "1px solid rgba(146,64,14,0.46)",
+            background: "#fde68a",
+            boxShadow: "0 8px 16px rgba(146,64,14,0.16)",
+          }}
         />
-      </svg>
+        {text ? <LabelPill text={text} /> : null}
+      </>
+    );
+  }
 
+  if (kind === "rect") {
+    return (
+      <>
+        <div
+          style={{
+            ...baseShapeStyle,
+            width: 160,
+            height: 90,
+            borderRadius: 6,
+            border: "2px solid rgba(30,64,175,0.55)",
+            background: "#93c5fd",
+            boxShadow: "0 8px 16px rgba(30,64,175,0.15)",
+          }}
+        />
+        {text ? <LabelPill text={text} /> : null}
+      </>
+    );
+  }
+
+  if (kind === "circle") {
+    return (
+      <>
+        <div
+          style={{
+            ...baseShapeStyle,
+            width: 112,
+            height: 112,
+            borderRadius: "999px",
+            border: "2px solid rgba(6,95,70,0.54)",
+            background: "#86efac",
+            boxShadow: "0 8px 16px rgba(6,95,70,0.16)",
+          }}
+        />
+        {text ? <LabelPill text={text} /> : null}
+      </>
+    );
+  }
+
+  if (kind === "triangle") {
+    return (
+      <>
+        <svg
+          viewBox="0 0 180 140"
+          width="100%"
+          height="100%"
+          style={{ position: "absolute", inset: 0, overflow: "visible" }}
+        >
+          <polygon
+            points="90,16 156,124 24,124"
+            fill="#c4b5fd"
+            stroke="rgba(55,48,163,0.65)"
+            strokeWidth="5"
+            strokeLinejoin="round"
+          />
+        </svg>
+        {text ? <LabelPill text={text} /> : null}
+      </>
+    );
+  }
+
+  if (kind === "star") {
+    return (
+      <>
+        <svg
+          viewBox="0 0 190 150"
+          width="100%"
+          height="100%"
+          style={{ position: "absolute", inset: 0, overflow: "visible" }}
+        >
+          <polygon
+            points="95,16 114,62 166,62 124,92 142,136 95,108 48,136 66,92 24,62 76,62"
+            fill="#fde047"
+            stroke="rgba(51,65,85,0.75)"
+            strokeWidth="5"
+            strokeLinejoin="round"
+          />
+        </svg>
+        {text ? <LabelPill text={text} /> : null}
+      </>
+    );
+  }
+
+  return (
+    <>
       <div
         style={{
-          position: "absolute",
-          left: 530,
-          top: 316,
-          width: 430,
-          height: 282,
-          border: "1px solid rgba(100, 116, 139, 0.48)",
-          borderRadius: 12,
-          overflow: "hidden",
-          background: "rgba(255,255,255,0.72)",
-          boxShadow: "0 10px 22px rgba(15, 23, 42, 0.11)",
+          ...baseShapeStyle,
+          width: 190,
+          height: 4,
+          borderRadius: 999,
+          background: "#1d4ed8",
+        }}
+      />
+      {text ? <LabelPill text={text} /> : null}
+    </>
+  );
+}
+
+/**
+ * Renders one row with and without text.
+ */
+function ShapeRow({ row }: { row: ShowcaseRow }) {
+  const text = `${row.label} label`;
+
+  if (isConnectorPreviewKind(row.kind)) {
+    return (
+      <RowFrame label={row.label}>
+        <PreviewTile title="Without text">
+          <ConnectorPreview variant={row.kind} text={null} />
+        </PreviewTile>
+        <PreviewTile title="With text">
+          <ConnectorPreview variant={row.kind} text={text} />
+        </PreviewTile>
+      </RowFrame>
+    );
+  }
+
+  return (
+    <RowFrame label={row.label}>
+      <PreviewTile title="Without text">
+        <PrimitivePreview kind={row.kind} text={null} />
+      </PreviewTile>
+      <PreviewTile title="With text">
+        <PrimitivePreview kind={row.kind} text={text} />
+      </PreviewTile>
+    </RowFrame>
+  );
+}
+
+/**
+ * Renders shape label matrix.
+ */
+function ShapeLabelMatrix() {
+  return (
+    <div style={{ padding: 14, display: "grid", gap: 10 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          padding: "8px 10px",
+          border: "1px solid rgba(148,163,184,0.3)",
+          borderRadius: 10,
+          background: "rgba(255,255,255,0.85)",
+          color: "#334155",
+          fontSize: 12,
         }}
       >
-        <GridContainer
-          rows={2}
-          cols={2}
-          gap={2}
-          minCellHeight={88}
-          containerTitle="Grid container"
-          sectionTitles={[
-            "North",
-            "East",
-            "South",
-            "West",
-          ]}
-          cellColors={["transparent", "#bfdbfe", "#d1fae5", "#fecaca"]}
-          showCellColorPickers={false}
-        />
+        <span>
+          Inspect each row left-to-right to confirm shape/connector text rendering parity.
+        </span>
+        <strong style={{ color: "#0f172a" }}>9 object kinds covered</strong>
       </div>
+      {SHAPE_ROWS.map((row) => (
+        <ShapeRow key={row.kind} row={row} />
+      ))}
     </div>
   );
 }
 
 const meta = {
-  title: "Board/Shapes Showcase",
-  component: ShapeShowcaseCanvas,
+  title: "Board/Shape Label Inspector",
+  component: ShapeLabelMatrix,
   parameters: {
     layout: "fullscreen",
     docs: {
       description: {
         component:
-          "A presentation-ready board canvas that showcases every currently supported board shape and connector style.",
+          "Streamlined human inspection story: each supported shape and connector is shown with and without label text.",
       },
     },
   },
   decorators: [
     (Story) => (
-      <StoryCanvasFrame>
+      <StoryShell>
         <Story />
-      </StoryCanvasFrame>
+      </StoryShell>
     ),
   ],
-} satisfies Meta<typeof ShapeShowcaseCanvas>;
+} satisfies Meta<typeof ShapeLabelMatrix>;
 
 export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-export const Gallery: Story = {};
+export const WithAndWithoutText: Story = {};

@@ -168,6 +168,7 @@ const OPENAI_AGENTS_SYSTEM_PROMPT = [
   "You are the CollabBoard AI command agent.",
   "Your job is to execute board operations through tools and then return a concise final result object.",
   "Use only the provided tools. Never invent tool names.",
+  "For simple single-object create commands, call the create tool directly without getBoardState.",
   "Use high-level tools when possible: createStickyBatch, moveObjects, fitFrameToContents, arrangeObjectsInGrid, alignObjects, distributeObjects.",
   "For line creation, use createShape with type='line'.",
   "When user asks to create/add sticky notes, you must create new stickies via createStickyNote or createStickyBatch.",

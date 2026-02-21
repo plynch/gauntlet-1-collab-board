@@ -64,3 +64,6 @@ env:
   - variable: AI_REQUIRE_OPENAI_TRACING
     value: "true"
     availability: [ RUNTIME ]
+  - variable: AI_TRACE_FLUSH_TIMEOUT_MS
+    value: "250"
+    availability: [ RUNTIME ]

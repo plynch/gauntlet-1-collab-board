@@ -279,61 +279,65 @@ export function createBoardAgentTools(
     ? options.coordinateHints
     : null;
 
-  const tools: Tool[] = [
-    tool({
-      name: "getBoardState",
-      description: getToolDescription(
-        "getBoardState",
-        "Read current board objects for planning.",
-      ),
-      parameters: z.object({}),
-      execute: async () => {
-        toolCalls += 1;
-        const toolSpan = options.trace.startSpan("tool.execute.call", {
+  const getBoardStateTool = tool({
+    name: "getBoardState",
+    description: getToolDescription(
+      "getBoardState",
+      "Read current board objects for planning.",
+    ),
+    parameters: z.object({}),
+    execute: async () => {
+      toolCalls += 1;
+      const toolSpan = options.trace.startSpan("tool.execute.call", {
+        tool: "getBoardState",
+        operationIndex: operationsExecuted.length,
+        argKeysJson: "[]",
+        argsPreviewJson: "{}",
+        x: null,
+        y: null,
+        objectIdsCount: 0,
+        runtime: "agents-sdk",
+      });
+      try {
+        const boardState = await options.executor.getBoardState();
+        const output = {
+          selectedObjectIds: options.selectedObjectIds,
+          viewportBounds: options.viewportBounds,
+          objectCount: boardState.length,
+          boardObjects: boardState.slice(0, 160).map((objectItem) => ({
+            id: objectItem.id,
+            type: objectItem.type,
+            x: objectItem.x,
+            y: objectItem.y,
+            width: objectItem.width,
+            height: objectItem.height,
+            color: objectItem.color,
+            text: objectItem.text.slice(0, 120),
+          })),
+        };
+        toolSpan.end({
           tool: "getBoardState",
-          operationIndex: operationsExecuted.length,
-          argKeysJson: "[]",
-          argsPreviewJson: "{}",
-          x: null,
-          y: null,
-          objectIdsCount: 0,
-          runtime: "agents-sdk",
+          objectCount: boardState.length,
         });
-        try {
-          const boardState = await options.executor.getBoardState();
-          const output = {
-            selectedObjectIds: options.selectedObjectIds,
-            viewportBounds: options.viewportBounds,
-            objectCount: boardState.length,
-            boardObjects: boardState.slice(0, 160).map((objectItem) => ({
-              id: objectItem.id,
-              type: objectItem.type,
-              x: objectItem.x,
-              y: objectItem.y,
-              width: objectItem.width,
-              height: objectItem.height,
-              color: objectItem.color,
-              text: objectItem.text.slice(0, 120),
-            })),
-          };
-          toolSpan.end({
-            tool: "getBoardState",
-            objectCount: boardState.length,
-          });
-          return output;
-        } catch (error) {
-          const reason =
-            error instanceof Error && error.message.trim().length > 0
-              ? error.message
-              : "Unknown getBoardState failure.";
-          toolSpan.fail("Tool execution failed.", {
-            tool: "getBoardState",
-            reason,
-          });
-          throw error;
-        }
-      },
-    }),
+        return output;
+      } catch (error) {
+        const reason =
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message
+            : "Unknown getBoardState failure.";
+        toolSpan.fail("Tool execution failed.", {
+          tool: "getBoardState",
+          reason,
+        });
+        throw error;
+      }
+    },
+  });
+
+  const tools: Tool[] = [
+    ...(options.messageIntentHints?.stickyCreateRequest
+      ? []
+      : [getBoardStateTool]),
     tool({
       name: "createStickyNote",
       description: getToolDescription(

@@ -66,6 +66,8 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+const DEFAULT_AI_TRACE_FLUSH_TIMEOUT_MS = 250;
+const MAX_AI_TRACE_FLUSH_TIMEOUT_MS = 3_000;
 
 /**
  * Returns whether ai audit enabled is true.
@@ -174,6 +176,26 @@ function parseRequiredFlag(value: string | undefined, fallback: boolean): boolea
     return true;
   }
   return fallback;
+}
+
+/**
+ * Gets ai trace flush timeout ms.
+ */
+function getAiTraceFlushTimeoutMs(): number {
+  const rawValue = process.env.AI_TRACE_FLUSH_TIMEOUT_MS?.trim();
+  if (!rawValue) {
+    return DEFAULT_AI_TRACE_FLUSH_TIMEOUT_MS;
+  }
+
+  const parsed = Number(rawValue);
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_AI_TRACE_FLUSH_TIMEOUT_MS;
+  }
+
+  return Math.max(
+    0,
+    Math.min(MAX_AI_TRACE_FLUSH_TIMEOUT_MS, Math.floor(parsed)),
+  );
 }
 
 /**
@@ -1512,16 +1534,28 @@ export async function POST(request: NextRequest) {
       await releaseBoardCommandLock(boardLockId);
     }
 
-    try {
-      await flushLangfuseClient();
-    } catch (error) {
-      console.warn("Failed to flush langfuse traces.", error);
-    }
+    const flushTimeoutMs = getAiTraceFlushTimeoutMs();
+    const [langfuseFlushResult, openAiFlushResult] = await Promise.allSettled([
+      withTimeout(
+        flushLangfuseClient(),
+        flushTimeoutMs,
+        "Langfuse trace flush timed out.",
+      ),
+      withTimeout(
+        flushOpenAiTraces(),
+        flushTimeoutMs,
+        "OpenAI trace flush timed out.",
+      ),
+    ]);
 
-    try {
-      await flushOpenAiTraces();
-    } catch (error) {
-      console.warn("Failed to flush openai traces.", error);
+    if (langfuseFlushResult.status === "rejected") {
+      console.warn(
+        "Failed to flush langfuse traces.",
+        langfuseFlushResult.reason,
+      );
+    }
+    if (openAiFlushResult.status === "rejected") {
+      console.warn("Failed to flush openai traces.", openAiFlushResult.reason);
     }
   }
 }

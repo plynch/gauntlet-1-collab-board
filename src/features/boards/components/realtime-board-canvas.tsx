@@ -4130,14 +4130,25 @@ export default function RealtimeBoardCanvas({
         > = {};
         dragState.objectIds.forEach((objectId) => {
           const initialGeometry = dragState.initialGeometries[objectId];
+          const objectItem = objectsByIdRef.current.get(objectId);
           if (!initialGeometry) {
             return;
           }
 
           clearDraftGeometry(objectId);
+          let nextX = initialGeometry.x + deltaX;
+          let nextY = initialGeometry.y + deltaY;
+          if (
+            snapToGridEnabledRef.current &&
+            objectItem &&
+            isSnapEligibleObjectType(objectItem.type)
+          ) {
+            nextX = snapToGrid(nextX);
+            nextY = snapToGrid(nextY);
+          }
           nextPositionsById[objectId] = {
-            x: initialGeometry.x + deltaX,
-            y: initialGeometry.y + deltaY,
+            x: nextX,
+            y: nextY,
           };
         });
 
@@ -6591,7 +6602,7 @@ export default function RealtimeBoardCanvas({
                       cursor: "pointer",
                     }}
                   />
-                  <span>Snap to grid (shapes)</span>
+                  <span>Snap to grid</span>
                 </label>
 
                 <span

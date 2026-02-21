@@ -109,6 +109,90 @@ describe("planDeterministicCommand", () => {
     }
   });
 
+  it("treats unselect command as selection clear", () => {
+    const result = planDeterministicCommand({
+      message: "unselect",
+      boardState: BOARD_STATE,
+      selectedObjectIds: ["obj-1", "obj-2"],
+    });
+
+    expect(result.planned).toBe(true);
+    expect(result.intent).toBe("unselect");
+    expect(result.selectionUpdate).toEqual({ mode: "clear", objectIds: [] });
+    if (result.planned) {
+      expect(result.plan.operations).toHaveLength(0);
+    }
+  });
+
+  it("does not treat unselect as a delete command", () => {
+    const result = planDeterministicCommand({
+      message: "unselect objects",
+      boardState: BOARD_STATE,
+      selectedObjectIds: ["obj-1", "obj-2"],
+    });
+
+    expect(result.planned).toBe(true);
+    expect(result.intent).toBe("unselect");
+    expect(result.selectionUpdate).toEqual({ mode: "clear", objectIds: [] });
+  });
+
+  it("plans select all command with all object ids", () => {
+    const result = planDeterministicCommand({
+      message: "select all",
+      boardState: BOARD_STATE,
+      selectedObjectIds: ["obj-1"],
+    });
+
+    expect(result.planned).toBe(true);
+    expect(result.intent).toBe("select-all");
+    expect(result.selectionUpdate).toEqual({
+      mode: "replace",
+      objectIds: ["obj-1", "obj-2"],
+    });
+    if (result.planned) {
+      expect(result.plan.operations).toHaveLength(0);
+    }
+  });
+
+  it("plans select visible command with visible object ids", () => {
+    const result = planDeterministicCommand({
+      message: "select visible",
+      boardState: [
+        ...BOARD_STATE,
+        {
+          id: "obj-3",
+          type: "sticky" as const,
+          zIndex: 3,
+          x: 2000,
+          y: 2000,
+          width: 220,
+          height: 170,
+          rotationDeg: 0,
+          color: "#93c5fd",
+          text: "",
+          updatedAt: null,
+        },
+      ],
+      selectedObjectIds: [],
+      viewportBounds: {
+        left: 0,
+        top: 0,
+        width: 1200,
+        height: 900,
+      },
+    });
+
+    expect(result.planned).toBe(true);
+    expect(result.intent).toBe("select-visible");
+    expect(result.selectionUpdate).toEqual({
+      mode: "replace",
+      objectIds: ["obj-1", "obj-2"],
+    });
+    if (result.planned) {
+      expect(result.plan.operations).toHaveLength(0);
+    }
+  });
+
   it("plans create sticky note commands", () => {
     const result = planDeterministicCommand({
       message: "Add a yellow sticky note that says User Research",

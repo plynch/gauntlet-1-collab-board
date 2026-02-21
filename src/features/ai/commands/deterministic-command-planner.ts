@@ -2,6 +2,7 @@ import type {
   BoardObjectSnapshot,
   BoardObjectToolKind,
   BoardToolCall,
+  BoardSelectionUpdate,
   TemplatePlan,
 } from "@/features/ai/types";
 import {
@@ -28,11 +29,13 @@ export type DeterministicCommandPlanResult =
       intent: string;
       assistantMessage: string;
       plan: TemplatePlan;
+      selectionUpdate?: BoardSelectionUpdate;
     }
   | {
       planned: false;
       intent: string;
       assistantMessage: string;
+      selectionUpdate?: BoardSelectionUpdate;
     };
 
 type Point = {
@@ -152,6 +155,26 @@ function getSelectedObjects(
     .filter((objectItem): objectItem is BoardObjectSnapshot =>
       Boolean(objectItem),
     );
+}
+
+/**
+ * Returns whether object intersects viewport bounds.
+ */
+function getIntersectionBounds(
+  objectItem: BoardObjectSnapshot,
+  viewportBounds: NonNullable<PlannerInput["viewportBounds"]>,
+): boolean {
+  const objectRight = objectItem.x + objectItem.width;
+  const objectBottom = objectItem.y + objectItem.height;
+  const viewportRight = viewportBounds.left + viewportBounds.width;
+  const viewportBottom = viewportBounds.top + viewportBounds.height;
+
+  return (
+    objectItem.x < viewportRight &&
+    objectRight > viewportBounds.left &&
+    objectItem.y < viewportBottom &&
+    objectBottom > viewportBounds.top
+  );
 }
 
 /**
@@ -999,6 +1022,170 @@ function isClearBoardCommand(message: string): boolean {
 }
 
 /**
+ * Returns whether unselect command is true.
+ */
+function isUnselectCommand(message: string): boolean {
+  const lower = normalizeMessage(message);
+  return (
+    /\bunselect\b/.test(lower) ||
+    /\bdeselect\b/.test(lower) ||
+    /\bclear\s+selection\b/.test(lower) ||
+    /\bclear\s+selected\b/.test(lower) ||
+    /\bclear\s+objects\b/.test(lower)
+  );
+}
+
+/**
+ * Plans unselect command.
+ */
+function planUnselectObjects(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
+  if (!isUnselectCommand(input.message)) {
+    return null;
+  }
+
+  return {
+    planned: true,
+    intent: "unselect",
+    assistantMessage: "Selection cleared.",
+    plan: toPlan({
+      id: "command.unselect",
+      name: "Unselect Objects",
+      operations: [],
+    }),
+    selectionUpdate: {
+      mode: "clear",
+      objectIds: [],
+    },
+  };
+}
+
+/**
+ * Returns whether select-all command is true.
+ */
+function isSelectAllCommand(message: string): boolean {
+  const lower = normalizeMessage(message);
+  return /\bselect\s+(all|everything)\b/.test(lower);
+}
+
+/**
+ * Returns whether select-visible command is true.
+ */
+function isSelectVisibleCommand(message: string): boolean {
+  const lower = normalizeMessage(message);
+  return /\bselect\s+visible\b/.test(lower);
+}
+
+/**
+ * Plans select-all command.
+ */
+function planSelectAllObjects(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
+  if (!isSelectAllCommand(input.message)) {
+    return null;
+  }
+
+  if (input.boardState.length === 0) {
+    return {
+      planned: true,
+      intent: "select-all",
+      assistantMessage: "No objects on board to select.",
+      plan: toPlan({
+        id: "command.select-all",
+        name: "Select All Objects",
+        operations: [],
+      }),
+      selectionUpdate: {
+        mode: "replace",
+        objectIds: [],
+      },
+    };
+  }
+
+  return {
+    planned: true,
+    intent: "select-all",
+    assistantMessage: `Selected ${input.boardState.length} object${input.boardState.length === 1 ? "" : "s"} on the board.`,
+    plan: toPlan({
+      id: "command.select-all",
+      name: "Select All Objects",
+      operations: [],
+    }),
+    selectionUpdate: {
+      mode: "replace",
+      objectIds: input.boardState.map((objectItem) => objectItem.id),
+    },
+  };
+}
+
+/**
+ * Plans select-visible command.
+ */
+function planSelectVisibleObjects(
+  input: PlannerInput,
+): DeterministicCommandPlanResult | null {
+  if (!isSelectVisibleCommand(input.message)) {
+    return null;
+  }
+
+  if (!input.viewportBounds) {
+    return {
+      planned: true,
+      intent: "select-visible",
+      assistantMessage:
+        "No viewport information was provided, so I could not resolve visible selection.",
+      plan: toPlan({
+        id: "command.select-visible",
+        name: "Select Visible Objects",
+        operations: [],
+      }),
+      selectionUpdate: {
+        mode: "replace",
+        objectIds: [],
+      },
+    };
+  }
+
+  const visibleObjectIds = input.boardState
+    .filter((objectItem) => getIntersectionBounds(objectItem, input.viewportBounds!))
+    .map((objectItem) => objectItem.id);
+
+  if (visibleObjectIds.length === 0) {
+    return {
+      planned: true,
+      intent: "select-visible",
+      assistantMessage: "No visible objects to select in the current viewport.",
+      plan: toPlan({
+        id: "command.select-visible",
+        name: "Select Visible Objects",
+        operations: [],
+      }),
+      selectionUpdate: {
+        mode: "replace",
+        objectIds: [],
+      },
+    };
+  }
+
+  return {
+    planned: true,
+    intent: "select-visible",
+    assistantMessage: `Selected ${visibleObjectIds.length} visible object${visibleObjectIds.length === 1 ? "" : "s"} in view.`,
+    plan: toPlan({
+      id: "command.select-visible",
+      name: "Select Visible Objects",
+      operations: [],
+    }),
+    selectionUpdate: {
+      mode: "replace",
+      objectIds: visibleObjectIds,
+    },
+  };
+}
+
+/**
  * Handles plan clear board.
  */
 function planClearBoard(
@@ -1041,7 +1228,7 @@ function planClearBoard(
 function isDeleteSelectedCommand(message: string): boolean {
   const lower = normalizeMessage(message);
   return (
-    /\b(delete|remove|clear)\b[\w\s]*\bselected\b/.test(lower) ||
+    /\b(delete|remove)\b[\w\s]*\bselected\b/.test(lower) ||
     /\bdelete\s+selection\b/.test(lower) ||
     /\bremove\s+selection\b/.test(lower)
   );
@@ -2485,6 +2672,9 @@ export function planDeterministicCommand(
 ): DeterministicCommandPlanResult {
   const planners = [
     planClearBoard,
+    planUnselectObjects,
+    planSelectAllObjects,
+    planSelectVisibleObjects,
     planDeleteSelected,
     planArrangeGrid,
     planAlignSelected,

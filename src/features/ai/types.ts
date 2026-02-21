@@ -282,6 +282,11 @@ export type BoardCommandExecutionSummary = {
   };
 };
 
+export type BoardSelectionUpdate = {
+  mode: "clear" | "replace";
+  objectIds: string[];
+};
+
 export type BoardCommandResponse = {
   ok: true;
   provider: "stub" | "deterministic-mcp" | "openai";
@@ -290,4 +295,5 @@ export type BoardCommandResponse = {
   mode?: "deterministic" | "stub" | "llm";
   traceId?: string;
   execution?: BoardCommandExecutionSummary;
+  selectionUpdate?: BoardSelectionUpdate;
 };

@@ -5215,6 +5215,34 @@ export default function RealtimeBoardCanvas({
 
       setIsAiSubmitting(true);
 
+      const applySelectionUpdate = (
+        selectionUpdate?: {
+          mode: "clear" | "replace";
+          objectIds: string[];
+        },
+      ): void => {
+        if (!selectionUpdate) {
+          return;
+        }
+
+        const objectIdsInBoard = new Set(objects.map((item) => item.id));
+        const normalized = Array.from(
+          new Set(
+            selectionUpdate.objectIds
+              .filter((id) => objectIdsInBoard.has(id))
+              .map((id) => id.trim())
+              .filter(Boolean),
+          ),
+        );
+
+        if (selectionUpdate.mode === "clear") {
+          setSelectedObjectIds([]);
+          return;
+        }
+
+        setSelectedObjectIds(normalized);
+      };
+
       try {
         const idToken = idTokenRef.current ?? (await user.getIdToken());
         idTokenRef.current = idToken;
@@ -5275,12 +5303,17 @@ export default function RealtimeBoardCanvas({
 
         const payload = (await response.json()) as {
           assistantMessage?: unknown;
+          selectionUpdate?: {
+            mode: "clear" | "replace";
+            objectIds: string[];
+          };
         };
         const assistantMessage =
           typeof payload.assistantMessage === "string" &&
           payload.assistantMessage.trim()
             ? payload.assistantMessage
             : "AI agent coming soon!";
+        applySelectionUpdate(payload.selectionUpdate);
 
         setChatMessages((previous) => [
           ...previous,
@@ -5307,7 +5340,7 @@ export default function RealtimeBoardCanvas({
         setIsAiSubmitting(false);
       }
     },
-    [boardId, isAiSubmitting, user],
+    [boardId, isAiSubmitting, objects, user],
   );
 
   const handleAiChatSubmit = useCallback(

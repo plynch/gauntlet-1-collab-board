@@ -256,6 +256,8 @@ const SAFE_DETERMINISTIC_INTENT_PREFIXES = [
   "resize-",
   "change-color",
   "update-text",
+  "select-",
+  "unselect",
 ] as const;
 const SAFE_DETERMINISTIC_EXACT_INTENTS = new Set([
   "create-frame",
@@ -278,6 +280,9 @@ const SAFE_DETERMINISTIC_EXACT_INTENTS = new Set([
   "change-color",
   "update-text",
   "delete-selected",
+  "unselect",
+  "select-all",
+  "select-visible",
 ]);
 const LANGCHAIN_TOOL_PLAN_SERIALIZED: Serialized = {
   lc: 1,
@@ -1218,6 +1223,10 @@ export async function POST(request: NextRequest) {
                 intent: string;
                 assistantMessage: string;
                 plan?: TemplatePlan;
+                selectionUpdate?: {
+                  mode: "clear" | "replace";
+                  objectIds: string[];
+                };
               }
             | null = null;
           let fallbackUsed = false;
@@ -1376,6 +1385,9 @@ export async function POST(request: NextRequest) {
             const payloadWithTrace = {
               ...payload,
               traceId: payload.traceId ?? traceId,
+              ...(plannerResult.selectionUpdate
+                ? { selectionUpdate: plannerResult.selectionUpdate }
+                : {}),
             };
 
             const responseSpan = activeTrace.startSpan("ai.response.sent", {
@@ -1487,20 +1499,23 @@ export async function POST(request: NextRequest) {
             objectsCreated: executionResult.createdObjectIds.length,
             openAi: openAiExecution,
           };
-          const payload = llmUsed
-            ? buildOpenAiBoardCommandResponse({
-                assistantMessage,
-                traceId,
-                execution,
-              })
-            : buildDeterministicBoardCommandResponse({
-                assistantMessage,
-                traceId,
-                execution,
-              });
+            const payload = llmUsed
+              ? buildOpenAiBoardCommandResponse({
+                  assistantMessage,
+                  traceId,
+                  execution,
+                })
+              : buildDeterministicBoardCommandResponse({
+                  assistantMessage,
+                  traceId,
+                  execution,
+                });
           const payloadWithTrace = {
             ...payload,
             traceId: payload.traceId ?? traceId,
+            ...(plannerResult.selectionUpdate
+              ? { selectionUpdate: plannerResult.selectionUpdate }
+              : {}),
           };
 
           await writeAiAuditLogIfEnabled({

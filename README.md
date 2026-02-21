@@ -1,25 +1,78 @@
-# CollabBoard
+# 🧠 CollabBoard
 
-A realtime multi-user whiteboard.
+Realtime collaborative whiteboard with an OpenAI-powered command drawer, deterministic fallbacks, and production-grade tracing.
 
-Built with Next.js and Firebase Firestore.
+## 📌 Quick Links
 
-## Deployed Live
+- 🌐 Live App: [https://collab-board-backend--gauntlet-1-collab-board.us-east5.hosted.app/](https://collab-board-backend--gauntlet-1-collab-board.us-east5.hosted.app/)
+- 📄 AI Cost Analysis PDF (live static asset): [View](https://collab-board-backend--gauntlet-1-collab-board.us-east5.hosted.app/submission/AI%20Cost%20Analysis%20-%20Collabboard%20-%20Google%20Docs.pdf)
+- 📝 AI Development Log PDF (live static asset): [View](https://collab-board-backend--gauntlet-1-collab-board.us-east5.hosted.app/submission/AI%20Development%20Log%20-%20Google%20Docs.pdf)
+- 📂 PDF source files in repo:
+  - `public/submission/AI Cost Analysis - Collabboard - Google Docs.pdf`
+  - `public/submission/AI Development Log - Google Docs.pdf`
 
-- Firebase App Hosting: [https://collab-board-backend--gauntlet-1-collab-board.us-east5.hosted.app/](https://collab-board-backend--gauntlet-1-collab-board.us-east5.hosted.app/)
+## ✨ What CollabBoard Includes
 
-## Build And Run Locally
+- ✅ Infinite board with pan/zoom
+- ✅ Sticky notes, shapes, frames, connectors
+- ✅ Real-time multiplayer sync and presence
+- ✅ AI command drawer with OpenAI + deterministic tooling
+- ✅ Firebase-backed persistence and auth
+- ✅ Tracing and budget guardrails for AI operations
+
+## 🤖 AI Agent Capabilities
+
+- ✅ OpenAI Agents SDK runtime (`@openai/agents`) with `gpt-4.1-nano`
+- ✅ Runtime switch: `OPENAI_RUNTIME=agents-sdk|chat-completions` (default `agents-sdk`)
+- ✅ Planner modes: `openai-strict`, `openai-with-fallback`, `deterministic-only`
+- ✅ Bulk/high-level tools:
+  - `createStickyBatch`
+  - `createShapeBatch`
+  - `moveObjects`
+  - `arrangeObjectsInGrid`
+  - `alignObjects`
+  - `distributeObjects`
+  - `fitFrameToContents`
+- ✅ End-to-end tracing with Langfuse + OpenAI
+- ✅ Cost controls (reserve-per-call + hard cap)
+
+## 🧭 Golden Evals (Manual Acceptance)
+
+Canonical command set to run in the AI drawer:
+
+1. `Add a yellow sticky note that says 'User Research'`
+2. `Create a blue rectangle at position 100,200`
+3. `Add a frame called "Sprint Planning"`
+4. `Create 5 pink sticky notes`
+5. `Create 5 blue sticky notes`
+6. `Move all the pink sticky notes to the right side`
+7. `Arrange these sticky notes in a grid`
+8. `Create a 2x3 grid of sticky notes for pros and cons`
+9. `Space these elements evenly`
+10. `Create a SWOT analysis template with four quadrants`
+11. `Build a user journey map with 5 stages`
+12. `Set up a retrospective board with What Went Well, What Didn't, and Action Items columns`
+
+Selection prerequisites:
+
+- Commands using `these/elements` require manual multi-select first.
+- `Arrange ... in a grid` requires at least 2 selected objects.
+- `Space ... evenly` requires at least 3 selected objects.
+
+## 🚀 Local Development
 
 Prerequisites:
 
-- Node.js and npm
+- Node.js + npm
 - Java 21+ (required for Firebase emulator-backed workflows)
 
-Verify local toolchain:
+Verify tools:
 
 ```bash
 node -v && npm -v && java -version
 ```
+
+Setup:
 
 1. Install dependencies:
 
@@ -27,9 +80,9 @@ node -v && npm -v && java -version
 npm install
 ```
 
-2. Add Firebase environment variables in `.env.local` (see `.env.example`).
+2. Add env vars to `.env.local` (see `.env.example`).
 
-3. For no-paid local development, enable strict Firestore emulator mode in `.env.local`:
+3. For local no-paid development, use emulator mode:
 
 ```bash
 NEXT_PUBLIC_USE_FIRESTORE_EMULATOR=true
@@ -39,22 +92,23 @@ FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
 DEV_REQUIRE_FIRESTORE_EMULATOR=true
 ```
 
-4. Start emulators (Terminal 1):
+4. Start emulators (terminal 1):
 
 ```bash
 npm run firebase:emulators
 ```
 
-5. Start app (Terminal 2):
+5. Start app (terminal 2):
 
 ```bash
 npm run dev
 ```
 
-6. Open:
-   `http://localhost:3000`
+6. Open `http://localhost:3000`
 
-Useful scripts:
+## 🧪 Scripts
+
+Core:
 
 ```bash
 npm run dev
@@ -62,130 +116,40 @@ npm run build
 npm run test
 npm run lint
 npm run typecheck
-npm run secrets:sync:apphosting
 ```
 
-## Coding Standards
+E2E / AI:
 
-- Project coding standards: `/Users/patrick/Code/gauntlet/1-collab-board/CODING_STANDARDS.md`
-- JSDoc is required for named functions and class methods in source files.
-- To auto-add missing JSDoc blocks:
+- `npm run test:e2e:ai-agent-calls:openai-matrix:nano:PAID`
+- `npm run test:e2e:ai-required-capabilities:openai-agents:nano:PAID`
+- Paid AI scripts end with `:PAID`.
 
-```bash
-npm run jsdoc:add
-```
+Operations:
 
-## API Documentation
+- `npm run secrets:sync:apphosting`
+- `npm run docs:api`
 
-Generate API docs from TypeScript comments:
+## 🔍 Tracing & Observability
 
-```bash
-npm run docs:api
-```
+- Langfuse project dashboard:
+  [https://us.cloud.langfuse.com/project/cmlu0vcd501siad07glqj49kv](https://us.cloud.langfuse.com/project/cmlu0vcd501siad07glqj49kv)
+- Runtime trace readiness endpoint:
+  `/api/ai/tracing-ready`
+- AI command route:
+  `POST /api/ai/board-command`
 
-Generated docs location:
-
-- `/Users/patrick/Code/gauntlet/1-collab-board/docs/api`
-
-## Current Features
-
-- ✅ Infinite board with pan/zoom
-- ✅ Sticky notes with editable text
-- ✅ Shapes!
-- ✅ Move and edit objects!
-- ✅ Real-time sync between multiple users!
-- ✅ Multiplayer cursors!
-- ✅ Who's Online!
-- ✅ User authentication! (Google only, more coming later)
-- ✅ Deployed and publicly accessible
-
-## Runtime AI Agent
-
-Implemented capabilities:
-
-- ✅ OpenAI Agents SDK runtime integration (`@openai/agents`, `gpt-4.1-nano`)
-- ✅ Runtime backend switch: `OPENAI_RUNTIME=agents-sdk|chat-completions` (default `agents-sdk`)
-- ✅ Planner modes: `openai-strict`, `openai-with-fallback`, `deterministic-only`
-- ✅ Deterministic planner support for key creation/manipulation/layout/template commands
-- ✅ High-level bulk tools for reliability (`createStickyBatch`, `moveObjects`, `fitFrameToContents`)
-- ✅ Extended layout tools (`arrangeObjectsInGrid`, `alignObjects`, `distributeObjects`)
-- ✅ Server-side tool execution with batched writes where possible
-- ✅ End-to-end Langfuse tracing, including per-tool spans
-- ✅ Cost guardrails with reservation-per-call and hard spend cap
-
-Docs:
+## 📚 Documentation Map
 
 - User guide: `AI-AGENT-USER-GUIDE.md`
+- AI cost analysis (markdown): `AI_COST_ANALYSIS.md`
+- AI development log (markdown): `AI_DEVELOPMENT_LOG.md`
 - Tool schema reference: `docs/ai/TOOL_SCHEMA_REFERENCE.md`
 - Command catalog: `docs/ai/COMMAND_CATALOG.md`
 - Architecture overview: `docs/architecture/AI_SYSTEM_OVERVIEW.md`
 - Live test + tracing runbook: `docs/runbooks/AI_LIVE_TESTING_AND_LANGFUSE.md`
+- Coding standards: `CODING_STANDARDS.md`
 
-Runtime flow:
+## 🛑 Rejected / Not Priority
 
-1. Board chat drawer submits to `POST /api/ai/board-command`.
-2. Route authenticates, checks board permissions, and applies guardrails.
-3. OpenAI runtime backend is selected by `OPENAI_RUNTIME`.
-4. In `agents-sdk` mode, OpenAI agent tools execute board operations directly in-route.
-5. In `chat-completions` mode, legacy planner generates a structured operation plan.
-6. Planner mode (`AI_PLANNER_MODE`) still controls strict/fallback/deterministic behavior.
-7. Response returns assistant message + execution summary + trace ID.
-
-## Golden Evals (Manual Acceptance)
-
-Run these commands in the AI drawer as the canonical live QA set.
-
-Important selection prerequisites:
-- Commands using "these/elements" require manual multi-select first.
-- `Arrange these sticky notes in a grid` requires at least 2 selected objects.
-- `Space these elements evenly` requires at least 3 selected objects.
-- Sticky colors (red/pink/yellow) are matched to the closest app palette colors.
-
-Suggested execution order:
-`1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12`
-
-1. `Add a yellow sticky note that says 'User Research'`
-Expected result: exactly one new sticky is created with text `User Research` and yellow-family palette color.
-
-2. `Create a blue rectangle at position 100,200`
-Expected result: exactly one blue rectangle is created near x=100, y=200.
-
-3. `Add a frame called "Sprint Planning"`
-Expected result: exactly one frame is created with title `Sprint Planning`.
-
-4. `Create 5 pink sticky notes`
-Expected result: five new pink stickies are created.
-
-5. `Create 5 blue sticky notes`
-Expected result: five new blue stickies are created.
-
-6. `Move all the pink sticky notes to the right side`
-Expected result: pink stickies shift right (x increases) while other stickies remain in place.
-
-7. `Arrange these sticky notes in a grid`
-Expected result: selected stickies are repositioned into a grid pattern (not a no-op).
-
-8. `Create a 2x3 grid of sticky notes for pros and cons`
-Expected result: six stickies are created in a 2x3 layout with `pros and cons`-style seeded text.
-
-9. `Space these elements evenly`
-Expected result: selected elements are redistributed with even spacing along an inferred axis.
-
-10. `Create a SWOT analysis template with four quadrants`
-Expected result: one 2x2 SWOT container appears with quadrant labels (`Strengths`, `Weaknesses`, `Opportunities`, `Threats`).
-
-11. `Build a user journey map with 5 stages`
-Expected result: one journey-map frame with five stage stickies appears.
-
-12. `Set up a retrospective board with What Went Well, What Didn't, and Action Items columns`
-Expected result: one retrospective frame appears with the three named columns.
-
-AI evaluation script:
-
-- `npm run test:e2e:ai-agent-calls:openai-matrix:nano:PAID` (20-command happy-path matrix)
-- Any paid AI command script ends with `:PAID`.
-
-## Rejected / Not Priority
-
-- 🚫 Email and password sign-on
-- 🚫 GitHub Auth
+- 🚫 Email + password sign-in
+- 🚫 GitHub auth

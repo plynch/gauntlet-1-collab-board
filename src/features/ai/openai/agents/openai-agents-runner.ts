@@ -48,6 +48,7 @@ export type OpenAiAgentsRunnerResult = {
   toolCalls: number;
   usage: OpenAiAgentsRunnerUsage;
   responseId?: string;
+  traceId?: string;
 };
 
 export type OpenAiAgentsRunnerError = Error & {
@@ -224,6 +225,14 @@ export async function runBoardCommandWithOpenAiAgents(
   const executionSnapshot = boardAgentTools.getExecutionSnapshot();
   const finalOutput = runResult.finalOutput;
   const finalOutputText = extractAllTextOutput(runResult.newItems).trim();
+  const openAiTraceIdCandidate = (
+    runResult.state as { _trace?: { traceId?: unknown } }
+  )._trace?.traceId;
+  const openAiTraceId =
+    typeof openAiTraceIdCandidate === "string" &&
+    openAiTraceIdCandidate.length > 0
+      ? openAiTraceIdCandidate
+      : undefined;
 
   const plannedFromOutput = finalOutput?.planned ?? false;
   const hasMutatingOperations = executionSnapshot.operationsExecuted.length > 0;
@@ -256,6 +265,7 @@ export async function runBoardCommandWithOpenAiAgents(
     toolCalls: executionSnapshot.toolCalls,
     usage,
     responseId: runResult.lastResponseId,
+    traceId: openAiTraceId,
   };
 }
 

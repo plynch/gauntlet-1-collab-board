@@ -27,6 +27,13 @@ function getLangfuseConfig(): {
 }
 
 /**
+ * Returns whether langfuse is configured is true.
+ */
+export function isLangfuseConfigured(): boolean {
+  return getLangfuseConfig() !== null;
+}
+
+/**
  * Gets langfuse client.
  */
 export function getLangfuseClient(): Langfuse | null {

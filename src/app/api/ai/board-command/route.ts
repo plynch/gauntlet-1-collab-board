@@ -25,7 +25,10 @@ import {
   callCommandPlanTool,
 } from "@/features/ai/mcp/template-mcp-client";
 import { LangChainLangfuseCallbackHandler } from "@/features/ai/observability/langchain-langfuse-handler";
-import { flushLangfuseClient } from "@/features/ai/observability/langfuse-client";
+import {
+  flushLangfuseClient,
+  isLangfuseConfigured,
+} from "@/features/ai/observability/langfuse-client";
 import { createAiTraceRun } from "@/features/ai/observability/trace-run";
 import { planDeterministicCommand } from "@/features/ai/commands/deterministic-command-planner";
 import { parseCoordinateHintsFromMessage } from "@/features/ai/commands/coordinate-hints";
@@ -155,6 +158,65 @@ function createHttpError(
   return error;
 }
 
+/**
+ * Parses required flag.
+ */
+function parseRequiredFlag(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "false" || normalized === "0" || normalized === "no") {
+    return false;
+  }
+  if (normalized === "true" || normalized === "1" || normalized === "yes") {
+    return true;
+  }
+  return fallback;
+}
+
+/**
+ * Returns whether ai tracing is required is true.
+ */
+function isAiTracingRequired(): boolean {
+  return parseRequiredFlag(
+    process.env.AI_REQUIRE_TRACING,
+    process.env.NODE_ENV === "production",
+  );
+}
+
+/**
+ * Returns whether openai tracing is required is true.
+ */
+function isOpenAiTracingRequired(): boolean {
+  return parseRequiredFlag(
+    process.env.AI_REQUIRE_OPENAI_TRACING,
+    isAiTracingRequired(),
+  );
+}
+
+/**
+ * Gets ai tracing configuration error.
+ */
+function getAiTracingConfigurationError(): string | null {
+  if (isAiTracingRequired() && !isLangfuseConfigured()) {
+    return "AI tracing misconfigured: missing LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY.";
+  }
+
+  const openAiConfig = getOpenAiPlannerConfig();
+  if (
+    isOpenAiTracingRequired() &&
+    openAiConfig.enabled &&
+    openAiConfig.runtime === "agents-sdk" &&
+    !openAiConfig.agentsTracing
+  ) {
+    return "OpenAI tracing misconfigured: set OPENAI_AGENTS_TRACING=true.";
+  }
+
+  return null;
+}
+
 const DIRECT_DELETE_BATCH_CHUNK_SIZE = 400;
 const OPENAI_TRACE_OPERATIONS_PREVIEW_LIMIT = 3;
 const OPENAI_TRACE_OPERATIONS_PREVIEW_MAX_CHARS = 1_200;
@@ -209,6 +271,7 @@ type OpenAiPlanAttempt =
       runtime: "agents-sdk" | "chat-completions";
       intent: string;
       assistantMessage: string;
+      openAiTraceId?: string;
       plan: TemplatePlan | null;
       executedDirectly: boolean;
       directExecution?: {
@@ -234,6 +297,7 @@ type OpenAiPlanAttempt =
       runtime: "agents-sdk" | "chat-completions";
       intent: string;
       assistantMessage: string;
+      openAiTraceId?: string;
       totalSpentUsd: number;
       usage: {
         model: string;
@@ -369,6 +433,7 @@ function buildOpenAiExecutionSummary(openAiAttempt: OpenAiPlanAttempt): {
   status: "disabled" | "budget-blocked" | "planned" | "not-planned" | "error";
   model: string;
   runtime: "agents-sdk" | "chat-completions";
+  traceId?: string;
   estimatedCostUsd: number;
   totalSpentUsd?: number;
 } {
@@ -399,6 +464,9 @@ function buildOpenAiExecutionSummary(openAiAttempt: OpenAiPlanAttempt): {
       status: "planned",
       model: openAiAttempt.model,
       runtime: openAiAttempt.runtime,
+      ...(openAiAttempt.openAiTraceId
+        ? { traceId: openAiAttempt.openAiTraceId }
+        : {}),
       estimatedCostUsd: openAiAttempt.usage.estimatedCostUsd,
       totalSpentUsd: openAiAttempt.totalSpentUsd,
     };
@@ -410,6 +478,9 @@ function buildOpenAiExecutionSummary(openAiAttempt: OpenAiPlanAttempt): {
       status: "not-planned",
       model: openAiAttempt.model,
       runtime: openAiAttempt.runtime,
+      ...(openAiAttempt.openAiTraceId
+        ? { traceId: openAiAttempt.openAiTraceId }
+        : {}),
       estimatedCostUsd: openAiAttempt.usage.estimatedCostUsd,
       totalSpentUsd: openAiAttempt.totalSpentUsd,
     };
@@ -580,6 +651,7 @@ async function attemptOpenAiPlanner(options: {
         totalSpentUsd: finalized.totalSpentUsd,
         openAiRuntime: "agents-sdk",
         openAiRunId: agentsRunResult.responseId ?? null,
+        openAiTraceId: agentsRunResult.traceId ?? null,
         operationCount: planTraceFields.operationCount,
         operationCountsByToolJson,
         operationsPreviewJson: planTraceFields.operationsPreviewJson,
@@ -595,6 +667,9 @@ async function attemptOpenAiPlanner(options: {
           runtime: config.runtime,
           intent: agentsRunResult.intent,
           assistantMessage: agentsRunResult.assistantMessage,
+          ...(agentsRunResult.traceId
+            ? { openAiTraceId: agentsRunResult.traceId }
+            : {}),
           totalSpentUsd: finalized.totalSpentUsd,
           usage: agentsRunResult.usage,
         };
@@ -606,6 +681,9 @@ async function attemptOpenAiPlanner(options: {
         runtime: config.runtime,
         intent: agentsRunResult.intent,
         assistantMessage: agentsRunResult.assistantMessage,
+        ...(agentsRunResult.traceId
+          ? { openAiTraceId: agentsRunResult.traceId }
+          : {}),
         plan: null,
         executedDirectly: true,
         directExecution: {
@@ -956,6 +1034,13 @@ export async function POST(request: NextRequest) {
 
     const intent = detectBoardCommandIntent(parsedPayload.message);
     const canEdit = canUserEditBoard(board, user.uid);
+    const tracingConfigurationError = getAiTracingConfigurationError();
+    if (tracingConfigurationError) {
+      return NextResponse.json(
+        { error: tracingConfigurationError },
+        { status: 503 },
+      );
+    }
 
     if (canEdit) {
       assertFirestoreWritesAllowedInDev();

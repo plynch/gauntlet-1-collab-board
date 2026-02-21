@@ -57,6 +57,35 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
     },
   },
   {
+    name: "createShapeBatch",
+    description:
+      "Create many shapes in a grid-style batch from a single tool call.",
+    parameters: {
+      type: "object",
+      properties: {
+        count: { type: "number" },
+        type: {
+          type: "string",
+          enum: ["rect", "circle", "line", "triangle", "star"],
+        },
+        originX: { type: "number" },
+        originY: { type: "number" },
+        width: { type: "number" },
+        height: { type: "number" },
+        color: { type: "string" },
+        colors: {
+          type: "array",
+          items: { type: "string" },
+        },
+        columns: { type: "number" },
+        gapX: { type: "number" },
+        gapY: { type: "number" },
+      },
+      required: ["count", "type", "originX", "originY"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "createGridContainer",
     description:
       "Create a grid container object with rows, columns, gap, and optional per-cell colors.",

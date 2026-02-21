@@ -218,7 +218,7 @@ Important selection prerequisites:
 - Sticky colors (red/pink/yellow) are matched to the closest app palette colors.
 
 Suggested execution order:
-`1, 2, 3, 6, 8, 9, 10, 4, 5, 7`
+`1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12`
 
 1. `Add a yellow sticky note that says 'User Research'`
 Expected result: exactly one new sticky is created with text `User Research` and yellow-family palette color.
@@ -229,25 +229,31 @@ Expected result: exactly one blue rectangle is created near x=100, y=200.
 3. `Add a frame called "Sprint Planning"`
 Expected result: exactly one frame is created with title `Sprint Planning`.
 
-4. `Move all the pink sticky notes to the right side`
-Expected result: all pink stickies shift right (x increases); non-pink objects are not moved.
+4. `Create 5 pink sticky notes`
+Expected result: five new pink stickies are created.
 
-5. `Arrange these sticky notes in a grid`
+5. `Create 5 blue sticky notes`
+Expected result: five new blue stickies are created.
+
+6. `Move all the pink sticky notes to the right side`
+Expected result: pink stickies shift right (x increases) while other stickies remain in place.
+
+7. `Arrange these sticky notes in a grid`
 Expected result: selected stickies are repositioned into a grid pattern (not a no-op).
 
-6. `Create a 2x3 grid of sticky notes for pros and cons`
+8. `Create a 2x3 grid of sticky notes for pros and cons`
 Expected result: six stickies are created in a 2x3 layout with `pros and cons`-style seeded text.
 
-7. `Space these elements evenly`
+9. `Space these elements evenly`
 Expected result: selected elements are redistributed with even spacing along an inferred axis.
 
-8. `Create a SWOT analysis template with four quadrants`
+10. `Create a SWOT analysis template with four quadrants`
 Expected result: one 2x2 SWOT container appears with quadrant labels (`Strengths`, `Weaknesses`, `Opportunities`, `Threats`).
 
-9. `Build a user journey map with 5 stages`
+11. `Build a user journey map with 5 stages`
 Expected result: one journey-map frame with five stage stickies appears.
 
-10. `Set up a retrospective board with What Went Well, What Didn't, and Action Items columns`
+12. `Set up a retrospective board with What Went Well, What Didn't, and Action Items columns`
 Expected result: one retrospective frame appears with the three named columns.
 
 On-demand AI test suites:
@@ -260,6 +266,9 @@ On-demand AI test suites:
 - OpenAI matrix (20 paid commands, strict mode):
   - `npm run test:e2e:ai-agent-calls:openai-matrix:nano:PAID`
   - legacy alias: `npm run test:e2e:ai-openai-smoke:nano:PAID`
+- Required-capabilities Golden Eval suite (12 commands):
+  - `npm run test:e2e:ai-required-capabilities:openai-agents:nano:PAID`
+  - short alias: `npm run test:e2e:ai-golden-evals:openai-matrix:nano:PAID`
 
 Naming convention:
 

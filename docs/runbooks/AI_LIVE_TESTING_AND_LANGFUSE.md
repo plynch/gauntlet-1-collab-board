@@ -81,6 +81,10 @@ npm run test:e2e:ai-agent-calls:openai-matrix:nano:PAID
 npm run test:e2e:ai-required-capabilities:openai-agents:nano:PAID
 ```
 
+```bash
+npm run test:e2e:ai-golden-evals:openai-matrix:nano:PAID
+```
+
 This suite runs the required command catalog from the project brief using
 `OPENAI_RUNTIME=agents-sdk` + `AI_PLANNER_MODE=openai-strict`.
 

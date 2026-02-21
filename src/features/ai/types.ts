@@ -96,6 +96,22 @@ export type BoardToolCall =
       };
     }
   | {
+      tool: "createShapeBatch";
+      args: {
+        count: number;
+        type: "rect" | "circle" | "line" | "triangle" | "star";
+        originX: number;
+        originY: number;
+        width?: number;
+        height?: number;
+        color?: string;
+        colors?: string[];
+        columns?: number;
+        gapX?: number;
+        gapY?: number;
+      };
+    }
+  | {
       tool: "createStickyBatch";
       args: {
         count: number;

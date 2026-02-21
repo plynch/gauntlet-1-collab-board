@@ -855,11 +855,13 @@ function snapToGrid(value: number): number {
  */
 function isSnapEligibleObjectType(type: BoardObjectKind): boolean {
   return (
+    type === "sticky" ||
     type === "rect" ||
     type === "circle" ||
     type === "triangle" ||
     type === "star" ||
-    type === "line"
+    type === "line" ||
+    type === "gridContainer"
   );
 }
 

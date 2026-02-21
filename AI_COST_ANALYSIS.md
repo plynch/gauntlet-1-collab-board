@@ -1,4 +1,4 @@
-# AI Cost Analysis (Required)
+# AI Cost Analysis - Collabboard
 
 ## Development & Testing Costs
 
@@ -31,6 +31,36 @@ Track and report your actual spend during development:
   - `~$0.00014 measured average` in low-complexity command tests (small board edits)
 - Reserve values are policy controls and can overestimate actual model bill in short runs.
 
+## Per-User Usage Cost Justification
+
+To make the monthly scale projection explicit, we estimate command mix per user:
+
+- Board creation/setup tasks: **2 commands/session**
+- Note/shape edits (create, move, resize, recolor): **4 commands/session**
+- Layout/organization tasks (grid, arrange, distribute): **3 commands/session**
+- Template tasks (SWOT, user journey, retrospective): **1 command/session**
+- Optional cleanup/adjustments: **0–1 commands/session**
+
+This produces:
+
+- **Average commands/session (weighted): 10**
+- **Average input tokens/command: 220**
+- **Average output tokens/command: 320**
+
+Estimated monthly usage by user type:
+
+| Profile | Sessions/user/month | Commands/user/month | Input tokens/user/month | Output tokens/user/month | Monthly AI spend/user |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Low-use pilot | 6 | 60 | 13,200 | 19,200 | `$0.00768` |
+| Default | 12 | 120 | 26,400 | 38,400 | `$0.01536` |
+| Heavy user | 24 | 240 | 52,800 | 76,800 | `$0.03072` |
+
+Cost formula (gpt-4.1-nano):
+
+- Input: `tokens_input / 1,000,000 × $0.15`
+- Output: `tokens_output / 1,000,000 × $0.60`
+- Total = input + output
+
 ## Production Cost Projections
 
 Assumptions:
@@ -51,6 +81,13 @@ Estimated AI spend per month:
 | 1,000 | 120,000 | `$24.00` |
 | 10,000 | 1,200,000 | `$240.00` |
 | 100,000 | 12,000,000 | `$2,400.00` |
+
+Projection sanity check from per-user assumptions:
+
+- 100 users × 120 cmds/user/month = 12,000 cmds/month (`$2.40`)
+- 1,000 users × 120 cmds/user/month = 120,000 cmds/month (`$24.00`)
+- 10,000 users × 120 cmds/user/month = 1,200,000 cmds/month (`$240.00`)
+- 100,000 users × 120 cmds/user/month = 12,000,000 cmds/month (`$2,400.00`)
 
 ## Notes and Guardrails
 

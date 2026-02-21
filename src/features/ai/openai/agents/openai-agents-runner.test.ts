@@ -156,7 +156,6 @@ describe("runBoardCommandWithOpenAiAgents", () => {
       expect.objectContaining({
         tracingDisabled: false,
         workflowName: "collabboard-command",
-        traceId: "lf-trace-1",
         traceMetadata: {
           langfuseTraceId: "lf-trace-1",
           boardId: "board-1",

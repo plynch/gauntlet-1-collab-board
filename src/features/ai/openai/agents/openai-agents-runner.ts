@@ -193,7 +193,6 @@ export async function runBoardCommandWithOpenAiAgents(
     tracingDisabled: !config.agentsTracing,
     traceIncludeSensitiveData: true,
     workflowName: config.agentsWorkflowName,
-    traceId: input.trace.traceId,
     traceMetadata: {
       langfuseTraceId: input.trace.traceId,
       boardId: input.boardId,

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   type SyntheticEvent,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -176,6 +177,7 @@ export default function BoardsPage() {
   const [deletingBoardId, setDeletingBoardId] = useState<string | null>(null);
   const [sharedBoardId, setSharedBoardId] = useState<string | null>(null);
   const shareFeedbackTimeoutRef = useRef<number | null>(null);
+  const createBoardTitleInputRef = useRef<HTMLInputElement | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const {
     firebaseIsConfigured,
@@ -441,6 +443,21 @@ export default function BoardsPage() {
 
     return boardsError;
   }, [boardsError, errorMessage]);
+
+  useEffect(() => {
+    if (!showCreateBoardForm || creatingBoard) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      createBoardTitleInputRef.current?.focus();
+      createBoardTitleInputRef.current?.select();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [creatingBoard, showCreateBoardForm]);
 
   if (!firebaseIsConfigured) {
     return (
@@ -803,11 +820,13 @@ export default function BoardsPage() {
                     }}
                   >
                     <input
+                      ref={createBoardTitleInputRef}
                       value={newBoardTitle}
                       onChange={(event) => setNewBoardTitle(event.target.value)}
                       placeholder="Board title"
                       maxLength={80}
                       disabled={creatingBoard}
+                      autoFocus
                       style={{
                         width: "100%",
                         height: 40,

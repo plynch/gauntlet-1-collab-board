@@ -24,7 +24,37 @@ env:
     availability: [ BUILD, RUNTIME ]
   - variable: OPENAI_API_KEY
     secret: OPENAI_API_KEY
+    availability: [ RUNTIME ]
   - variable: LANGFUSE_PUBLIC_KEY
     secret: LANGFUSE_PUBLIC_KEY
+    availability: [ RUNTIME ]
   - variable: LANGFUSE_SECRET_KEY
     secret: LANGFUSE_SECRET_KEY
+    availability: [ RUNTIME ]
+  - variable: LANGFUSE_BASE_URL
+    value: "https://us.cloud.langfuse.com"
+    availability: [ RUNTIME ]
+  - variable: AI_ENABLE_OPENAI
+    value: "true"
+    availability: [ RUNTIME ]
+  - variable: AI_PLANNER_MODE
+    value: "openai-strict"
+    availability: [ RUNTIME ]
+  - variable: OPENAI_RUNTIME
+    value: "agents-sdk"
+    availability: [ RUNTIME ]
+  - variable: OPENAI_MODEL
+    value: "gpt-4.1-nano"
+    availability: [ RUNTIME ]
+  - variable: OPENAI_AGENTS_TRACING
+    value: "true"
+    availability: [ RUNTIME ]
+  - variable: OPENAI_AGENTS_WORKFLOW_NAME
+    value: "collabboard-command"
+    availability: [ RUNTIME ]
+  - variable: AI_REQUIRE_TRACING
+    value: "true"
+    availability: [ RUNTIME ]
+  - variable: AI_REQUIRE_OPENAI_TRACING
+    value: "true"
+    availability: [ RUNTIME ]

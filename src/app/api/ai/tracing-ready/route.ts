@@ -30,6 +30,7 @@ function parseRequiredFlag(value: string | undefined, fallback: boolean): boolea
  * Handles get.
  */
 export async function GET() {
+  const langfuseBaseUrl = process.env.LANGFUSE_BASE_URL?.trim() || null;
   const requireTracing = parseRequiredFlag(
     process.env.AI_REQUIRE_TRACING,
     process.env.NODE_ENV === "production",
@@ -45,6 +46,11 @@ export async function GET() {
   if (requireTracing && !langfuseConfigured) {
     reasons.push(
       "LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY missing while AI tracing is required.",
+    );
+  }
+  if (requireTracing && !langfuseBaseUrl) {
+    reasons.push(
+      "LANGFUSE_BASE_URL missing while AI tracing is required (set https://us.cloud.langfuse.com for US project).",
     );
   }
   if (
@@ -65,6 +71,7 @@ export async function GET() {
     requireTracing,
     requireOpenAiTracing,
     langfuseConfigured,
+    langfuseBaseUrl,
     openAi: {
       enabled: openAiConfig.enabled,
       plannerMode: openAiConfig.plannerMode,

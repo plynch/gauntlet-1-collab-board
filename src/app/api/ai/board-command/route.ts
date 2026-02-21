@@ -203,6 +203,9 @@ function getAiTracingConfigurationError(): string | null {
   if (isAiTracingRequired() && !isLangfuseConfigured()) {
     return "AI tracing misconfigured: missing LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY.";
   }
+  if (isAiTracingRequired() && !process.env.LANGFUSE_BASE_URL?.trim()) {
+    return "AI tracing misconfigured: missing LANGFUSE_BASE_URL (set https://us.cloud.langfuse.com).";
+  }
 
   const openAiConfig = getOpenAiPlannerConfig();
   if (

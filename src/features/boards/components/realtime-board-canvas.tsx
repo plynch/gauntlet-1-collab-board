@@ -86,6 +86,28 @@ const ZOOM_BUTTON_STEP_PERCENT = 5;
 const ZOOM_WHEEL_INTENSITY = 0.0065;
 const ZOOM_WHEEL_MAX_EFFECTIVE_DELTA = 180;
 const WRITE_METRICS_LOG_INTERVAL_MS = 15_000;
+const TERMINAL_FONT_FAMILY =
+  'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
+const AI_HELP_MESSAGE = [
+  "CollabBoard AI Help",
+  "",
+  "Golden eval examples:",
+  "- Add a yellow sticky note that says 'User Research'",
+  "- Create a blue rectangle at position 100,200",
+  '- Add a frame called "Sprint Planning"',
+  "- Move all the pink sticky notes to the right side",
+  "- Arrange these sticky notes in a grid",
+  "- Create a 2x3 grid of sticky notes for pros and cons",
+  "- Space these elements evenly",
+  "- Create a SWOT analysis template with four quadrants",
+  "- Build a user journey map with 5 stages",
+  "- Set up a retrospective board with What Went Well, What Didn't, and Action Items columns",
+  "",
+  "Terminal controls:",
+  "- Up/Down: command history",
+  "- Enter: send command",
+  "- /help or /commands: show this help",
+].join("\n");
 
 type RealtimeBoardCanvasProps = {
   boardId: string;
@@ -5185,7 +5207,8 @@ export default function RealtimeBoardCanvas({
     ) => {
       const appendUserMessage = options?.appendUserMessage ?? true;
       const clearInput = options?.clearInput ?? false;
-      if (nextMessage.trim().length === 0 || isAiSubmitting) {
+      const trimmedMessage = nextMessage.trim();
+      if (trimmedMessage.length === 0 || isAiSubmitting) {
         return;
       }
 
@@ -5211,6 +5234,27 @@ export default function RealtimeBoardCanvas({
         setChatInput("");
         setChatInputHistoryIndex(-1);
         chatInputHistoryDraftRef.current = "";
+      }
+
+      const localCommand = trimmedMessage.toLowerCase();
+      const localCommandResponse =
+        localCommand === "/help" ||
+        localCommand === "/commands" ||
+        localCommand === "help" ||
+        localCommand === "commands" ||
+        localCommand === "/?"
+          ? AI_HELP_MESSAGE
+          : null;
+      if (localCommandResponse) {
+        setChatMessages((previous) => [
+          ...previous,
+          {
+            id: createChatMessageId("a"),
+            role: "assistant",
+            text: localCommandResponse,
+          },
+        ]);
+        return;
       }
 
       setIsAiSubmitting(true);
@@ -5380,6 +5424,18 @@ export default function RealtimeBoardCanvas({
       event.preventDefault();
 
       if (event.key === "ArrowUp") {
+        if (chatInput.trim().length === 0 && chatInputHistoryIndex < 0) {
+          const previousCommand =
+            chatInputHistory[chatInputHistory.length - 1] ?? "";
+          if (previousCommand.trim().length > 0) {
+            void submitAiCommandMessage(previousCommand, {
+              appendUserMessage: true,
+              clearInput: true,
+            });
+            return;
+          }
+        }
+
         const nextIndex =
           chatInputHistoryIndex < 0
             ? chatInputHistory.length - 1
@@ -5413,6 +5469,7 @@ export default function RealtimeBoardCanvas({
       chatInputHistory,
       chatInputHistoryIndex,
       isAiSubmitting,
+      submitAiCommandMessage,
     ],
   );
 
@@ -8408,7 +8465,7 @@ export default function RealtimeBoardCanvas({
                   AI Assistant
                 </strong>
                 <span style={{ fontSize: 12, color: "#475569" }}>
-                  Selected: {selectedObjectIds.length}
+                  Selected: {selectedObjectIds.length} | /help
                 </span>
               </div>
             </div>
@@ -8418,7 +8475,7 @@ export default function RealtimeBoardCanvas({
                 flex: 1,
                 minHeight: 0,
                 padding: "0.6rem clamp(0.8rem, 2vw, 1.5rem)",
-                background: "#f8fafc",
+                background: "#0f172a",
                 overflow: "hidden",
               }}
             >
@@ -8432,29 +8489,24 @@ export default function RealtimeBoardCanvas({
                   display: "flex",
                   flexDirection: "column",
                   gap: "0.5rem",
+                  fontFamily: TERMINAL_FONT_FAMILY,
+                  fontSize: 13,
                 }}
               >
                 {chatMessages.length === 0 ? (
                   isAiSubmitting ? (
                     <div
                       style={{
-                        alignSelf: "flex-start",
-                        maxWidth: "min(520px, 92%)",
-                        padding: "0.42rem 0.58rem",
-                        borderRadius: 8,
-                        background: "#e2e8f0",
-                        color: "#334155",
-                        fontSize: 13,
-                        fontStyle: "italic",
-                        lineHeight: 1.35,
+                        color: "#f8fafc",
+                        lineHeight: 1.45,
+                        whiteSpace: "pre-wrap",
                       }}
                     >
-                      Thinking...
+                      ai&gt; thinking...
                     </div>
                   ) : (
-                    <span style={{ color: "#64748b", fontSize: 13 }}>
-                      Ask the board assistant to create, organize, summarize, or
-                      extract action items.
+                    <span style={{ color: "#93c5fd", lineHeight: 1.45 }}>
+                      ai&gt; Type /help for examples, then run a board command.
                     </span>
                   )
                 ) : (
@@ -8463,36 +8515,32 @@ export default function RealtimeBoardCanvas({
                       <div
                         key={message.id}
                         style={{
-                          alignSelf:
-                            message.role === "user" ? "flex-end" : "flex-start",
-                          maxWidth: "min(520px, 92%)",
-                          padding: "0.42rem 0.58rem",
-                          borderRadius: 8,
-                          background:
-                            message.role === "user" ? "#dbeafe" : "#e2e8f0",
-                          color: "#0f172a",
-                          fontSize: 13,
-                          lineHeight: 1.35,
+                          color:
+                            message.role === "user" ? "#f8fafc" : "#93c5fd",
+                          lineHeight: 1.45,
+                          whiteSpace: "pre-wrap",
                         }}
                       >
-                        <div>{message.text}</div>
+                        <span
+                          style={{
+                            color:
+                              message.role === "user" ? "#f59e0b" : "#22d3ee",
+                          }}
+                        >
+                          {message.role === "user" ? "you> " : "ai> "}
+                        </span>
+                        <span>{message.text}</span>
                       </div>
                     ))}
                     {isAiSubmitting ? (
                       <div
                         style={{
-                          alignSelf: "flex-start",
-                          maxWidth: "min(520px, 92%)",
-                          padding: "0.42rem 0.58rem",
-                          borderRadius: 8,
-                          background: "#e2e8f0",
-                          color: "#334155",
-                          fontSize: 13,
-                          fontStyle: "italic",
-                          lineHeight: 1.35,
+                          color: "#93c5fd",
+                          lineHeight: 1.45,
+                          whiteSpace: "pre-wrap",
                         }}
                       >
-                        Thinking...
+                        ai&gt; thinking...
                       </div>
                     ) : null}
                   </>
@@ -8517,17 +8565,28 @@ export default function RealtimeBoardCanvas({
                   alignItems: "center",
                 }}
               >
+                <span
+                  style={{
+                    fontFamily: TERMINAL_FONT_FAMILY,
+                    fontSize: 13,
+                    color: "#334155",
+                    userSelect: "none",
+                  }}
+                >
+                  &gt;
+                </span>
                 <input
                   value={chatInput}
                   onChange={handleChatInputChange}
                   onKeyDown={handleChatInputKeyDown}
                   disabled={isAiSubmitting}
-                  placeholder="Ask AI agent..."
+                  placeholder="Type /help or run a board command..."
                   maxLength={500}
                   style={{
                     flex: 1,
                     minWidth: 0,
                     padding: "0.48rem 0.58rem",
+                    fontFamily: TERMINAL_FONT_FAMILY,
                   }}
                 />
                 <button

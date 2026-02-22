@@ -457,6 +457,65 @@ describe("planDeterministicCommand", () => {
     expect(result.assistantMessage).toContain("Select two or more objects");
   });
 
+  it("arranges implicit sticky targets when selection is empty", () => {
+    const boardState = [
+      ...BOARD_STATE,
+      {
+        id: "obj-3",
+        type: "sticky" as const,
+        zIndex: 3,
+        x: 760,
+        y: 180,
+        width: 220,
+        height: 170,
+        rotationDeg: 0,
+        color: "#fde68a",
+        text: "Third",
+        updatedAt: null,
+      },
+      {
+        id: "obj-4",
+        type: "sticky" as const,
+        zIndex: 4,
+        x: 900,
+        y: 120,
+        width: 220,
+        height: 170,
+        rotationDeg: 0,
+        color: "#fde68a",
+        text: "Fourth",
+        updatedAt: null,
+      },
+    ];
+
+    const result = planDeterministicCommand({
+      message: "Arrange these sticky notes in a grid in the middle",
+      boardState,
+      selectedObjectIds: [],
+      viewportBounds: {
+        left: 0,
+        top: 0,
+        width: 1_600,
+        height: 900,
+      },
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("arrange-grid");
+      expect(result.assistantMessage).toContain("centered grid");
+      expect(result.plan.operations[0]?.tool).toBe("arrangeObjectsInGrid");
+      if (result.plan.operations[0]?.tool === "arrangeObjectsInGrid") {
+        expect(result.plan.operations[0].args.objectIds).toEqual([
+          "obj-2",
+          "obj-3",
+          "obj-4",
+        ]);
+        expect(result.plan.operations[0].args.centerInViewport).toBe(true);
+      }
+    }
+  });
+
   it("plans align-objects command when selected objects exist", () => {
     const result = planDeterministicCommand({
       message: "Align selected objects left",
@@ -507,6 +566,19 @@ describe("planDeterministicCommand", () => {
         text: "Third",
         updatedAt: null,
       },
+      {
+        id: "obj-4",
+        type: "sticky" as const,
+        zIndex: 4,
+        x: 900,
+        y: 120,
+        width: 220,
+        height: 170,
+        rotationDeg: 0,
+        color: "#fde68a",
+        text: "Fourth",
+        updatedAt: null,
+      },
     ];
     const result = planDeterministicCommand({
       message: "Distribute selected objects horizontally",
@@ -544,6 +616,19 @@ describe("planDeterministicCommand", () => {
         rotationDeg: 0,
         color: "#fde68a",
         text: "Third",
+        updatedAt: null,
+      },
+      {
+        id: "obj-4",
+        type: "sticky" as const,
+        zIndex: 4,
+        x: 900,
+        y: 120,
+        width: 220,
+        height: 170,
+        rotationDeg: 0,
+        color: "#fde68a",
+        text: "Fourth",
         updatedAt: null,
       },
     ];
@@ -585,6 +670,92 @@ describe("planDeterministicCommand", () => {
     expect(result.planned).toBe(false);
     expect(result.intent).toBe("distribute-objects");
     expect(result.assistantMessage).toContain("Select three or more objects");
+  });
+
+  it("distributes implicit sticky targets when selection is empty", () => {
+    const boardState = [
+      ...BOARD_STATE,
+      {
+        id: "obj-3",
+        type: "sticky" as const,
+        zIndex: 3,
+        x: 720,
+        y: 120,
+        width: 220,
+        height: 170,
+        rotationDeg: 0,
+        color: "#fde68a",
+        text: "Third",
+        updatedAt: null,
+      },
+      {
+        id: "obj-4",
+        type: "sticky" as const,
+        zIndex: 4,
+        x: 900,
+        y: 120,
+        width: 220,
+        height: 170,
+        rotationDeg: 0,
+        color: "#fde68a",
+        text: "Fourth",
+        updatedAt: null,
+      },
+    ];
+    const viewportBounds = {
+      left: 0,
+      top: 0,
+      width: 1_600,
+      height: 900,
+    };
+
+    const result = planDeterministicCommand({
+      message: "Space these sticky notes evenly across the screen",
+      boardState,
+      selectedObjectIds: [],
+      viewportBounds,
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("distribute-objects");
+      expect(result.assistantMessage).toContain("across the screen");
+      expect(result.plan.operations[0]?.tool).toBe("alignObjects");
+      expect(result.plan.operations[1]?.tool).toBe("distributeObjects");
+      if (result.plan.operations[1]?.tool === "distributeObjects") {
+        expect(result.plan.operations[1].args.objectIds).toEqual([
+          "obj-2",
+          "obj-3",
+          "obj-4",
+        ]);
+      }
+    }
+  });
+
+  it("returns cap guidance for implicit layout targets over 50 objects", () => {
+    const boardState = Array.from({ length: 51 }, (_, index) => ({
+      id: `obj-${index + 1}`,
+      type: "sticky" as const,
+      zIndex: index + 1,
+      x: index * 10,
+      y: index * 10,
+      width: 220,
+      height: 170,
+      rotationDeg: 0,
+      color: "#fde68a",
+      text: `Sticky ${index + 1}`,
+      updatedAt: null,
+    }));
+
+    const result = planDeterministicCommand({
+      message: "Arrange these sticky notes in a grid",
+      boardState,
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(false);
+    expect(result.intent).toBe("arrange-grid");
+    expect(result.assistantMessage).toContain("Arrange up to 50 objects");
   });
 
   it("plans create-sticky-grid for 2x3 prompt", () => {

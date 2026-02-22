@@ -19,6 +19,7 @@ Fallback compatibility mode:
 | `add a yellow sticky note that says ...` | `create-sticky` | `createStickyNote` |
 | `add a sticky at x 520 y 280 ...` | `create-sticky` | `createStickyNote` |
 | `create 25 red stickies` | `create-sticky-batch` | `createStickyBatch` |
+| `create 5 pink sticky notes create 5 blue sticky notes` | `create-sticky-batch` | two `createStickyBatch` operations (one per clause) |
 | `create a 2x3 grid of sticky notes ...` | `create-sticky-grid` | `createStickyBatch` |
 | `create a blue rectangle at ...` | `create-rect` | `createShape(type="rect")` |
 | `create an orange circle` | `create-circle` | `createShape(type="circle")` |
@@ -48,6 +49,7 @@ Fallback compatibility mode:
 | --- | --- | --- |
 | `arrange selected in a grid` | `arrange-grid` | `arrangeObjectsInGrid` |
 | `arrange selected in 4 columns gap 24` | `arrange-grid` | `arrangeObjectsInGrid` |
+| `arrange in a grid in the middle` | `arrange-grid` | `arrangeObjectsInGrid(centerInViewport=true)` |
 | `align selected left` | `align-selected` | `alignObjects` |
 | `distribute selected horizontally` | `distribute-selected` | `distributeObjects` |
 

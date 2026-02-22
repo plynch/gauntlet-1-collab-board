@@ -57,10 +57,6 @@ export type OpenAiAgentsRunnerResult = {
   };
 };
 
-export type OpenAiAgentsRunnerError = Error & {
-  usage?: OpenAiAgentsRunnerUsage;
-};
-
 type RunBoardCommandWithOpenAiAgentsInput = {
   message: string;
   boardId: string;
@@ -116,18 +112,6 @@ function toOpenAiUsage(input: {
 }
 
 /**
- * Handles create openai agents runner error.
- */
-function createOpenAiAgentsRunnerError(
-  message: string,
-  usage?: OpenAiAgentsRunnerUsage,
-): OpenAiAgentsRunnerError {
-  const error = new Error(message) as OpenAiAgentsRunnerError;
-  error.usage = usage;
-  return error;
-}
-
-/**
  * Creates empty usage object for policy-blocked runs with no model call.
  */
 function createEmptyUsage(model: string): OpenAiAgentsRunnerUsage {
@@ -153,6 +137,7 @@ const OPENAI_AGENTS_SYSTEM_PROMPT = [
   "Layout math hint: step=(end-start)/(count-1); use object centers for distribution.",
   "When user asks to create/add sticky notes, you must create new stickies via createStickyNote or createStickyBatch.",
   "Do not satisfy create-sticky requests by mutating existing selected objects.",
+  "For multi-clause create requests (e.g. create 5 pink ... create 5 blue ...), execute each clause as its own batch with its own color/count.",
   "Never create more than 50 objects from one command.",
   "If user asks to create more than 50 objects, return planned=false and explain the 50-object limit.",
   "When user provides explicit coordinates, preserve them in tool arguments.",
@@ -293,10 +278,22 @@ export async function runBoardCommandWithOpenAiAgents(
   const planned = hasMutatingOperations;
 
   if (plannedFromOutput && !hasMutatingOperations) {
-    throw createOpenAiAgentsRunnerError(
-      "Agent returned planned=true but executed no mutating tool calls.",
+    return {
+      intent: finalOutput?.intent?.trim() || "unsupported-command",
+      planned: false,
+      assistantMessage:
+        finalOutput?.assistantMessage?.trim() ||
+        finalOutputText ||
+        "I could not map that command yet.",
+      operationsExecuted: executionSnapshot.operationsExecuted,
+      results: executionSnapshot.results,
+      createdObjectIds: executionSnapshot.createdObjectIds,
+      deletedCount: executionSnapshot.deletedCount,
+      toolCalls: executionSnapshot.toolCalls,
       usage,
-    );
+      responseId: runResult.lastResponseId,
+      traceId: openAiTraceId,
+    };
   }
 
   const assistantMessage =

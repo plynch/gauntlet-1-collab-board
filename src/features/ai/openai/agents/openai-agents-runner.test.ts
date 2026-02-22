@@ -132,6 +132,41 @@ describe("runBoardCommandWithOpenAiAgents", () => {
     expect(setDefaultOpenAIClientMock).not.toHaveBeenCalled();
   });
 
+  it("returns policy-blocked guidance for over-limit shape requests", async () => {
+    createBoardAgentToolsMock.mockReturnValue({
+      tools: [],
+      getExecutionSnapshot: () => ({
+        operationsExecuted: [],
+        results: [],
+        createdObjectIds: [],
+        deletedCount: 0,
+        toolCalls: 0,
+      }),
+    });
+
+    const result = await runBoardCommandWithOpenAiAgents({
+      message: "create 500 rectangles",
+      boardId: "board-1",
+      userId: "user-1",
+      boardState: [],
+      selectedObjectIds: [],
+      viewportBounds: null,
+      executor: {} as never,
+      trace: {
+        traceId: "lf-trace-limit-shapes",
+      } as never,
+    });
+
+    expect(result.planned).toBe(false);
+    expect(result.intent).toBe("create-object-limit-exceeded");
+    expect(result.policyBlocked).toEqual({
+      requestedCreateCount: 500,
+      maxAllowedCount: 50,
+    });
+    expect(createBoardAgentToolsMock).not.toHaveBeenCalled();
+    expect(runMock).not.toHaveBeenCalled();
+  });
+
   it("returns planned success with tool execution snapshot", async () => {
     createBoardAgentToolsMock.mockReturnValue({
       tools: [],
@@ -320,7 +355,7 @@ describe("runBoardCommandWithOpenAiAgents", () => {
     expect(result.operationsExecuted).toHaveLength(1);
   });
 
-  it("throws when final output says planned=true but no mutating operations ran", async () => {
+  it("returns not-planned when final output says planned=true but no mutating operations ran", async () => {
     createBoardAgentToolsMock.mockReturnValue({
       tools: [],
       getExecutionSnapshot: () => ({
@@ -347,19 +382,21 @@ describe("runBoardCommandWithOpenAiAgents", () => {
       },
     });
 
-    await expect(
-      runBoardCommandWithOpenAiAgents({
-        message: "Create sticky",
-        boardId: "board-1",
-        userId: "user-1",
-        boardState: [],
-        selectedObjectIds: [],
-        viewportBounds: null,
-        executor: {} as never,
-        trace: {
-          traceId: "lf-trace-3",
-        } as never,
-      }),
-    ).rejects.toThrow(/planned=true but executed no mutating tool calls/i);
+    const result = await runBoardCommandWithOpenAiAgents({
+      message: "Create sticky",
+      boardId: "board-1",
+      userId: "user-1",
+      boardState: [],
+      selectedObjectIds: [],
+      viewportBounds: null,
+      executor: {} as never,
+      trace: {
+        traceId: "lf-trace-3",
+      } as never,
+    });
+
+    expect(result.planned).toBe(false);
+    expect(result.assistantMessage).toBe("Created sticky.");
+    expect(result.operationsExecuted).toHaveLength(0);
   });
 });

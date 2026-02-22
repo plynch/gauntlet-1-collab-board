@@ -11,15 +11,15 @@ type RealtimeBoardCanvasProps = {
   permissions: BoardPermissions;
 };
 
-const isLegacyRendererEnabled =
-  process.env.NEXT_PUBLIC_ENABLE_CANVAS_RENDERER === "legacy";
+const isCanvasRendererEnabled =
+  process.env.NEXT_PUBLIC_ENABLE_CANVAS_RENDERER === "canvas";
 
 export default function RealtimeBoardCanvas({
   boardId,
   user,
   permissions,
 }: RealtimeBoardCanvasProps) {
-  if (isLegacyRendererEnabled) {
+  if (!isCanvasRendererEnabled) {
     return (
       <RealtimeBoardCanvasLegacy
         boardId={boardId}

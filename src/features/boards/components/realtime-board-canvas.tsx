@@ -9,7 +9,6 @@ import {
   type FormEvent as ReactFormEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import type { User } from "firebase/auth";
 import {
   addDoc,
   collection,
@@ -25,7 +24,6 @@ import {
 import type {
   BoardObject,
   BoardObjectKind,
-  BoardPermissions,
   ConnectorAnchor,
   PresenceUser,
 } from "@/features/boards/types";
@@ -116,6 +114,71 @@ import {
   type ResolvedConnectorEndpoint,
 } from "@/features/boards/components/realtime-canvas/legacy/legacy-canvas-geometry";
 import {
+  BOARD_GRID_MAJOR_LINE_COLOR,
+  BOARD_GRID_MINOR_LINE_COLOR,
+  BOARD_GRID_SUPER_MAJOR_LINE_COLOR,
+  BOARD_TOOLS,
+  COLLAPSED_PANEL_WIDTH,
+  CONNECTOR_DISCONNECTED_HANDLE_SIZE,
+  CONNECTOR_HANDLE_SIZE,
+  CONNECTOR_HIT_PADDING,
+  CONNECTOR_SNAP_DISTANCE_PX,
+  CONTAINER_DRAG_THROTTLE_MS,
+  CURSOR_MIN_MOVE_DISTANCE,
+  CURSOR_THROTTLE_MS,
+  DRAG_CLICK_SLOP_PX,
+  DRAG_THROTTLE_MS,
+  DUPLICATE_OFFSET_PX,
+  GRID_CONTAINER_DEFAULT_GAP,
+  GRID_CONTAINER_MAX_COLS,
+  GRID_CONTAINER_MAX_ROWS,
+  GRID_MAJOR_SPACING,
+  GRID_SUPER_MAJOR_SPACING,
+  INITIAL_VIEWPORT,
+  LEFT_PANEL_WIDTH,
+  OBJECT_LABEL_MAX_LENGTH,
+  OBJECT_SPAWN_STEP_PX,
+  PANEL_COLLAPSE_ANIMATION,
+  PANEL_SEPARATOR_COLOR,
+  PANEL_SEPARATOR_WIDTH,
+  POSITION_WRITE_EPSILON,
+  PRESENCE_HEARTBEAT_MS,
+  PRESENCE_TTL_MS,
+  RESIZE_HANDLE_SIZE,
+  RESIZE_THROTTLE_MS,
+  RIGHT_PANEL_WIDTH,
+  ROTATE_THROTTLE_MS,
+  SELECTED_OBJECT_HALO,
+  SNAP_TO_GRID_STORAGE_KEY,
+  STICKY_TEXT_HOLD_DRAG_DELAY_MS,
+  STICKY_TEXT_SYNC_THROTTLE_MS,
+  SWOT_SECTION_COLORS,
+  SWOT_TEMPLATE_TITLE,
+  WRITE_METRICS_LOG_INTERVAL_MS,
+} from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-config";
+import type {
+  AiFooterResizeState,
+  BoardPoint,
+  ConnectorDraft,
+  ConnectorEndpoint,
+  ConnectorEndpointDragState,
+  CornerResizeState,
+  DragState,
+  GridContainerContentDraft,
+  LineEndpoint,
+  LineEndpointResizeState,
+  MarqueeSelectionState,
+  ObjectGeometry,
+  ObjectWriteOptions,
+  PanState,
+  RealtimeBoardCanvasProps,
+  ResizeCorner,
+  RotateState,
+  StickyTextHoldDragState,
+  StickyTextSyncState,
+  ViewportState,
+} from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-types";
+import {
   DEFAULT_SWOT_SECTION_TITLES,
   getDefaultSectionTitles,
   normalizeSectionValues,
@@ -151,205 +214,6 @@ import { IconButton } from "@/features/ui/components/icon-button";
 import { Button } from "@/features/ui/components/button";
 import { useTheme } from "@/features/theme/use-theme";
 import { getFirebaseClientDb } from "@/lib/firebase/client";
-
-// Cost/perf tradeoff: keep cursors smooth while cutting high-frequency write churn.
-const CURSOR_THROTTLE_MS = 120;
-const DRAG_THROTTLE_MS = 45;
-const CONTAINER_DRAG_THROTTLE_MS = 200;
-const DRAG_CLICK_SLOP_PX = 3;
-const STICKY_TEXT_SYNC_THROTTLE_MS = 180;
-const OBJECT_LABEL_MAX_LENGTH = 120;
-const PRESENCE_HEARTBEAT_MS = 10_000;
-const PRESENCE_TTL_MS = 15_000;
-// Ignore tiny pointer jitter; remote users still see smooth cursor motion.
-const CURSOR_MIN_MOVE_DISTANCE = 2;
-// Quantize transform writes so near-identical pointer deltas coalesce.
-const POSITION_WRITE_EPSILON = 0.1;
-const WRITE_METRICS_LOG_INTERVAL_MS = 15_000;
-
-type RealtimeBoardCanvasProps = {
-  boardId: string;
-  user: User;
-  permissions: BoardPermissions;
-};
-
-type ViewportState = {
-  x: number;
-  y: number;
-  scale: number;
-};
-
-type PanState = {
-  startClientX: number;
-  startClientY: number;
-  initialX: number;
-  initialY: number;
-};
-
-type DragState = {
-  objectIds: string[];
-  initialGeometries: Record<string, ObjectGeometry>;
-  startClientX: number;
-  startClientY: number;
-  lastSentAt: number;
-  hasMoved: boolean;
-  collapseToObjectIdOnClick: string | null;
-};
-
-type AiFooterResizeState = {
-  startClientY: number;
-  initialHeight: number;
-};
-
-type StickyTextHoldDragState = {
-  objectId: string;
-  startClientX: number;
-  startClientY: number;
-  timerId: number | null;
-  started: boolean;
-};
-
-type BoardPoint = {
-  x: number;
-  y: number;
-};
-
-type MarqueeSelectionMode = "add" | "remove";
-
-type MarqueeSelectionState = {
-  startPoint: BoardPoint;
-  currentPoint: BoardPoint;
-  mode: MarqueeSelectionMode;
-};
-
-type ResizeCorner = "nw" | "ne" | "sw" | "se";
-type LineEndpoint = "start" | "end";
-type ConnectorEndpoint = "from" | "to";
-
-type ObjectGeometry = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  rotationDeg: number;
-};
-
-type ObjectWriteOptions = {
-  includeUpdatedAt?: boolean;
-  force?: boolean;
-  containerMembershipById?: Record<string, ContainerMembershipPatch>;
-};
-
-type CornerResizeState = {
-  objectId: string;
-  objectType: Exclude<
-    BoardObjectKind,
-    "line" | "connectorUndirected" | "connectorArrow" | "connectorBidirectional"
-  >;
-  corner: ResizeCorner;
-  startClientX: number;
-  startClientY: number;
-  initialGeometry: ObjectGeometry;
-  lastSentAt: number;
-};
-
-type LineEndpointResizeState = {
-  objectId: string;
-  endpoint: LineEndpoint;
-  fixedPoint: BoardPoint;
-  handleHeight: number;
-  lastSentAt: number;
-};
-
-type ConnectorEndpointDragState = {
-  objectId: string;
-  endpoint: ConnectorEndpoint;
-  lastSentAt: number;
-};
-
-type ConnectorDraft = {
-  fromObjectId: string | null;
-  toObjectId: string | null;
-  fromAnchor: ConnectorAnchor | null;
-  toAnchor: ConnectorAnchor | null;
-  fromX: number;
-  fromY: number;
-  toX: number;
-  toY: number;
-};
-
-type RotateState = {
-  objectId: string;
-  centerPoint: BoardPoint;
-  initialPointerAngleDeg: number;
-  initialRotationDeg: number;
-  lastSentAt: number;
-};
-
-type StickyTextSyncState = {
-  pendingText: string | null;
-  lastSentAt: number;
-  lastSentText: string | null;
-  timerId: number | null;
-};
-
-type GridContainerContentDraft = {
-  containerTitle: string;
-  sectionTitles: string[];
-  sectionNotes: string[];
-};
-
-const BOARD_TOOLS: BoardObjectKind[] = [
-  "sticky",
-  "text",
-  "rect",
-  "circle",
-  "line",
-  "gridContainer",
-  "connectorUndirected",
-  "connectorArrow",
-  "connectorBidirectional",
-  "triangle",
-  "star",
-];
-const RESIZE_THROTTLE_MS = 45;
-const ROTATE_THROTTLE_MS = 45;
-const RESIZE_HANDLE_SIZE = 10;
-const SELECTED_OBJECT_HALO =
-  "0 0 0 2px rgba(59, 130, 246, 0.45), 0 8px 14px rgba(0,0,0,0.14)";
-const OBJECT_SPAWN_STEP_PX = 20;
-const PANEL_SEPARATOR_COLOR = "var(--panel-separator)";
-const PANEL_SEPARATOR_WIDTH = 4;
-const LEFT_PANEL_WIDTH = 232;
-const RIGHT_PANEL_WIDTH = 238;
-const COLLAPSED_PANEL_WIDTH = 48;
-const PANEL_COLLAPSE_ANIMATION =
-  "220ms cubic-bezier(0.22, 1, 0.36, 1)";
-const SNAP_TO_GRID_STORAGE_KEY = "collabboard-snap-to-grid-v1";
-const STICKY_TEXT_HOLD_DRAG_DELAY_MS = 120;
-const GRID_MAJOR_LINE_EVERY = 5;
-const GRID_MAJOR_SPACING = GRID_CELL_SIZE * GRID_MAJOR_LINE_EVERY;
-const GRID_SUPER_MAJOR_SPACING = GRID_MAJOR_SPACING * 10;
-const DUPLICATE_OFFSET_PX = 48;
-const BOARD_GRID_MINOR_LINE_COLOR = "var(--canvas-grid-minor)";
-const BOARD_GRID_MAJOR_LINE_COLOR = "var(--canvas-grid-major)";
-const BOARD_GRID_SUPER_MAJOR_LINE_COLOR = "var(--canvas-grid-super)";
-const SWOT_SECTION_COLORS = ["#a7f3d0", "#fecaca", "#a7f3d0", "#fecaca"];
-const SWOT_TEMPLATE_TITLE = "SWOT Analysis";
-const GRID_CONTAINER_DEFAULT_GAP = 2;
-const GRID_CONTAINER_MAX_ROWS = 6;
-const GRID_CONTAINER_MAX_COLS = 6;
-
-const CONNECTOR_HIT_PADDING = 16;
-const CONNECTOR_HANDLE_SIZE = 12;
-const CONNECTOR_DISCONNECTED_HANDLE_SIZE = 20;
-const CONNECTOR_SNAP_DISTANCE_PX = 20;
-
-const INITIAL_VIEWPORT: ViewportState = {
-  x: 120,
-  y: 80,
-  scale: 1,
-};
 
 export default function RealtimeBoardCanvas({
   boardId,

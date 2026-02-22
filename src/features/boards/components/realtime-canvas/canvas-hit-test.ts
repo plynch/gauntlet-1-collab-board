@@ -41,7 +41,22 @@ export function getObjectHitTarget(
 ): HitTestResult {
   for (let index = objects.length - 1; index >= 0; index -= 1) {
     const objectItem = objects[index];
-    if (!objectItem) {
+    if (!objectItem || objectItem.type === "gridContainer") {
+      continue;
+    }
+
+    if (isObjectSelectable(objectItem, point)) {
+      return {
+        type: "object",
+        objectId: objectItem.id,
+        objectType: objectItem.type,
+      };
+    }
+  }
+
+  for (let index = objects.length - 1; index >= 0; index -= 1) {
+    const objectItem = objects[index];
+    if (!objectItem || objectItem.type !== "gridContainer") {
       continue;
     }
 

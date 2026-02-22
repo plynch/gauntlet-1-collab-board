@@ -247,7 +247,15 @@ export default function BoardSceneCanvas({
 
     const ordered = [...objects]
       .filter((objectItem) => BOARD_SCENE_RENDER_TYPES.has(objectItem.type))
-      .sort((left, right) => left.zIndex - right.zIndex);
+      .sort((left, right) => {
+        if (left.type === "gridContainer" && right.type !== "gridContainer") {
+          return -1;
+        }
+        if (left.type !== "gridContainer" && right.type === "gridContainer") {
+          return 1;
+        }
+        return left.zIndex - right.zIndex;
+      });
 
     for (const objectItem of ordered) {
       if (objectItem.type === "gridContainer") {

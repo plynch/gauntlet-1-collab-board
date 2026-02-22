@@ -1,5 +1,9 @@
 import type { BoardObject } from "@/features/boards/types";
-import { getDefaultObjectColor } from "@/features/boards/components/realtime-canvas/board-object-helpers";
+import {
+  getDefaultObjectColor,
+  getReadableTextColor,
+  getRenderedObjectColor,
+} from "@/features/boards/components/realtime-canvas/board-object-helpers";
 import { toCanvasPoint } from "@/features/boards/components/realtime-canvas/canvas-hit-test";
 
 type Viewport = {
@@ -60,23 +64,37 @@ export function drawCanvasGrid(
   ctx.restore();
 }
 
-function drawTextShape(ctx: CanvasRenderingContext2D, objectItem: BoardObject, x: number, y: number): void {
+function drawTextShape(
+  ctx: CanvasRenderingContext2D,
+  objectItem: BoardObject,
+  x: number,
+  y: number,
+  theme: "light" | "dark",
+  textColor?: string,
+): void {
   if (!objectItem.text) {
     return;
   }
 
   const label = objectItem.text.length > 120 ? `${objectItem.text.slice(0, 117)}...` : objectItem.text;
-  ctx.fillStyle = "var(--text)";
+  ctx.fillStyle = textColor ?? (theme === "dark" ? "#e2e8f0" : "#0f172a");
   ctx.font = "12px ui-sans-serif, system-ui, -apple-system";
   ctx.textBaseline = "middle";
   ctx.fillText(label, x + 8, y + 12);
 }
 
-function drawSticky(ctx: CanvasRenderingContext2D, objectItem: BoardObject, x: number, y: number): void {
+function drawSticky(
+  ctx: CanvasRenderingContext2D,
+  objectItem: BoardObject,
+  x: number,
+  y: number,
+  theme: "light" | "dark",
+): void {
   const width = objectItem.width;
   const height = objectItem.height;
 
-  const fill = objectItem.color ?? getDefaultObjectColor(objectItem.type);
+  const sourceColor = objectItem.color ?? getDefaultObjectColor(objectItem.type);
+  const fill = getRenderedObjectColor(sourceColor, objectItem.type, theme);
   ctx.fillStyle = fill;
   ctx.strokeStyle = "rgba(15,23,42,0.36)";
   ctx.lineWidth = 1;
@@ -86,14 +104,21 @@ function drawSticky(ctx: CanvasRenderingContext2D, objectItem: BoardObject, x: n
   ctx.stroke();
 
   if (objectItem.text) {
-    drawTextShape(ctx, objectItem, x, y);
+    drawTextShape(ctx, objectItem, x, y, theme, getReadableTextColor(fill));
   }
 }
 
-function drawBasicShape(ctx: CanvasRenderingContext2D, objectItem: BoardObject, x: number, y: number): void {
+function drawBasicShape(
+  ctx: CanvasRenderingContext2D,
+  objectItem: BoardObject,
+  x: number,
+  y: number,
+  theme: "light" | "dark",
+): void {
   const width = objectItem.width;
   const height = objectItem.height;
-  const fill = objectItem.color ?? getDefaultObjectColor(objectItem.type);
+  const sourceColor = objectItem.color ?? getDefaultObjectColor(objectItem.type);
+  const fill = getRenderedObjectColor(sourceColor, objectItem.type, theme);
 
   ctx.fillStyle = fill;
   ctx.strokeStyle = "rgba(15,23,42,0.45)";
@@ -119,18 +144,55 @@ function drawBasicShape(ctx: CanvasRenderingContext2D, objectItem: BoardObject, 
       ctx.fill();
       ctx.stroke();
       break;
+    case "star": {
+      const cx = x + width / 2;
+      const cy = y + height / 2;
+      const outerRadius = Math.min(width, height) / 2;
+      const innerRadius = outerRadius * 0.46;
+      ctx.beginPath();
+      for (let i = 0; i < 10; i += 1) {
+        const angle = -Math.PI / 2 + (i * Math.PI) / 5;
+        const radius = i % 2 === 0 ? outerRadius : innerRadius;
+        const px = cx + Math.cos(angle) * radius;
+        const py = cy + Math.sin(angle) * radius;
+        if (i === 0) {
+          ctx.moveTo(px, py);
+        } else {
+          ctx.lineTo(px, py);
+        }
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      break;
+    }
+    case "line":
+      ctx.beginPath();
+      ctx.moveTo(x, y + height / 2);
+      ctx.lineTo(x + width, y + height / 2);
+      ctx.strokeStyle = fill;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      break;
+    case "text":
+      drawTextShape(ctx, objectItem, x, y, theme);
+      break;
     default:
       ctx.fillRect(x, y, width, height);
       ctx.strokeRect(x, y, width, height);
       break;
   }
 
-  if (objectItem.text) {
-    drawTextShape(ctx, objectItem, x, y);
+  if (
+    objectItem.text &&
+    objectItem.type !== "text" &&
+    objectItem.type !== "line"
+  ) {
+    drawTextShape(ctx, objectItem, x, y, theme, getReadableTextColor(fill));
   }
 }
 
-export function drawBoardObject({ ctx, viewport }: DrawContext, objectItem: BoardObject): void {
+export function drawBoardObject({ ctx, viewport, theme }: DrawContext, objectItem: BoardObject): void {
   const point = toCanvasPoint(objectItem.x, objectItem.y, viewport);
   const shapeTypes: BoardObject["type"][] = [
     "rect",
@@ -140,7 +202,6 @@ export function drawBoardObject({ ctx, viewport }: DrawContext, objectItem: Boar
     "line",
     "sticky",
     "text",
-    "gridContainer",
   ];
 
   if (!shapeTypes.includes(objectItem.type)) {
@@ -148,11 +209,11 @@ export function drawBoardObject({ ctx, viewport }: DrawContext, objectItem: Boar
   }
 
   if (objectItem.type === "sticky") {
-    drawSticky(ctx, objectItem, point.x, point.y);
+    drawSticky(ctx, objectItem, point.x, point.y, theme);
     return;
   }
 
-  drawBasicShape(ctx, objectItem, point.x, point.y);
+  drawBasicShape(ctx, objectItem, point.x, point.y, theme);
 }
 
 export function drawSelectionRing(

@@ -221,6 +221,7 @@ const SAFE_DETERMINISTIC_INTENT_PREFIXES = [
   "move-",
   "clear-board",
   "delete",
+  "arrange-",
   "align-",
   "distribute-",
   "fit-frame",

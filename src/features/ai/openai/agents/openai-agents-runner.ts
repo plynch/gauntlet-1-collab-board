@@ -87,6 +87,7 @@ const OPENAI_AGENTS_SYSTEM_PROMPT = [
   "When user says across screen/viewport/canvas, include viewportBounds in layout tools that support it.",
   "When user says middle/center for grid layout, set centerInViewport=true and include viewportBounds in arrangeObjectsInGrid.",
   "For spacing across screen: alignObjects first (middle for horizontal, center for vertical), then distributeObjects with viewportBounds.",
+  "For requests like 'arrange ... on the right/left/top/bottom side', use moveObjects with toViewportSide (not distributeObjects).",
   "Layout math hint: step=(end-start)/(count-1); use object centers for distribution.",
   "When user asks to create/add sticky notes, you must create new stickies via createStickyNote or createStickyBatch.",
   "Do not satisfy create-sticky requests by mutating existing selected objects.",

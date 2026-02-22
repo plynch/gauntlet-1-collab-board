@@ -31,6 +31,7 @@ export type BoardPermissions = {
 
 export type BoardObjectKind =
   | "sticky"
+  | "text"
   | "rect"
   | "circle"
   | "gridContainer"

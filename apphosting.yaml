@@ -1,6 +1,6 @@
 env:
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY
-    value: "AIzaSyD0B87rze2jkocjWxxsIwnj_H60jkxkV78"
+    secret: NEXT_PUBLIC_FIREBASE_API_KEY
     availability: [ BUILD, RUNTIME ]
 
   - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN

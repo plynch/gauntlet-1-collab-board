@@ -6,9 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
  * Returns whether e2e route enabled is true.
  */
 function isE2eRouteEnabled(): boolean {
-  return (
-    process.env.NODE_ENV !== "production" || process.env.ENABLE_E2E_LAB === "1"
-  );
+  return process.env.NODE_ENV !== "production";
 }
 
 /**

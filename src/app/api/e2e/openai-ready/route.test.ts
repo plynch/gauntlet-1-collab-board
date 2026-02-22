@@ -12,6 +12,7 @@ const originalOpenAiModel = process.env.OPENAI_MODEL;
 const originalOpenAiReadyValidate = process.env.OPENAI_READY_VALIDATE;
 const originalAiPlannerMode = process.env.AI_PLANNER_MODE;
 const originalOpenAiRuntime = process.env.OPENAI_RUNTIME;
+const originalNodeEnv = process.env.NODE_ENV;
 
 afterEach(() => {
   if (originalAiEnableOpenAi === undefined) {
@@ -48,6 +49,12 @@ afterEach(() => {
     delete process.env.OPENAI_RUNTIME;
   } else {
     process.env.OPENAI_RUNTIME = originalOpenAiRuntime;
+  }
+
+  if (originalNodeEnv === undefined) {
+    delete process.env.NODE_ENV;
+  } else {
+    process.env.NODE_ENV = originalNodeEnv;
   }
 });
 
@@ -131,5 +138,14 @@ describe("GET /api/e2e/openai-ready", () => {
     };
     expect(payload.ready).toBe(true);
     expect(payload.runtime).toBe("chat-completions");
+  });
+
+  it("returns 404 when running in production", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.AI_ENABLE_OPENAI = "true";
+    process.env.OPENAI_API_KEY = "test-openai-key";
+
+    const response = await GET();
+    expect(response.status).toBe(404);
   });
 });

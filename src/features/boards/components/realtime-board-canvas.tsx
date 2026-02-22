@@ -77,6 +77,11 @@ import {
   toRoundedConnectorPath,
 } from "@/features/boards/components/realtime-canvas/connector-routing-geometry";
 import {
+  DEFAULT_SWOT_SECTION_TITLES,
+  getDefaultSectionTitles,
+  normalizeSectionValues,
+} from "@/features/boards/components/realtime-canvas/grid-section-utils";
+import {
   OnlineUsersList,
   RemoteCursorLayer,
 } from "@/features/boards/components/realtime-canvas/render-primitives";
@@ -317,12 +322,6 @@ const BOARD_GRID_MINOR_LINE_COLOR = "var(--canvas-grid-minor)";
 const BOARD_GRID_MAJOR_LINE_COLOR = "var(--canvas-grid-major)";
 const BOARD_GRID_SUPER_MAJOR_LINE_COLOR = "var(--canvas-grid-super)";
 const SWOT_SECTION_COLORS = ["#a7f3d0", "#fecaca", "#a7f3d0", "#fecaca"];
-const DEFAULT_SWOT_SECTION_TITLES = [
-  "Strengths",
-  "Weaknesses",
-  "Opportunities",
-  "Threats",
-] as const;
 const SWOT_TEMPLATE_TITLE = "SWOT Analysis";
 const GRID_CONTAINER_DEFAULT_GAP = 2;
 const GRID_CONTAINER_MAX_ROWS = 6;
@@ -413,35 +412,6 @@ function getSpawnOffset(index: number, step: number): BoardPoint {
     x: gridX * step,
     y: gridY * step,
   };
-}
-
-function getDefaultSectionTitles(rows: number, cols: number): string[] {
-  const count = Math.max(1, rows * cols);
-  if (rows === 2 && cols === 2) {
-    return Array.from(
-      { length: count },
-      (_, index) =>
-        DEFAULT_SWOT_SECTION_TITLES[index] ?? `Section ${index + 1}`,
-    );
-  }
-
-  return Array.from({ length: count }, (_, index) => `Section ${index + 1}`);
-}
-
-function normalizeSectionValues(
-  values: string[] | null | undefined,
-  count: number,
-  fallback: (index: number) => string,
-  maxLength: number,
-): string[] {
-  return Array.from({ length: count }, (_, index) => {
-    const value = values?.[index]?.trim() ?? "";
-    if (value.length === 0) {
-      return fallback(index).slice(0, maxLength);
-    }
-
-    return value.slice(0, maxLength);
-  });
 }
 
 function toRadians(degrees: number): number {

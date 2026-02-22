@@ -577,8 +577,13 @@ export function GridContainer({
             resolvedSectionTitles[cellIndex] ?? defaultSectionTitle(cellIndex);
           const cellNote = resolvedSectionNotes[cellIndex] ?? "";
           const isEditingSection = editingSectionIndex === cellIndex;
-          const cellColor = resolvedColors[cellIndex] ?? defaultColor;
-          const isTransparentCell = cellColor.toLowerCase() === "transparent";
+          const rawCellColor = resolvedColors[cellIndex] ?? defaultColor;
+          const isTransparentCell =
+            rawCellColor.toLowerCase() === "transparent";
+          const effectiveCellColor = isTransparentCell
+            ? containerColor ?? defaultColor
+            : rawCellColor;
+          const selectedSwatchColor = effectiveCellColor.toLowerCase();
 
           return (
             <div
@@ -588,7 +593,9 @@ export function GridContainer({
                 cellClassName,
               )}
               style={{
-                background: isTransparentCell ? "transparent" : cellColor,
+                background: isTransparentCell
+                  ? effectiveCellColor
+                  : rawCellColor,
                 minHeight: minCellHeight,
                 border: isDarkChrome
                   ? "1px solid rgba(148, 163, 184, 0.5)"
@@ -600,8 +607,7 @@ export function GridContainer({
                   <div className="absolute right-0 top-0 flex flex-nowrap gap-1 pl-2">
                     {GRID_SWATCHES.map((swatch) => {
                       const isSelected =
-                        resolvedColors[cellIndex]?.toLowerCase() ===
-                        swatch.toLowerCase();
+                        selectedSwatchColor === swatch.toLowerCase();
                       const isTransparent = swatch === "transparent";
                       return (
                         <button
@@ -609,8 +615,15 @@ export function GridContainer({
                           type="button"
                           aria-label={`Set cell ${cellIndex + 1} color`}
                           title={isTransparent ? "Transparent" : swatch}
-                          onPointerDown={(event) => event.stopPropagation()}
-                          onClick={() => handleColorChange(cellIndex, swatch)}
+                          onPointerDown={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                          }}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            handleColorChange(cellIndex, swatch);
+                          }}
                           disabled={!onCellColorChange}
                           className={cn(
                             "h-4 w-4 rounded-full border",

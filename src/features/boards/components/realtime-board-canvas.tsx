@@ -30,11 +30,11 @@ import type {
   ConnectorAnchor,
   PresenceUser,
 } from "@/features/boards/types";
-import { getBoardCommandErrorMessage } from "@/features/ai/board-command";
 import {
   AI_HELP_MESSAGE,
   AI_WELCOME_MESSAGE,
 } from "@/features/boards/components/realtime-canvas/ai-chat-content";
+import { sendBoardAiCommand } from "@/features/boards/components/realtime-canvas/ai-command-client";
 import {
   AI_FOOTER_COLLAPSED_HEIGHT,
   AI_FOOTER_DEFAULT_HEIGHT,
@@ -5733,65 +5733,19 @@ export default function RealtimeBoardCanvas({
             }
           : undefined;
 
-        const response = await fetch("/api/ai/board-command", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${idToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            boardId,
-            message: nextMessage,
-            selectedObjectIds: Array.from(selectedObjectIdsRef.current),
-            viewportBounds,
-          }),
+        const aiResult = await sendBoardAiCommand({
+          boardId,
+          message: nextMessage,
+          idToken,
+          selectedObjectIds: Array.from(selectedObjectIdsRef.current),
+          viewportBounds,
         });
-
-        if (!response.ok) {
-          let apiErrorMessage: string | undefined;
-          try {
-            const payload = (await response.json()) as { error?: unknown };
-            if (
-              typeof payload.error === "string" &&
-              payload.error.trim().length > 0
-            ) {
-              apiErrorMessage = payload.error;
-            }
-          } catch {
-            apiErrorMessage = undefined;
-          }
-          const assistantMessage = getBoardCommandErrorMessage({
-            status: response.status,
-          });
-          const chatErrorText =
-            response.status === 504
-              ? assistantMessage
-              : apiErrorMessage ?? assistantMessage;
-          appendAssistantMessage(chatErrorText);
-          return;
-        }
-
-        const payload = (await response.json()) as {
-          assistantMessage?: unknown;
-          selectionUpdate?: {
-            mode: "clear" | "replace";
-            objectIds: string[];
-          };
-        };
-        const assistantMessage =
-          typeof payload.assistantMessage === "string" &&
-          payload.assistantMessage.trim()
-            ? payload.assistantMessage
-            : "AI agent coming soon!";
-        applySelectionUpdate(payload.selectionUpdate);
-
-        appendAssistantMessage(assistantMessage);
+        applySelectionUpdate(aiResult.selectionUpdate);
+        appendAssistantMessage(aiResult.assistantMessage);
       } catch {
-        const assistantMessage = getBoardCommandErrorMessage({
-          status: null,
-        });
-
-        appendAssistantMessage(assistantMessage);
+        appendAssistantMessage(
+          "Your session expired. Please sign in again to use the AI assistant.",
+        );
       } finally {
         setIsAiSubmitting(false);
       }

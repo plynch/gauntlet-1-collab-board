@@ -26,7 +26,8 @@
     "typecheck": "tsc --noEmit",
     "firebase:emulators": "firebase emulators:start --only auth,firestore",
     "firebase:emulators:ui": "firebase emulators:start --only auth,firestore --ui",
-    "secrets:sync:apphosting": "node scripts/sync-apphosting-secrets.mjs"
+    "secrets:sync:apphosting": "node scripts/sync-apphosting-secrets.mjs",
+    "lint:canvas-size": "node scripts/check-canvas-file-sizes.mjs"
   },
   "dependencies": {
     "@langchain/core": "^0.3.79",

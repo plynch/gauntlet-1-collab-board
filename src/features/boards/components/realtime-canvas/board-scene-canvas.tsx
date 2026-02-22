@@ -12,48 +12,60 @@ import {
 } from "firebase/firestore";
 import {
   type PointerEvent,
-  type RefObject,
   type WheelEvent,
   useCallback,
-  useEffect,
   useMemo,
+  useEffect,
+  type RefObject,
   useRef,
   useState,
 } from "react";
 import type { User } from "firebase/auth";
 
-import { getFirebaseClientDb } from "@/lib/firebase/client";
+import { getDefaultObjectColor } from "@/features/boards/components/realtime-canvas/board-object-helpers";
 import {
-  toBoardObject,
-} from "@/features/boards/components/realtime-canvas/board-doc-parsers";
-import { getDefaultObjectColor, getObjectLabel } from "@/features/boards/components/realtime-canvas/board-object-helpers";
-import { BoardObjectKind, type BoardObject, type BoardPermissions } from "@/features/boards/types";
+  type BoardObject,
+  type BoardObjectKind,
+  type BoardPermissions,
+} from "@/features/boards/types";
 import {
   drawBoardObject,
   drawCanvasGrid,
   drawSelectionRing,
   type DrawContext,
 } from "@/features/boards/components/realtime-canvas/canvas-draw-primitives";
+import { drawConnectorRoute } from "@/features/boards/components/realtime-canvas/canvas-connector-draw";
 import { drawGridContainerSections } from "@/features/boards/components/realtime-canvas/canvas-grid-container-draw";
 import {
   getObjectHitTarget,
   projectClientToBoard,
   type CanvasPoint,
 } from "@/features/boards/components/realtime-canvas/canvas-hit-test";
+import { buildConnectorRouteEngine } from "@/features/boards/components/realtime-canvas/use-connector-routing-engine";
+import {
+  BOARD_SCENE_CANVAS_PARSER_OPTIONS,
+  BOARD_SCENE_RENDER_TYPES,
+  CANVAS_ACTION_BUTTON_STYLE,
+  clamp,
+  roundCanvasPoint,
+  toCanvasPointString,
+  type Viewport,
+  useObservedSize,
+  type BoardObjectParserOptions,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  ZOOM_STEP,
+} from "@/features/boards/components/realtime-canvas/board-scene-utils";
 import { useTheme } from "@/features/theme/use-theme";
+import { getFirebaseClientDb } from "@/lib/firebase/client";
+import { toBoardObject } from "@/features/boards/components/realtime-canvas/board-doc-parsers";
 
-type BoardObjectParserOptions = Parameters<typeof toBoardObject>[2];
+const parserOptions: BoardObjectParserOptions = BOARD_SCENE_CANVAS_PARSER_OPTIONS;
 
 type RealtimeBoardCanvasProps = {
   boardId: string;
   user: User;
   permissions: BoardPermissions;
-};
-
-type Viewport = {
-  x: number;
-  y: number;
-  scale: number;
 };
 
 type DragMode = "none" | "pan" | "move";
@@ -72,154 +84,6 @@ type DragState = {
   initialObjectY: number;
 };
 
-const BOARD_SCENE_RENDER_TYPES = new Set<BoardObjectKind>([
-  "sticky",
-  "text",
-  "rect",
-  "circle",
-  "triangle",
-  "star",
-  "line",
-  "gridContainer",
-  "connectorUndirected",
-  "connectorArrow",
-  "connectorBidirectional",
-]);
-
-const parserOptions: BoardObjectParserOptions = {
-  gridContainerMaxRows: 6,
-  gridContainerMaxCols: 6,
-  gridContainerDefaultGap: 2,
-};
-
-const ZOOM_MIN = 0.2;
-const ZOOM_MAX = 4;
-const ZOOM_STEP = 0.1;
-const CANVAS_ACTION_BUTTON_STYLE: Record<string, string> = {
-  width: "36px",
-  height: "36px",
-  borderRadius: "9px",
-  border: "1px solid var(--border)",
-  background: "var(--surface)",
-  color: "var(--text)",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontSize: "12px",
-  cursor: "pointer",
-};
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function roundCanvasPoint(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
-function toCanvasPointString(point: CanvasPoint): string {
-  return `${roundCanvasPoint(point.x)},${roundCanvasPoint(point.y)}`;
-}
-
-function drawConnector(
-  ctx: CanvasRenderingContext2D,
-  from: BoardObject,
-  to: BoardObject,
-  viewport: Viewport,
-): void {
-  const fromPoint = {
-    x: from.x + from.width / 2,
-    y: from.y + from.height / 2,
-  };
-  const toPoint = {
-    x: to.x + to.width / 2,
-    y: to.y + to.height / 2,
-  };
-  const fromScreen = {
-    x: viewport.x + fromPoint.x * viewport.scale,
-    y: viewport.y + fromPoint.y * viewport.scale,
-  };
-  const toScreen = {
-    x: viewport.x + toPoint.x * viewport.scale,
-    y: viewport.y + toPoint.y * viewport.scale,
-  };
-
-  const stroke = getDefaultObjectColor("connectorArrow");
-  const label = getObjectLabel(from.type);
-  const arrowLength = Math.min(
-    12,
-    Math.max(6, 12 * viewport.scale),
-  );
-
-  ctx.save();
-  ctx.strokeStyle = stroke;
-  ctx.lineWidth = Math.max(1.5, 1.75 * viewport.scale);
-  ctx.beginPath();
-  ctx.moveTo(fromScreen.x, fromScreen.y);
-  ctx.lineTo(toScreen.x, toScreen.y);
-  ctx.stroke();
-
-  const angle = Math.atan2(
-    toScreen.y - fromScreen.y,
-    toScreen.x - fromScreen.x,
-  );
-  ctx.beginPath();
-  ctx.moveTo(toScreen.x, toScreen.y);
-  ctx.lineTo(
-    toScreen.x - arrowLength * Math.cos(angle - Math.PI / 6),
-    toScreen.y - arrowLength * Math.sin(angle - Math.PI / 6),
-  );
-  ctx.lineTo(
-    toScreen.x - arrowLength * Math.cos(angle + Math.PI / 6),
-    toScreen.y - arrowLength * Math.sin(angle + Math.PI / 6),
-  );
-  ctx.closePath();
-  ctx.fillStyle = stroke;
-  ctx.fill();
-  ctx.restore();
-
-  if (from.text) {
-    ctx.save();
-    ctx.fillStyle = "rgba(15,23,42,0.7)";
-    ctx.font = "11px ui-sans-serif, system-ui, -apple-system";
-    ctx.fillText(`${label}: ${from.text}`, toScreen.x + 8, toScreen.y + 8);
-    ctx.restore();
-  }
-}
-
-function useObservedSize(ref: RefObject<HTMLElement | null>): {
-  width: number;
-  height: number;
-} {
-  const [size, setSize] = useState({ width: 1, height: 1 });
-
-  useEffect(() => {
-    const node = ref.current;
-    if (!node) {
-      return;
-    }
-
-    const observer = new ResizeObserver(() => {
-      const rect = node.getBoundingClientRect();
-      setSize({
-        width: Math.max(1, Math.floor(rect.width)),
-        height: Math.max(1, Math.floor(rect.height)),
-      });
-    });
-
-    observer.observe(node);
-    const initial = node.getBoundingClientRect();
-    setSize({
-      width: Math.max(1, Math.floor(initial.width)),
-      height: Math.max(1, Math.floor(initial.height)),
-    });
-
-    return () => observer.disconnect();
-  }, [ref]);
-
-  return size;
-}
-
 export default function BoardSceneCanvas({
   boardId,
   user,
@@ -232,6 +96,7 @@ export default function BoardSceneCanvas({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const objectsRef = useRef<BoardObject[]>([]);
   const dragStateRef = useRef<DragState | null>(null);
+  const connectorRouteEngine = useMemo(() => buildConnectorRouteEngine(), []);
 
   const [objects, setObjects] = useState<BoardObject[]>([]);
   const [viewport, setViewport] = useState<Viewport>({ x: 20, y: 20, scale: 1 });
@@ -265,7 +130,7 @@ export default function BoardSceneCanvas({
             toBoardObject(snapshotItem.id, snapshotItem.data(), parserOptions),
           )
           .filter((item): item is BoardObject => item !== null)
-          .sort((left, right) => left.zIndex - right.zIndex);
+          .sort((left: BoardObject, right: BoardObject) => left.zIndex - right.zIndex);
 
         setObjects(next);
         objectsRef.current = next;
@@ -343,7 +208,18 @@ export default function BoardSceneCanvas({
       if (!from || !to) {
         continue;
       }
-      drawConnector(context, from, to, viewport);
+      const route = connectorRouteEngine.resolveRoute(
+        connector.id,
+        from,
+        to,
+        objects,
+        containerWidth,
+        containerHeight,
+        viewport,
+      );
+      if (route) {
+        drawConnectorRoute(context, route, from, to, viewport);
+      }
     }
 
     if (selectedObjectId) {
@@ -352,7 +228,16 @@ export default function BoardSceneCanvas({
         drawSelectionRing(drawContext, selected);
       }
     }
-  }, [containerHeight, containerWidth, objects, resolvedTheme, selectedObjectId, viewport, boardObjectById]);
+  }, [
+    containerHeight,
+    containerWidth,
+    objects,
+    resolvedTheme,
+    selectedObjectId,
+    viewport,
+    boardObjectById,
+    connectorRouteEngine,
+  ]);
 
   const projectPointer = useCallback(
     (clientX: number, clientY: number): CanvasPoint => {

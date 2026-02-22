@@ -6,9 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
-  type ChangeEvent as ReactChangeEvent,
   type FormEvent as ReactFormEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { User } from "firebase/auth";
@@ -34,6 +32,17 @@ import type {
 } from "@/features/boards/types";
 import { getBoardCommandErrorMessage } from "@/features/ai/board-command";
 import {
+  AI_HELP_MESSAGE,
+  AI_WELCOME_MESSAGE,
+} from "@/features/boards/components/realtime-canvas/ai-chat-content";
+import {
+  AI_FOOTER_COLLAPSED_HEIGHT,
+  AI_FOOTER_DEFAULT_HEIGHT,
+  AI_FOOTER_HEIGHT_STORAGE_KEY,
+  clampAiFooterHeight,
+} from "@/features/boards/components/realtime-canvas/ai-footer-config";
+import { toBoardErrorMessage } from "@/features/boards/components/realtime-canvas/board-error";
+import {
   getPathLength,
   getPathMidPoint,
   getPointSequenceBounds,
@@ -57,6 +66,10 @@ import {
   getRemoteCursors,
   usePresenceClock,
 } from "@/features/boards/components/realtime-canvas/use-presence-sync";
+import {
+  isLocalAiHelpCommand,
+  useAiChatState,
+} from "@/features/boards/components/realtime-canvas/use-ai-chat-state";
 import {
   createRealtimeWriteMetrics,
   isWriteMetricsDebugEnabled,
@@ -91,29 +104,6 @@ const ZOOM_BUTTON_STEP_PERCENT = 5;
 const ZOOM_WHEEL_INTENSITY = 0.0065;
 const ZOOM_WHEEL_MAX_EFFECTIVE_DELTA = 180;
 const WRITE_METRICS_LOG_INTERVAL_MS = 15_000;
-const AI_HELP_MESSAGE = [
-  "🤖 Quick AI Help",
-  "",
-  "Try one of these:",
-  "- Add a yellow sticky note that says 'User Research'",
-  "- Create a blue rectangle at position 100,200",
-  "- Move all the pink sticky notes to the right side",
-  "- Create a SWOT analysis template",
-  "",
-  "You can ask in plain language anytime.",
-  "Tip: Up/Down recalls command history.",
-].join("\n");
-const AI_WELCOME_MESSAGE = [
-  "👋 Hi! I can edit this board with natural language.",
-  "",
-  "Examples:",
-  "• Add a yellow sticky note that says 'User Research'",
-  "• Create a blue rectangle at position 100,200",
-  "• Move all the pink sticky notes to the right side",
-  "• Create a SWOT analysis template",
-  "",
-  "Use normal language first. Type /help if you want quick examples ✨",
-].join("\n");
 
 type RealtimeBoardCanvasProps = {
   boardId: string;
@@ -142,12 +132,6 @@ type DragState = {
   lastSentAt: number;
   hasMoved: boolean;
   collapseToObjectIdOnClick: string | null;
-};
-
-type ChatMessage = {
-  id: string;
-  role: "user" | "assistant";
-  text: string;
 };
 
 type AiFooterResizeState = {
@@ -301,11 +285,6 @@ const RIGHT_PANEL_WIDTH = 238;
 const COLLAPSED_PANEL_WIDTH = 48;
 const PANEL_COLLAPSE_ANIMATION =
   "220ms cubic-bezier(0.22, 1, 0.36, 1)";
-const AI_FOOTER_DEFAULT_HEIGHT = 220;
-const AI_FOOTER_MIN_HEIGHT = 140;
-const AI_FOOTER_MAX_HEIGHT = 460;
-const AI_FOOTER_COLLAPSED_HEIGHT = 34;
-const AI_FOOTER_HEIGHT_STORAGE_KEY = "collabboard-ai-footer-height-v1";
 const SNAP_TO_GRID_STORAGE_KEY = "collabboard-snap-to-grid-v1";
 const STICKY_TEXT_HOLD_DRAG_DELAY_MS = 120;
 const GRID_CELL_SIZE = 20;
@@ -369,16 +348,6 @@ const INITIAL_VIEWPORT: ViewportState = {
  */
 function clampScale(nextScale: number): number {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, nextScale));
-}
-
-/**
- * Handles clamp ai footer height.
- */
-function clampAiFooterHeight(nextHeight: number): number {
-  return Math.min(
-    AI_FOOTER_MAX_HEIGHT,
-    Math.max(AI_FOOTER_MIN_HEIGHT, Math.round(nextHeight)),
-  );
 }
 
 /**
@@ -452,13 +421,6 @@ function getSpawnOffset(index: number, step: number): BoardPoint {
     x: gridX * step,
     y: gridY * step,
   };
-}
-
-/**
- * Creates chat message id.
- */
-function createChatMessageId(prefix: "u" | "a"): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 /**
@@ -2428,35 +2390,6 @@ function toPresenceUser(
 }
 
 /**
- * Handles to board error message.
- */
-function toBoardErrorMessage(error: unknown, fallback: string): string {
-  if (typeof error === "object" && error !== null) {
-    const candidate = error as {
-      code?: unknown;
-    };
-
-    const code = typeof candidate.code === "string" ? candidate.code : null;
-
-    if (code === "permission-denied") {
-      return "Your access to this board changed. Refresh or return to My Boards.";
-    }
-
-    if (code === "unauthenticated") {
-      return "Your session expired. Please sign in again.";
-    }
-
-    if (code === "unavailable" || code === "deadline-exceeded") {
-      return "Realtime sync is temporarily unavailable. Please try again.";
-    }
-
-    return fallback;
-  }
-
-  return fallback;
-}
-
-/**
  * Creates a clipboard-safe clone of a board object.
  */
 function cloneBoardObjectForClipboard(objectItem: BoardObject): BoardObject {
@@ -2576,19 +2509,21 @@ export default function RealtimeBoardCanvas({
   const [aiFooterHeight, setAiFooterHeight] = useState(
     AI_FOOTER_DEFAULT_HEIGHT,
   );
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => [
-    {
-      id: createChatMessageId("a"),
-      role: "assistant",
-      text: AI_WELCOME_MESSAGE,
-    },
-  ]);
-  const [chatInput, setChatInput] = useState("");
   const [isAiSubmitting, setIsAiSubmitting] = useState(false);
   const [isSwotTemplateCreating, setIsSwotTemplateCreating] =
     useState(false);
-  const [chatInputHistory, setChatInputHistory] = useState<string[]>([]);
-  const [chatInputHistoryIndex, setChatInputHistoryIndex] = useState(-1);
+  const {
+    chatMessages,
+    chatInput,
+    appendUserMessage,
+    appendAssistantMessage,
+    clearChatInputForSubmit,
+    resetHistoryNavigation,
+    handleChatInputChange,
+    handleChatInputKeyDown,
+  } = useAiChatState({
+    welcomeMessage: AI_WELCOME_MESSAGE,
+  });
   const [selectionLabelDraft, setSelectionLabelDraft] = useState("");
   const [cursorBoardPosition, setCursorBoardPosition] = useState<BoardPoint | null>(
     null,
@@ -2598,7 +2533,6 @@ export default function RealtimeBoardCanvas({
     width: 0,
     height: 0,
   });
-  const chatInputHistoryDraftRef = useRef("");
 
   const boardColor = useMemo(() => hashToColor(user.uid), [user.uid]);
   const objectsCollectionRef = useMemo(
@@ -5737,55 +5671,22 @@ export default function RealtimeBoardCanvas({
       nextMessage: string,
       options?: { appendUserMessage?: boolean; clearInput?: boolean },
     ) => {
-      const appendUserMessage = options?.appendUserMessage ?? true;
-      const clearInput = options?.clearInput ?? false;
+      const shouldAppendUserMessage = options?.appendUserMessage ?? true;
+      const shouldClearInput = options?.clearInput ?? false;
       const trimmedMessage = nextMessage.trim();
       if (trimmedMessage.length === 0 || isAiSubmitting) {
         return;
       }
 
-      if (appendUserMessage) {
-        setChatMessages((previous) => [
-          ...previous,
-          {
-            id: createChatMessageId("u"),
-            role: "user",
-            text: nextMessage,
-          },
-        ]);
-
-        setChatInputHistory((previous) => {
-          const filtered = previous.filter((item) => item !== nextMessage);
-          filtered.push(nextMessage);
-          return filtered.slice(-50);
-        });
-        setChatInputHistoryIndex(-1);
-        chatInputHistoryDraftRef.current = "";
+      if (shouldAppendUserMessage) {
+        appendUserMessage(nextMessage);
       }
-      if (clearInput) {
-        setChatInput("");
-        setChatInputHistoryIndex(-1);
-        chatInputHistoryDraftRef.current = "";
+      if (shouldClearInput) {
+        clearChatInputForSubmit();
       }
 
-      const localCommand = trimmedMessage.toLowerCase();
-      const localCommandResponse =
-        localCommand === "/help" ||
-        localCommand === "/commands" ||
-        localCommand === "help" ||
-        localCommand === "commands" ||
-        localCommand === "/?"
-          ? AI_HELP_MESSAGE
-          : null;
-      if (localCommandResponse) {
-        setChatMessages((previous) => [
-          ...previous,
-          {
-            id: createChatMessageId("a"),
-            role: "assistant",
-            text: localCommandResponse,
-          },
-        ]);
+      if (isLocalAiHelpCommand(trimmedMessage)) {
+        appendAssistantMessage(AI_HELP_MESSAGE);
         return;
       }
 
@@ -5801,7 +5702,7 @@ export default function RealtimeBoardCanvas({
           return;
         }
 
-        const objectIdsInBoard = new Set(objects.map((item) => item.id));
+        const objectIdsInBoard = new Set(objectsByIdRef.current.keys());
         const normalized = Array.from(
           new Set(
             selectionUpdate.objectIds
@@ -5866,14 +5767,7 @@ export default function RealtimeBoardCanvas({
             response.status === 504
               ? assistantMessage
               : apiErrorMessage ?? assistantMessage;
-          setChatMessages((previous) => [
-            ...previous,
-            {
-              id: createChatMessageId("a"),
-              role: "assistant",
-              text: chatErrorText,
-            },
-          ]);
+          appendAssistantMessage(chatErrorText);
           return;
         }
 
@@ -5891,32 +5785,25 @@ export default function RealtimeBoardCanvas({
             : "AI agent coming soon!";
         applySelectionUpdate(payload.selectionUpdate);
 
-        setChatMessages((previous) => [
-          ...previous,
-          {
-            id: createChatMessageId("a"),
-            role: "assistant",
-            text: assistantMessage,
-          },
-        ]);
+        appendAssistantMessage(assistantMessage);
       } catch {
         const assistantMessage = getBoardCommandErrorMessage({
           status: null,
         });
 
-        setChatMessages((previous) => [
-          ...previous,
-          {
-            id: createChatMessageId("a"),
-            role: "assistant",
-            text: assistantMessage,
-          },
-        ]);
+        appendAssistantMessage(assistantMessage);
       } finally {
         setIsAiSubmitting(false);
       }
     },
-    [boardId, isAiSubmitting, objects, user],
+    [
+      appendAssistantMessage,
+      appendUserMessage,
+      boardId,
+      clearChatInputForSubmit,
+      isAiSubmitting,
+      user,
+    ],
   );
 
   const handleAiChatSubmit = useCallback(
@@ -5932,64 +5819,6 @@ export default function RealtimeBoardCanvas({
       });
     },
     [chatInput, isAiSubmitting, submitAiCommandMessage],
-  );
-
-  const handleChatInputChange = useCallback(
-    (event: ReactChangeEvent<HTMLInputElement>) => {
-      setChatInput(event.target.value);
-      setChatInputHistoryIndex(-1);
-      chatInputHistoryDraftRef.current = event.target.value;
-    },
-    [],
-  );
-
-  const handleChatInputKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLInputElement>) => {
-      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
-        return;
-      }
-
-      if (chatInputHistory.length === 0 || isAiSubmitting) {
-        return;
-      }
-
-      event.preventDefault();
-
-      if (event.key === "ArrowUp") {
-        const nextIndex =
-          chatInputHistoryIndex < 0
-            ? chatInputHistory.length - 1
-            : Math.max(0, chatInputHistoryIndex - 1);
-
-        if (chatInputHistoryIndex < 0) {
-          chatInputHistoryDraftRef.current = chatInput;
-        }
-
-        setChatInputHistoryIndex(nextIndex);
-        setChatInput(chatInputHistory[nextIndex] ?? "");
-        return;
-      }
-
-      if (chatInputHistoryIndex < 0) {
-        return;
-      }
-
-      if (chatInputHistoryIndex >= chatInputHistory.length - 1) {
-        setChatInputHistoryIndex(-1);
-        setChatInput(chatInputHistoryDraftRef.current);
-        return;
-      }
-
-      const nextIndex = chatInputHistoryIndex + 1;
-      setChatInputHistoryIndex(nextIndex);
-      setChatInput(chatInputHistory[nextIndex] ?? "");
-    },
-    [
-      chatInput,
-      chatInputHistory,
-      chatInputHistoryIndex,
-      isAiSubmitting,
-    ],
   );
 
   const persistObjectLabelText = useCallback(
@@ -6053,23 +5882,22 @@ export default function RealtimeBoardCanvas({
           return;
         }
 
-        setChatMessages((previous) => [
-          ...previous,
-          {
-            id: createChatMessageId("a"),
-            role: "assistant",
-            text: "Created SWOT analysis template.",
-          },
-        ]);
+        appendAssistantMessage("Created SWOT analysis template.");
         setSelectedObjectIds([swotObjectId]);
       } finally {
         setIsSwotTemplateCreating(false);
         setIsAiSubmitting(false);
-        setChatInputHistoryIndex(-1);
-        chatInputHistoryDraftRef.current = "";
+        resetHistoryNavigation();
       }
     })();
-  }, [canEdit, isAiSubmitting, createSwotTemplate, isSwotTemplateCreating]);
+  }, [
+    appendAssistantMessage,
+    canEdit,
+    createSwotTemplate,
+    isAiSubmitting,
+    isSwotTemplateCreating,
+    resetHistoryNavigation,
+  ]);
 
   const handleStagePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -9740,7 +9568,9 @@ export default function RealtimeBoardCanvas({
                 <input
                   value={chatInput}
                   onChange={handleChatInputChange}
-                  onKeyDown={handleChatInputKeyDown}
+                  onKeyDown={(event) =>
+                    handleChatInputKeyDown(event, isAiSubmitting)
+                  }
                   disabled={isAiSubmitting}
                   placeholder="Ask the AI assistant to update this board..."
                   maxLength={500}

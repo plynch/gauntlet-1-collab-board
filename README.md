@@ -1,6 +1,6 @@
 # 🧠 CollabBoard
 
-Realtime collaborative whiteboard with an OpenAI-powered command drawer, deterministic fallbacks, and production-grade tracing.
+Real-time collaborative whiteboard with an OpenAI-powered command drawer, deterministic fallbacks, and production-grade tracing.
 
 ## 📌 Quick Links
 

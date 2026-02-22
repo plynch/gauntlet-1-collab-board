@@ -2974,13 +2974,9 @@ export default function RealtimeBoardCanvas({
         600,
       );
 
-      const palette =
-        objectItem.gridCellColors && objectItem.gridCellColors.length > 0
-          ? objectItem.gridCellColors
-          : ["#d1fae5", "#fee2e2", "#dbeafe", "#fef3c7"];
       const nextCellColors = Array.from(
         { length: sectionCount },
-        (_, index) => palette[index % palette.length] ?? "#e2e8f0",
+        (_, index) => objectItem.gridCellColors?.[index] ?? "transparent",
       );
       const geometry = getCurrentObjectGeometry(objectId) ?? {
         x: objectItem.x,
@@ -4894,12 +4890,23 @@ export default function RealtimeBoardCanvas({
                 const gridTotalCells = isGridContainer
                   ? gridRows * gridCols
                   : 0;
-                const gridCellColors =
-                  isGridContainer &&
-                  objectItem.gridCellColors &&
-                  objectItem.gridCellColors.length > 0
-                    ? objectItem.gridCellColors
-                    : SWOT_SECTION_COLORS;
+                const gridCellColors = isGridContainer
+                  ? Array.from({ length: gridTotalCells }, (_, index) => {
+                      const explicitColor = objectItem.gridCellColors?.[index];
+                      if (
+                        typeof explicitColor === "string" &&
+                        explicitColor.trim().length > 0
+                      ) {
+                        return explicitColor;
+                      }
+
+                      if (gridRows === 2 && gridCols === 2) {
+                        return SWOT_SECTION_COLORS[index] ?? "transparent";
+                      }
+
+                      return "transparent";
+                    })
+                  : [];
                 const gridFallbackTitles = isGridContainer
                   ? getDefaultSectionTitles(gridRows, gridCols)
                   : [];
@@ -5956,19 +5963,7 @@ export default function RealtimeBoardCanvas({
                           cellClassName="rounded-lg border-2 p-2"
                           containerColor={renderedObjectColor}
                           containerTitle={gridContainerTitle}
-                          cellColors={Array.from(
-                            { length: gridTotalCells },
-                            (_, index) => {
-                              const baseColor =
-                                gridCellColors[index % gridCellColors.length] ??
-                                "#e2e8f0";
-                              return getRenderedObjectColor(
-                                baseColor,
-                                "sticky",
-                                resolvedTheme,
-                              );
-                            },
-                          )}
+                          cellColors={gridCellColors}
                           sectionTitles={gridSectionTitles}
                           chromeTone={resolvedTheme}
                           sectionTitleTextColor={
@@ -6047,9 +6042,7 @@ export default function RealtimeBoardCanvas({
                                   const nextColors = Array.from(
                                     { length: gridTotalCells },
                                     (_, index) =>
-                                      gridCellColors[
-                                        index % gridCellColors.length
-                                      ] ?? "#e2e8f0",
+                                      gridCellColors[index] ?? "transparent",
                                   );
                                   nextColors[cellIndex] = color;
                                   void updateDoc(

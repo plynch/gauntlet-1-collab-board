@@ -9,6 +9,7 @@ import {
 import { boardTitleBodySchema } from "@/server/api/board-route-schemas";
 import {
   handleRouteError,
+  isValidDocId,
   readJsonBody,
   trimParam,
 } from "@/server/api/route-helpers";
@@ -60,6 +61,9 @@ export async function GET(request: NextRequest, context: BoardRouteContext) {
 
     if (!boardId) {
       return NextResponse.json({ error: "Missing board id." }, { status: 400 });
+    }
+    if (!isValidDocId(boardId)) {
+      return NextResponse.json({ error: "Invalid board id." }, { status: 400 });
     }
 
     const boardRef = getFirebaseAdminDb().collection("boards").doc(boardId);
@@ -115,6 +119,9 @@ export async function DELETE(request: NextRequest, context: BoardRouteContext) {
     if (!boardId) {
       return NextResponse.json({ error: "Missing board id." }, { status: 400 });
     }
+    if (!isValidDocId(boardId)) {
+      return NextResponse.json({ error: "Invalid board id." }, { status: 400 });
+    }
 
     const db = getFirebaseAdminDb();
     const boardRef = db.collection("boards").doc(boardId);
@@ -155,6 +162,9 @@ export async function PATCH(request: NextRequest, context: BoardRouteContext) {
 
     if (!boardId) {
       return NextResponse.json({ error: "Missing board id." }, { status: 400 });
+    }
+    if (!isValidDocId(boardId)) {
+      return NextResponse.json({ error: "Invalid board id." }, { status: 400 });
     }
 
     const db = getFirebaseAdminDb();

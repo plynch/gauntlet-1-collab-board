@@ -12,6 +12,7 @@ import { requireUser } from "@/server/auth/require-user";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+const BOARD_LIMIT_REACHED_ERROR = "BOARD_LIMIT_REACHED";
 
 type BoardDoc = {
   title?: unknown;
@@ -79,21 +80,6 @@ export async function POST(request: NextRequest) {
     const user = await requireUser(request);
     const db = getFirebaseAdminDb();
 
-    const existingBoardsSnapshot = await db
-      .collection("boards")
-      .where("ownerId", "==", user.uid)
-      .limit(MAX_OWNED_BOARDS)
-      .get();
-
-    if (existingBoardsSnapshot.size >= MAX_OWNED_BOARDS) {
-      return NextResponse.json(
-        {
-          error: `Board limit reached. Max ${MAX_OWNED_BOARDS} owned boards per user.`,
-        },
-        { status: 409 },
-      );
-    }
-
     const bodyResult = await readJsonBody(request);
     if (!bodyResult.ok) {
       return bodyResult.response;
@@ -109,17 +95,44 @@ export async function POST(request: NextRequest) {
 
     const title = parsedPayload.data.title;
     const boardRef = db.collection("boards").doc();
+    const boardQuery = db
+      .collection("boards")
+      .where("ownerId", "==", user.uid)
+      .limit(MAX_OWNED_BOARDS);
 
-    await boardRef.set({
-      title,
-      ownerId: user.uid,
-      openEdit: true,
-      openRead: true,
-      editorIds: [],
-      readerIds: [],
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    try {
+      await db.runTransaction(async (transaction) => {
+        const existingBoardsSnapshot = await transaction.get(boardQuery);
+
+        if (existingBoardsSnapshot.size >= MAX_OWNED_BOARDS) {
+          throw new Error(BOARD_LIMIT_REACHED_ERROR);
+        }
+
+        transaction.set(boardRef, {
+          title,
+          ownerId: user.uid,
+          openEdit: true,
+          openRead: true,
+          editorIds: [],
+          readerIds: [],
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === BOARD_LIMIT_REACHED_ERROR
+      ) {
+        return NextResponse.json(
+          {
+            error: `Board limit reached. Max ${MAX_OWNED_BOARDS} owned boards per user.`,
+          },
+          { status: 409 },
+        );
+      }
+      throw error;
+    }
 
     const createdSnapshot = await boardRef.get();
     const createdBoard = toBoardSummary(

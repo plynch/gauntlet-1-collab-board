@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { AuthError } from "@/server/auth/require-user";
 
+const DOC_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+
 export function getDebugMessage(error: unknown): string | undefined {
   if (process.env.NODE_ENV === "production") {
     return undefined;
@@ -25,6 +27,10 @@ export function trimParam(value: unknown): string | null {
 
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;
+}
+
+export function isValidDocId(value: string): boolean {
+  return DOC_ID_PATTERN.test(value);
 }
 
 export async function readJsonBody(

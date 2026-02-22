@@ -57,6 +57,122 @@ service cloud.firestore {
         && board.readerIds is list;
     }
 
+    function isAllowedBoardObjectType(value) {
+      return value in [
+        "sticky",
+        "text",
+        "rect",
+        "circle",
+        "gridContainer",
+        "line",
+        "connectorUndirected",
+        "connectorArrow",
+        "connectorBidirectional",
+        "triangle",
+        "star"
+      ];
+    }
+
+    function hasOnlyBoardObjectFields(data) {
+      return data.keys().hasOnly([
+        "type",
+        "zIndex",
+        "x",
+        "y",
+        "width",
+        "height",
+        "rotationDeg",
+        "color",
+        "text",
+        "fromObjectId",
+        "toObjectId",
+        "fromAnchor",
+        "toAnchor",
+        "fromX",
+        "fromY",
+        "toX",
+        "toY",
+        "gridRows",
+        "gridCols",
+        "gridGap",
+        "gridCellColors",
+        "containerTitle",
+        "gridSectionTitles",
+        "gridSectionNotes",
+        "containerId",
+        "containerSectionIndex",
+        "containerRelX",
+        "containerRelY",
+        "createdAt",
+        "updatedAt"
+      ]);
+    }
+
+    function hasValidOptionalNumberField(data, fieldName) {
+      return !(fieldName in data) || data[fieldName] is number || data[fieldName] == null;
+    }
+
+    function hasValidOptionalStringField(data, fieldName) {
+      return !(fieldName in data) || data[fieldName] is string || data[fieldName] == null;
+    }
+
+    function hasValidBoardObjectData(data) {
+      return hasOnlyBoardObjectFields(data)
+        && data.type is string
+        && isAllowedBoardObjectType(data.type)
+        && data.zIndex is number
+        && data.x is number
+        && data.y is number
+        && data.width is number
+        && data.height is number
+        && data.rotationDeg is number
+        && data.color is string
+        && data.text is string
+        && hasValidOptionalStringField(data, "fromObjectId")
+        && hasValidOptionalStringField(data, "toObjectId")
+        && hasValidOptionalStringField(data, "fromAnchor")
+        && hasValidOptionalStringField(data, "toAnchor")
+        && hasValidOptionalNumberField(data, "fromX")
+        && hasValidOptionalNumberField(data, "fromY")
+        && hasValidOptionalNumberField(data, "toX")
+        && hasValidOptionalNumberField(data, "toY")
+        && hasValidOptionalNumberField(data, "gridRows")
+        && hasValidOptionalNumberField(data, "gridCols")
+        && hasValidOptionalNumberField(data, "gridGap")
+        && (!( "gridCellColors" in data) || data.gridCellColors is list || data.gridCellColors == null)
+        && hasValidOptionalStringField(data, "containerTitle")
+        && (!( "gridSectionTitles" in data) || data.gridSectionTitles is list || data.gridSectionTitles == null)
+        && (!( "gridSectionNotes" in data) || data.gridSectionNotes is list || data.gridSectionNotes == null)
+        && hasValidOptionalStringField(data, "containerId")
+        && hasValidOptionalNumberField(data, "containerSectionIndex")
+        && hasValidOptionalNumberField(data, "containerRelX")
+        && hasValidOptionalNumberField(data, "containerRelY");
+    }
+
+    function hasValidPresenceData(data, userId) {
+      return data.keys().hasOnly([
+          "uid",
+          "displayName",
+          "email",
+          "color",
+          "active",
+          "cursorX",
+          "cursorY",
+          "lastSeenAtMs",
+          "lastSeenAt"
+        ])
+        && data.uid is string
+        && data.uid == userId
+        && (!( "displayName" in data) || data.displayName is string || data.displayName == null)
+        && (!( "email" in data) || data.email is string || data.email == null)
+        && (!( "color" in data) || data.color is string || data.color == null)
+        && data.active is bool
+        && hasValidOptionalNumberField(data, "cursorX")
+        && hasValidOptionalNumberField(data, "cursorY")
+        && hasValidOptionalNumberField(data, "lastSeenAtMs")
+        && (!( "lastSeenAt" in data) || data.lastSeenAt is timestamp || data.lastSeenAt == null);
+    }
+
     function isBoardUpdateSafe() {
       return request.resource.data.ownerId == resource.data.ownerId
         && request.resource.data.createdAt == resource.data.createdAt
@@ -87,7 +203,9 @@ service cloud.firestore {
         && request.resource.data.openEdit is bool
         && request.resource.data.openRead is bool
         && hasValidBoardFieldSet(request.resource.data)
-        && hasValidBoardFieldTypes(request.resource.data);
+        && hasValidBoardFieldTypes(request.resource.data)
+        && request.resource.data.editorIds.size() == 0
+        && request.resource.data.readerIds.size() == 0;
 
       allow get, list: if isSignedIn() && canReadBoardDoc(resource.data);
       allow update: if isSignedIn()
@@ -98,7 +216,9 @@ service cloud.firestore {
 
     match /boards/{boardId}/objects/{objectId} {
       allow read: if canReadBoard(boardId);
-      allow create, update, delete: if canEditBoard(boardId);
+      allow create, update: if canEditBoard(boardId)
+        && hasValidBoardObjectData(request.resource.data);
+      allow delete: if canEditBoard(boardId);
     }
 
     match /boards/{boardId}/presence/{userId} {
@@ -106,7 +226,8 @@ service cloud.firestore {
 
       allow create, update, delete: if canReadBoard(boardId)
         && isSignedIn()
-        && request.auth.uid == userId;
+        && request.auth.uid == userId
+        && hasValidPresenceData(request.resource.data, userId);
     }
   }
 }

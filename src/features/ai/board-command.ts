@@ -8,6 +8,7 @@ import type {
 export const MAX_BOARD_COMMAND_CHARS = 500;
 export const MAX_BOARD_COMMAND_SELECTION_IDS = 100;
 export const MCP_TEMPLATE_TIMEOUT_MS = 1_200;
+const BOARD_COMMAND_DOC_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 export type BoardCommandIntent = "swot-template" | "stub";
 
@@ -69,10 +70,12 @@ export function parseBoardCommandRequest(
     viewportBounds?: unknown;
   };
 
-  if (
-    typeof candidate.boardId !== "string" ||
-    candidate.boardId.trim().length === 0
-  ) {
+  if (typeof candidate.boardId !== "string") {
+    return null;
+  }
+
+  const boardId = candidate.boardId.trim();
+  if (boardId.length === 0 || !BOARD_COMMAND_DOC_ID_PATTERN.test(boardId)) {
     return null;
   }
 
@@ -120,7 +123,7 @@ export function parseBoardCommandRequest(
   }
 
   return {
-    boardId: candidate.boardId.trim(),
+    boardId,
     message,
     selectedObjectIds,
     viewportBounds,

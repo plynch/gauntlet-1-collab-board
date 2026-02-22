@@ -12,6 +12,7 @@ import {
 import { useAuthSession } from "@/features/auth/hooks/use-auth-session";
 import { useBoardLive } from "@/features/boards/hooks/use-board-live";
 import { copyBoardUrlToClipboard } from "@/features/boards/lib/board-share";
+import BoardCanvasErrorBoundary from "@/features/boards/components/board-canvas-error-boundary";
 import RealtimeBoardCanvas from "@/features/boards/components/realtime-board-canvas";
 import AppHeader, {
   HeaderBackLink,
@@ -456,11 +457,17 @@ export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
 
             {!boardLoading && board && permissions?.canRead ? (
               <div style={{ height: "100%", minHeight: 0, flex: 1 }}>
-                <RealtimeBoardCanvas
-                  boardId={boardId}
-                  user={user}
-                  permissions={permissions}
-                />
+                <BoardCanvasErrorBoundary
+                  onBackToBoards={() => {
+                    router.push("/");
+                  }}
+                >
+                  <RealtimeBoardCanvas
+                    boardId={boardId}
+                    user={user}
+                    permissions={permissions}
+                  />
+                </BoardCanvasErrorBoundary>
               </div>
             ) : null}
 

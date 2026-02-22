@@ -11,6 +11,7 @@ import {
 } from "@/server/api/board-route-schemas";
 import {
   handleRouteError,
+  isValidDocId,
   readJsonBody,
   trimParam,
 } from "@/server/api/route-helpers";
@@ -39,6 +40,9 @@ export async function PATCH(
 
     if (!boardId) {
       return NextResponse.json({ error: "Missing board id." }, { status: 400 });
+    }
+    if (!isValidDocId(boardId)) {
+      return NextResponse.json({ error: "Invalid board id." }, { status: 400 });
     }
 
     const bodyResult = await readJsonBody(request);

@@ -74,7 +74,6 @@ import {
   areGeometriesClose,
   arePointsClose,
   clampScale,
-  cloneBoardObjectForClipboard,
   CONNECTOR_ANCHORS,
   CONNECTOR_MIN_SEGMENT_SIZE,
   CORNER_HANDLES,
@@ -92,7 +91,6 @@ import {
   GRID_CELL_SIZE,
   hasMeaningfulRotation,
   isSnapEligibleObjectType,
-  mergeBounds,
   POSITION_WRITE_STEP,
   roundToStep,
   snapToGrid,
@@ -104,9 +102,6 @@ import {
   ZOOM_SLIDER_MAX_PERCENT,
   ZOOM_SLIDER_MIN_PERCENT,
   ZOOM_WHEEL_INTENSITY,
-  inflateObjectBounds,
-  type ConnectorRoutingObstacle,
-  type ObjectBounds,
   type ResolvedConnectorEndpoint,
 } from "@/features/boards/components/realtime-canvas/legacy/legacy-canvas-geometry";
 import {
@@ -119,13 +114,11 @@ import {
   CONNECTOR_HANDLE_SIZE,
   CONNECTOR_HIT_PADDING,
   CONNECTOR_SNAP_DISTANCE_PX,
-  CONNECTOR_VIEWPORT_CULL_PADDING_PX,
   CONTAINER_DRAG_THROTTLE_MS,
   CURSOR_MIN_MOVE_DISTANCE,
   CURSOR_THROTTLE_MS,
   DRAG_CLICK_SLOP_PX,
   DRAG_THROTTLE_MS,
-  DUPLICATE_OFFSET_PX,
   GRID_CONTAINER_DEFAULT_GAP,
   GRID_CONTAINER_MAX_COLS,
   GRID_CONTAINER_MAX_ROWS,
@@ -175,8 +168,10 @@ import type {
   StickyTextSyncState,
   ViewportState,
 } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-types";
-import { computeConnectorRoutes } from "@/features/boards/components/realtime-canvas/legacy/connector-route-runtime";
+import { useBoardSelectionAndConnectors } from "@/features/boards/components/realtime-canvas/legacy/use-board-selection-and-connectors";
 import { useClipboardShortcuts } from "@/features/boards/components/realtime-canvas/legacy/use-clipboard-shortcuts";
+import { useFpsMeter } from "@/features/boards/components/realtime-canvas/legacy/use-fps-meter";
+import { useObjectTemplateActions } from "@/features/boards/components/realtime-canvas/legacy/use-object-template-actions";
 import {
   DEFAULT_SWOT_SECTION_TITLES,
   getDefaultSectionTitles,
@@ -318,6 +313,7 @@ export default function RealtimeBoardCanvas({
     width: 0,
     height: 0,
   });
+  const fps = useFpsMeter();
 
   const boardColor = useMemo(() => hashToColor(user.uid), [user.uid]);
   const objectsCollectionRef = useMemo(
@@ -2482,187 +2478,23 @@ export default function RealtimeBoardCanvas({
     [canEdit, objectsCollectionRef, user.uid],
   );
 
-  const createObjectsFromTemplates = useCallback(
-    async (
-      templates: BoardObject[],
-      options: { offsetX: number; offsetY: number },
-    ) => {
-      if (!canEdit || templates.length === 0) {
-        return [];
-      }
-
-      const highestZIndex = Array.from(objectsByIdRef.current.values()).reduce(
-        (maxValue, objectItem) => Math.max(maxValue, objectItem.zIndex),
-        0,
-      );
-      const lowestZIndex = Array.from(objectsByIdRef.current.values()).reduce(
-        (minValue, objectItem) => Math.min(minValue, objectItem.zIndex),
-        0,
-      );
-      const sortedTemplates = [...templates].sort(
-        (left, right) => left.zIndex - right.zIndex,
-      );
-      const templateRefs = sortedTemplates.map((template) => ({
-        template,
-        docRef: doc(objectsCollectionRef),
-      }));
-      const idMap = new Map<string, string>();
-      templateRefs.forEach(({ template, docRef }) => {
-        idMap.set(template.id, docRef.id);
-      });
-
-      let nextForegroundZIndex = highestZIndex + 1;
-      let nextBackgroundZIndex = lowestZIndex - 1;
-      const batch = writeBatch(db);
-
-      templateRefs.forEach(({ template, docRef }) => {
-        const isBackground = isBackgroundContainerType(template.type);
-        const nextZIndex = isBackground
-          ? nextBackgroundZIndex--
-          : nextForegroundZIndex++;
-        const nextXRaw = template.x + options.offsetX;
-        const nextYRaw = template.y + options.offsetY;
-        const nextX =
-          snapToGridEnabledRef.current && isSnapEligibleObjectType(template.type)
-            ? snapToGrid(nextXRaw)
-            : nextXRaw;
-        const nextY =
-          snapToGridEnabledRef.current && isSnapEligibleObjectType(template.type)
-            ? snapToGrid(nextYRaw)
-            : nextYRaw;
-        const mappedContainerId =
-          template.containerId && idMap.has(template.containerId)
-            ? (idMap.get(template.containerId) ?? null)
-            : null;
-        const mappedFromObjectId =
-          template.fromObjectId && idMap.has(template.fromObjectId)
-            ? (idMap.get(template.fromObjectId) ?? null)
-            : null;
-        const mappedToObjectId =
-          template.toObjectId && idMap.has(template.toObjectId)
-            ? (idMap.get(template.toObjectId) ?? null)
-            : null;
-
-        const payload: Record<string, unknown> = {
-          type: template.type,
-          zIndex: nextZIndex,
-          x: nextX,
-          y: nextY,
-          width: template.width,
-          height: template.height,
-          rotationDeg: template.rotationDeg,
-          color: template.color,
-          text: template.text,
-          createdBy: user.uid,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          fromObjectId: mappedFromObjectId,
-          toObjectId: mappedToObjectId,
-          fromAnchor: mappedFromObjectId ? template.fromAnchor ?? null : null,
-          toAnchor: mappedToObjectId ? template.toAnchor ?? null : null,
-          fromX:
-            template.fromX === null || template.fromX === undefined
-              ? null
-              : template.fromX + options.offsetX,
-          fromY:
-            template.fromY === null || template.fromY === undefined
-              ? null
-              : template.fromY + options.offsetY,
-          toX:
-            template.toX === null || template.toX === undefined
-              ? null
-              : template.toX + options.offsetX,
-          toY:
-            template.toY === null || template.toY === undefined
-              ? null
-              : template.toY + options.offsetY,
-          gridRows: template.gridRows ?? null,
-          gridCols: template.gridCols ?? null,
-          gridGap: template.gridGap ?? null,
-          gridCellColors: template.gridCellColors ?? null,
-          containerTitle: template.containerTitle ?? null,
-          gridSectionTitles: template.gridSectionTitles ?? null,
-          gridSectionNotes: template.gridSectionNotes ?? null,
-          containerId: mappedContainerId,
-          containerSectionIndex:
-            mappedContainerId !== null
-              ? (template.containerSectionIndex ?? null)
-              : null,
-          containerRelX:
-            mappedContainerId !== null ? (template.containerRelX ?? null) : null,
-          containerRelY:
-            mappedContainerId !== null ? (template.containerRelY ?? null) : null,
-        };
-
-        batch.set(docRef, payload);
-      });
-
-      await batch.commit();
-
-      const createdIds = templateRefs.map(({ docRef }) => docRef.id);
-      setSelectedObjectIds(createdIds);
-      return createdIds;
-    },
-    [canEdit, db, objectsCollectionRef, user.uid],
-  );
-
-  const copySelectedObjects = useCallback(() => {
-    const selectedTemplates = selectedObjectIds
-      .map((objectId) => objectsByIdRef.current.get(objectId))
-      .filter((objectItem): objectItem is BoardObject => Boolean(objectItem))
-      .sort((left, right) => left.zIndex - right.zIndex)
-      .map((objectItem) => cloneBoardObjectForClipboard(objectItem));
-
-    copiedObjectsRef.current = selectedTemplates;
-    copyPasteSequenceRef.current = 0;
-  }, [selectedObjectIds]);
-
-  const duplicateSelectedObjects = useCallback(async () => {
-    if (!canEdit) {
-      return;
-    }
-
-    const selectedTemplates = selectedObjectIds
-      .map((objectId) => objectsByIdRef.current.get(objectId))
-      .filter((objectItem): objectItem is BoardObject => Boolean(objectItem))
-      .sort((left, right) => left.zIndex - right.zIndex)
-      .map((objectItem) => cloneBoardObjectForClipboard(objectItem));
-    if (selectedTemplates.length === 0) {
-      return;
-    }
-
-    copiedObjectsRef.current = selectedTemplates;
-    copyPasteSequenceRef.current = 1;
-    try {
-      await createObjectsFromTemplates(selectedTemplates, {
-        offsetX: DUPLICATE_OFFSET_PX,
-        offsetY: DUPLICATE_OFFSET_PX,
-      });
-    } catch (error) {
-      console.error("Failed to duplicate selected objects", error);
-      setBoardError(
-        toBoardErrorMessage(error, "Failed to duplicate selected objects."),
-      );
-    }
-  }, [canEdit, createObjectsFromTemplates, selectedObjectIds]);
-
-  const pasteCopiedObjects = useCallback(async () => {
-    if (!canEdit || copiedObjectsRef.current.length === 0) {
-      return;
-    }
-
-    copyPasteSequenceRef.current += 1;
-    const offset = DUPLICATE_OFFSET_PX * copyPasteSequenceRef.current;
-    try {
-      await createObjectsFromTemplates(copiedObjectsRef.current, {
-        offsetX: offset,
-        offsetY: offset,
-      });
-    } catch (error) {
-      console.error("Failed to paste copied objects", error);
-      setBoardError(toBoardErrorMessage(error, "Failed to paste copied objects."));
-    }
-  }, [canEdit, createObjectsFromTemplates]);
+  const {
+    copySelectedObjects,
+    duplicateSelectedObjects,
+    pasteCopiedObjects,
+  } = useObjectTemplateActions({
+    canEdit,
+    db,
+    objectsCollectionRef,
+    userId: user.uid,
+    selectedObjectIds,
+    objectsByIdRef,
+    copiedObjectsRef,
+    copyPasteSequenceRef,
+    snapToGridEnabledRef,
+    setSelectedObjectIds,
+    setBoardError,
+  });
 
   const createSwotTemplate = useCallback(async () => {
     if (!canEdit) {
@@ -4055,214 +3887,22 @@ export default function RealtimeBoardCanvas({
   );
 
   const selectedObjectCount = selectedObjectIds.length;
-  const selectedObjects = useMemo(
-    () =>
-      selectedObjectIds
-        .map((objectId) => {
-          const objectItem = objects.find(
-            (candidate) => candidate.id === objectId,
-          );
-          if (!objectItem) {
-            return null;
-          }
-
-          const draftGeometry = draftGeometryById[objectId];
-          const geometry: ObjectGeometry = draftGeometry ?? {
-            x: objectItem.x,
-            y: objectItem.y,
-            width: objectItem.width,
-            height: objectItem.height,
-            rotationDeg: objectItem.rotationDeg,
-          };
-
-          return {
-            object: objectItem,
-            geometry,
-          };
-        })
-        .filter(
-          (
-            item,
-          ): item is {
-            object: BoardObject;
-            geometry: ObjectGeometry;
-          } => item !== null,
-        ),
-    [draftGeometryById, objects, selectedObjectIds],
-  );
-  const connectableGeometryById = useMemo(() => {
-    const geometries = new Map<string, ObjectGeometry>();
-    objects.forEach((objectItem) => {
-      if (!isConnectableShapeKind(objectItem.type)) {
-        return;
-      }
-
-      const draftGeometry = draftGeometryById[objectItem.id];
-      geometries.set(
-        objectItem.id,
-        draftGeometry ?? {
-          x: objectItem.x,
-          y: objectItem.y,
-          width: objectItem.width,
-          height: objectItem.height,
-          rotationDeg: objectItem.rotationDeg,
-        },
-      );
-    });
-    return geometries;
-  }, [draftGeometryById, objects]);
-  const connectableTypeById = useMemo(() => {
-    const types = new Map<
-      string,
-      Exclude<
-        BoardObjectKind,
-        | "line"
-        | "connectorUndirected"
-        | "connectorArrow"
-        | "connectorBidirectional"
-      >
-    >();
-    objects.forEach((objectItem) => {
-      if (isConnectableShapeKind(objectItem.type)) {
-        types.set(objectItem.id, objectItem.type);
-      }
-    });
-    return types;
-  }, [objects]);
-  const connectorRoutingObstacles = useMemo(
-    () =>
-      Array.from(connectableGeometryById.entries())
-        .map(([objectId, geometry]) => {
-          const objectType = connectableTypeById.get(objectId);
-          if (!objectType) {
-            return null;
-          }
-
-          return {
-            objectId,
-            bounds: inflateObjectBounds(
-              getObjectVisualBounds(objectType, geometry),
-              14,
-            ),
-          };
-        })
-        .filter((item): item is ConnectorRoutingObstacle => item !== null),
-    [connectableGeometryById, connectableTypeById],
-  );
-  const connectorViewportBounds = useMemo<ObjectBounds | null>(() => {
-    if (
-      stageSize.width <= 0 ||
-      stageSize.height <= 0 ||
-      viewport.scale <= 0 ||
-      !Number.isFinite(viewport.scale)
-    ) {
-      return null;
-    }
-
-    const worldPadding =
-      CONNECTOR_VIEWPORT_CULL_PADDING_PX / Math.max(viewport.scale, 0.1);
-    const left = (-viewport.x) / viewport.scale - worldPadding;
-    const right = (stageSize.width - viewport.x) / viewport.scale + worldPadding;
-    const top = (-viewport.y) / viewport.scale - worldPadding;
-    const bottom =
-      (stageSize.height - viewport.y) / viewport.scale + worldPadding;
-
-    return {
-      left: Math.min(left, right),
-      right: Math.max(left, right),
-      top: Math.min(top, bottom),
-      bottom: Math.max(top, bottom),
-    };
-  }, [stageSize.height, stageSize.width, viewport.scale, viewport.x, viewport.y]);
-  const selectedConnectorIds = useMemo(() => {
-    const ids = new Set<string>();
-    selectedObjects.forEach((selectedObject) => {
-      if (isConnectorKind(selectedObject.object.type)) {
-        ids.add(selectedObject.object.id);
-      }
-    });
-    return ids;
-  }, [selectedObjects]);
-  const connectorRoutesById = useMemo(
-    () =>
-      computeConnectorRoutes({
-        objects,
-        draftConnectorById,
-        draftGeometryById,
-        connectableGeometryById,
-        connectableTypeById,
-        connectorRoutingObstacles,
-        connectorViewportBounds,
-        selectedConnectorIds,
-        activeEndpointDrag: connectorEndpointDragStateRef.current,
-      }),
-    [
-      connectableGeometryById,
-      connectableTypeById,
-      connectorRoutingObstacles,
-      connectorViewportBounds,
-      draftConnectorById,
-      draftGeometryById,
-      objects,
-      selectedConnectorIds,
-    ],
-  );
-  const selectedObjectBounds = useMemo(
-    () =>
-      mergeBounds(
-        selectedObjects.map((selectedObject) => {
-          if (isConnectorKind(selectedObject.object.type)) {
-            const routed = connectorRoutesById.get(selectedObject.object.id);
-            if (routed) {
-              return routed.geometry.bounds;
-            }
-          }
-
-          return getObjectVisualBounds(
-            selectedObject.object.type,
-            selectedObject.geometry,
-          );
-        }),
-      ),
-    [connectorRoutesById, selectedObjects],
-  );
-  const selectedConnectorMidpoint = useMemo(() => {
-    if (selectedObjects.length !== 1) {
-      return null;
-    }
-
-    const selectedObject = selectedObjects[0];
-    if (!selectedObject || !isConnectorKind(selectedObject.object.type)) {
-      return null;
-    }
-
-    const routed = connectorRoutesById.get(selectedObject.object.id);
-    if (!routed) {
-      return null;
-    }
-
-    return routed.geometry.midPoint;
-  }, [connectorRoutesById, selectedObjects]);
-  const selectedColorableObjects = useMemo(
-    () =>
-      selectedObjects.filter((selectedObject) =>
-        canUseSelectionHudColor(selectedObject.object),
-      ),
-    [selectedObjects],
-  );
-  const selectedColor = useMemo(() => {
-    if (selectedColorableObjects.length === 0) {
-      return null;
-    }
-
-    const firstColor = selectedColorableObjects[0].object.color.toLowerCase();
-    const hasMixedColors = selectedColorableObjects.some(
-      (selectedObject) =>
-        selectedObject.object.color.toLowerCase() !== firstColor,
-    );
-
-    return hasMixedColors ? null : selectedColorableObjects[0].object.color;
-  }, [selectedColorableObjects]);
+  const {
+    connectorRoutesById,
+    selectedObjects,
+    selectedObjectBounds,
+    selectedConnectorMidpoint,
+    selectedColorableObjects,
+    selectedColor,
+  } = useBoardSelectionAndConnectors({
+    objects,
+    draftGeometryById,
+    draftConnectorById,
+    selectedObjectIds,
+    stageSize,
+    viewport,
+    activeEndpointDrag: connectorEndpointDragStateRef.current,
+  });
   const canColorSelection = canEdit && selectedColorableObjects.length > 0;
   const canResetSelectionRotation =
     canEdit &&
@@ -4394,6 +4034,9 @@ export default function RealtimeBoardCanvas({
   ]);
 
   const zoomPercent = Math.round(viewport.scale * 100);
+  const fpsTarget = 60;
+  const fpsTone =
+    fps >= 55 ? "#16a34a" : fps >= 45 ? "#d97706" : "#dc2626";
   const zoomSliderValue = Math.min(
     ZOOM_SLIDER_MAX_PERCENT,
     Math.max(ZOOM_SLIDER_MIN_PERCENT, zoomPercent),
@@ -6660,6 +6303,32 @@ export default function RealtimeBoardCanvas({
               remoteCursors={remoteCursors}
               viewport={viewport}
             />
+            <div
+              style={{
+                position: "absolute",
+                right: 12,
+                bottom: 12,
+                zIndex: 60,
+                pointerEvents: "none",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                background:
+                  "color-mix(in oklab, var(--surface) 90%, transparent)",
+                color: "var(--text-muted)",
+                padding: "0.2rem 0.45rem",
+                fontSize: 11,
+                fontWeight: 600,
+                fontVariantNumeric: "tabular-nums",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.35rem",
+                boxShadow: "0 2px 8px rgba(2, 6, 23, 0.16)",
+              }}
+              aria-hidden="true"
+            >
+              <span style={{ color: fpsTone }}>{fps} FPS</span>
+              <span style={{ color: "var(--text-muted)" }}>/ {fpsTarget}</span>
+            </div>
           </div>
         </div>
 

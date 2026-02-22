@@ -2,7 +2,7 @@ import type { BoardObjectKind } from "@/features/boards/types";
 import { GRID_CELL_SIZE } from "@/features/boards/components/realtime-canvas/legacy/legacy-canvas-geometry";
 import type { ViewportState } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-types";
 
-export const CURSOR_THROTTLE_MS = 120;
+export const CURSOR_THROTTLE_MS = 33;
 export const DRAG_THROTTLE_MS = 45;
 export const CONTAINER_DRAG_THROTTLE_MS = 200;
 export const DRAG_CLICK_SLOP_PX = 3;

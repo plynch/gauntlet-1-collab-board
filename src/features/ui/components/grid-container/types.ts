@@ -1,0 +1,34 @@
+import type { ReactNode } from "react";
+
+export type GridContainerProps = {
+  rows: number;
+  cols: number;
+  gap?: number;
+  minCellHeight?: number;
+  className?: string;
+  cellClassName?: string;
+  containerColor?: string;
+  containerTitle?: string;
+  showCellColorPickers?: boolean;
+  cellColors?: string[];
+  sectionTitles?: string[];
+  sectionNotes?: string[];
+  defaultColor?: string;
+  showSectionStickyNotes?: boolean;
+  stickyPlaceholder?: string;
+  onCellColorChange?: (cellIndex: number, color: string) => void;
+  onContainerTitleChange?: (nextTitle: string) => void;
+  onSectionTitleChange?: (cellIndex: number, nextTitle: string) => void;
+  onSectionNoteChange?: (cellIndex: number, nextNote: string) => void;
+  onGridDimensionsChange?: (nextRows: number, nextCols: number) => void;
+  showGridControls?: boolean;
+  minRows?: number;
+  maxRows?: number;
+  minCols?: number;
+  maxCols?: number;
+  renderCellContent?: (cellIndex: number) => ReactNode;
+  chromeTone?: "light" | "dark";
+  sectionTitleTextColor?: string;
+  sectionBodyTextColor?: string;
+  containerTitleTextColor?: string;
+};

@@ -8,6 +8,7 @@ import type {
   ConnectorEndpointDragState,
   ObjectGeometry,
 } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-types";
+export { buildRouteKey } from "@/features/boards/components/realtime-canvas/legacy/connector-route-key";
 import {
   buildConnectorRouteGeometry,
   CONNECTOR_ANCHORS,
@@ -53,20 +54,6 @@ export type ConnectorSolveContext = {
   candidateObstacles: ConnectorRoutingObstacle[];
   cachedRoute: ConnectorRouteResult | null;
 };
-
-function roundToTenths(value: number): number {
-  return Math.round(value * 10) / 10;
-}
-
-function toGeometrySignature(geometry: ObjectGeometry): string {
-  return [
-    roundToTenths(geometry.x),
-    roundToTenths(geometry.y),
-    roundToTenths(geometry.width),
-    roundToTenths(geometry.height),
-    roundToTenths(geometry.rotationDeg),
-  ].join(",");
-}
 
 export function getConnectorDraft(
   objectItem: BoardObject,
@@ -177,35 +164,6 @@ export function buildEndpointCandidates({
       connected: true,
     };
   });
-}
-
-export function buildRouteKey(
-  connectorId: string,
-  connectorDraft: ConnectorDraft,
-  connectableGeometryById: Map<string, ObjectGeometry>,
-  obstacleSignature: string,
-): string {
-  const fromGeometry = connectorDraft.fromObjectId
-    ? connectableGeometryById.get(connectorDraft.fromObjectId) ?? null
-    : null;
-  const toGeometry = connectorDraft.toObjectId
-    ? connectableGeometryById.get(connectorDraft.toObjectId) ?? null
-    : null;
-
-  return [
-    connectorId,
-    connectorDraft.fromObjectId ?? "null",
-    connectorDraft.toObjectId ?? "null",
-    connectorDraft.fromAnchor ?? "null",
-    connectorDraft.toAnchor ?? "null",
-    roundToTenths(connectorDraft.fromX),
-    roundToTenths(connectorDraft.fromY),
-    roundToTenths(connectorDraft.toX),
-    roundToTenths(connectorDraft.toY),
-    fromGeometry ? toGeometrySignature(fromGeometry) : "none",
-    toGeometry ? toGeometrySignature(toGeometry) : "none",
-    obstacleSignature,
-  ].join("|");
 }
 
 export function solveConnectorRoute(

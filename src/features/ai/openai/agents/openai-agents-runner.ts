@@ -10,13 +10,17 @@ import { z } from "zod";
 import { BOARD_AI_TOOLS } from "@/features/ai/board-tool-schema";
 import { parseCoordinateHintsFromMessage } from "@/features/ai/commands/coordinate-hints";
 import { MAX_AI_CREATED_OBJECTS_PER_COMMAND } from "@/features/ai/guardrails";
-import { estimateOpenAiCostUsd } from "@/features/ai/openai/openai-cost-controls";
 import {
   getOpenAiClient,
   getOpenAiPlannerConfig,
 } from "@/features/ai/openai/openai-client";
 import type { AiTraceRun } from "@/features/ai/observability/trace-run";
 import { createBoardAgentTools } from "@/features/ai/openai/agents/board-agent-tools";
+import {
+  createEmptyUsage,
+  toOpenAiUsage,
+  type OpenAiAgentsRunnerUsage,
+} from "@/features/ai/openai/agents/openai-agents-usage";
 import { parseMessageIntentHints } from "@/features/ai/openai/agents/message-intent-hints";
 import { BoardToolExecutor } from "@/features/ai/tools/board-tools";
 import type { BoardObjectSnapshot, BoardToolCall, ViewportBounds } from "@/features/ai/types";
@@ -30,14 +34,6 @@ const openAiAgentOutputSchema = z.object({
   planned: z.boolean(),
   assistantMessage: z.string().min(1).max(1_000),
 });
-
-export type OpenAiAgentsRunnerUsage = {
-  model: string;
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-  estimatedCostUsd: number;
-};
 
 export type OpenAiAgentsRunnerResult = {
   intent: string;
@@ -78,40 +74,6 @@ function toBoardContextObject(objectItem: BoardObjectSnapshot) {
     height: objectItem.height,
     color: objectItem.color,
     text: objectItem.text.slice(0, MAX_TEXT_PREVIEW_CHARS),
-  };
-}
-
-function toOpenAiUsage(input: {
-  model: string;
-  inputTokens: number;
-  outputTokens: number;
-  inputCostPerMillionUsd: number;
-  outputCostPerMillionUsd: number;
-}): OpenAiAgentsRunnerUsage {
-  const totalTokens = input.inputTokens + input.outputTokens;
-  const estimatedCostUsd = estimateOpenAiCostUsd({
-    inputTokens: input.inputTokens,
-    outputTokens: input.outputTokens,
-    inputCostPerMillionUsd: input.inputCostPerMillionUsd,
-    outputCostPerMillionUsd: input.outputCostPerMillionUsd,
-  });
-
-  return {
-    model: input.model,
-    inputTokens: input.inputTokens,
-    outputTokens: input.outputTokens,
-    totalTokens,
-    estimatedCostUsd,
-  };
-}
-
-function createEmptyUsage(model: string): OpenAiAgentsRunnerUsage {
-  return {
-    model,
-    inputTokens: 0,
-    outputTokens: 0,
-    totalTokens: 0,
-    estimatedCostUsd: 0,
   };
 }
 

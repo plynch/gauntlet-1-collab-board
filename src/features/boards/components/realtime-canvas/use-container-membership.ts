@@ -2,13 +2,17 @@ import { useCallback, type MutableRefObject } from "react";
 
 import type { BoardObject, BoardObjectKind } from "@/features/boards/types";
 import {
-  clampObjectTopLeftToSection,
-  clampToRange,
-  getClosestSectionIndex,
   getGridSectionBoundsFromGeometry,
   getSectionBoundsCenter,
   toSectionRelativeCoordinate,
 } from "@/features/boards/components/realtime-canvas/container-membership-geometry";
+import {
+  getObjectCenterForPlacement,
+  isContainerChildEligible,
+  isPointInsideBounds,
+} from "@/features/boards/components/realtime-canvas/use-container-membership-helpers";
+import { buildContainerMembershipPatchesForPositions as buildMembershipPatches } from "@/features/boards/components/realtime-canvas/use-container-membership-patches";
+import { getSectionAnchoredObjectUpdatesForContainer as getSectionAnchoredUpdates } from "@/features/boards/components/realtime-canvas/use-container-membership-runtime";
 
 export type MembershipBoardPoint = {
   x: number;
@@ -69,34 +73,6 @@ type UseContainerMembershipArgs = {
   roundToStep: (value: number, step: number) => number;
   isConnectorKind: (value: BoardObjectKind) => boolean;
 };
-
-function getObjectCenterForPlacement(
-  geometry: MembershipObjectGeometry,
-): MembershipBoardPoint {
-  return {
-    x: geometry.x + geometry.width / 2,
-    y: geometry.y + geometry.height / 2,
-  };
-}
-
-function isPointInsideBounds(
-  point: MembershipBoardPoint,
-  bounds: MembershipObjectBounds,
-): boolean {
-  return (
-    point.x >= bounds.left &&
-    point.x <= bounds.right &&
-    point.y >= bounds.top &&
-    point.y <= bounds.bottom
-  );
-}
-
-function isContainerChildEligible(
-  type: BoardObjectKind,
-  isConnectorKind: (value: BoardObjectKind) => boolean,
-): boolean {
-  return type !== "gridContainer" && !isConnectorKind(type);
-}
 
 export function getMembershipPatchFromObject(
   objectItem: BoardObject,
@@ -253,157 +229,21 @@ export function useContainerMembership({
         clampToSectionBounds?: boolean;
         includeObjectsInNextBounds?: boolean;
       } = {},
-    ): {
-      positionByObjectId: Record<string, MembershipBoardPoint>;
-      membershipByObjectId: Record<string, ContainerMembershipPatch>;
-    } => {
-      const clampToSectionBounds = options.clampToSectionBounds ?? true;
-      const includeObjectsInNextBounds =
-        options.includeObjectsInNextBounds ?? true;
-      const sections = getGridSectionBoundsFromGeometry(
+    ) =>
+      getSectionAnchoredUpdates({
+        containerId,
         containerGeometry,
         rows,
         cols,
         gap,
-      );
-      const nextContainerBounds: MembershipObjectBounds = {
-        left: containerGeometry.x,
-        right: containerGeometry.x + containerGeometry.width,
-        top: containerGeometry.y,
-        bottom: containerGeometry.y + containerGeometry.height,
-      };
-      const containerItem = objectsByIdRef.current.get(containerId);
-      const currentContainerGeometry =
-        containerItem && containerItem.type === "gridContainer"
-          ? (getCurrentObjectGeometry(containerId) ?? {
-              x: containerItem.x,
-              y: containerItem.y,
-              width: containerItem.width,
-              height: containerItem.height,
-              rotationDeg: containerItem.rotationDeg,
-            })
-          : containerGeometry;
-      const currentRows =
-        containerItem && containerItem.type === "gridContainer"
-          ? Math.max(1, Math.min(maxRows, containerItem.gridRows ?? rows))
-          : rows;
-      const currentCols =
-        containerItem && containerItem.type === "gridContainer"
-          ? Math.max(1, Math.min(maxCols, containerItem.gridCols ?? cols))
-          : cols;
-      const currentGap =
-        containerItem && containerItem.type === "gridContainer"
-          ? Math.max(0, containerItem.gridGap ?? gap)
-          : gap;
-      const currentSections = getGridSectionBoundsFromGeometry(
-        currentContainerGeometry,
-        currentRows,
-        currentCols,
-        currentGap,
-      );
-      const currentContainerBounds: MembershipObjectBounds = {
-        left: currentContainerGeometry.x,
-        right: currentContainerGeometry.x + currentContainerGeometry.width,
-        top: currentContainerGeometry.y,
-        bottom: currentContainerGeometry.y + currentContainerGeometry.height,
-      };
-      const positionByObjectId: Record<string, MembershipBoardPoint> = {};
-      const membershipByObjectId: Record<string, ContainerMembershipPatch> = {};
-
-      objectsByIdRef.current.forEach((objectItem) => {
-        if (!isContainerChildEligible(objectItem.type, isConnectorKind)) {
-          return;
-        }
-
-        const geometry = getCurrentObjectGeometry(objectItem.id) ?? {
-          x: objectItem.x,
-          y: objectItem.y,
-          width: objectItem.width,
-          height: objectItem.height,
-          rotationDeg: objectItem.rotationDeg,
-        };
-        const center = getObjectCenterForPlacement(geometry);
-        const belongsToContainer =
-          objectItem.containerId === containerId ||
-          isPointInsideBounds(center, currentContainerBounds) ||
-          (includeObjectsInNextBounds &&
-            isPointInsideBounds(center, nextContainerBounds));
-
-        if (!belongsToContainer) {
-          return;
-        }
-
-        const explicitSectionIndex = objectItem.containerSectionIndex;
-        const sourceSectionIndex =
-          typeof explicitSectionIndex === "number" &&
-          explicitSectionIndex >= 0 &&
-          explicitSectionIndex < currentSections.length
-            ? explicitSectionIndex
-            : getClosestSectionIndex(center, currentSections);
-        const targetSectionIndex =
-          typeof explicitSectionIndex === "number" &&
-          explicitSectionIndex >= 0 &&
-          explicitSectionIndex < sections.length
-            ? explicitSectionIndex
-            : sourceSectionIndex !== null &&
-                sourceSectionIndex < sections.length
-              ? sourceSectionIndex
-              : getClosestSectionIndex(center, sections);
-        if (targetSectionIndex === null) {
-          return;
-        }
-
-        const section = sections[targetSectionIndex];
-        const sourceRelative =
-          sourceSectionIndex !== null &&
-          sourceSectionIndex < currentSections.length
-            ? toSectionRelativeCoordinate(
-                center,
-                currentSections[sourceSectionIndex],
-              )
-            : {
-                x: clampToRange(objectItem.containerRelX ?? 0.5, 0, 1),
-                y: clampToRange(objectItem.containerRelY ?? 0.5, 0, 1),
-              };
-        const sectionWidth = Math.max(1, section.right - section.left);
-        const sectionHeight = Math.max(1, section.bottom - section.top);
-        const targetCenterX = section.left + sourceRelative.x * sectionWidth;
-        const targetCenterY = section.top + sourceRelative.y * sectionHeight;
-        const preferredTopLeft = {
-          x: targetCenterX - geometry.width / 2,
-          y: targetCenterY - geometry.height / 2,
-        };
-        const nextTopLeft = clampToSectionBounds
-          ? clampObjectTopLeftToSection(
-              section,
-              {
-                width: geometry.width,
-                height: geometry.height,
-              },
-              preferredTopLeft,
-            )
-          : preferredTopLeft;
-        const nextX = nextTopLeft.x;
-        const nextY = nextTopLeft.y;
-
-        const nextCenter = {
-          x: nextX + geometry.width / 2,
-          y: nextY + geometry.height / 2,
-        };
-        const nextRelative = toSectionRelativeCoordinate(nextCenter, section);
-        const nextMembership: ContainerMembershipPatch = {
-          containerId,
-          containerSectionIndex: targetSectionIndex,
-          containerRelX: roundToStep(nextRelative.x, 0.001),
-          containerRelY: roundToStep(nextRelative.y, 0.001),
-        };
-
-        positionByObjectId[objectItem.id] = { x: nextX, y: nextY };
-        membershipByObjectId[objectItem.id] = nextMembership;
-      });
-
-      return { positionByObjectId, membershipByObjectId };
-    },
+        objectEntries: objectsByIdRef.current.entries(),
+        getCurrentObjectGeometry,
+        isConnectorKind,
+        maxRows,
+        maxCols,
+        roundToStep,
+        options,
+      }),
     [
       getCurrentObjectGeometry,
       isConnectorKind,
@@ -418,67 +258,28 @@ export function useContainerMembership({
     (
       nextPositionsById: Record<string, MembershipBoardPoint>,
       seedPatches: Record<string, ContainerMembershipPatch> = {},
-    ): Record<string, ContainerMembershipPatch> => {
-      const geometryOverrides: Record<string, MembershipObjectGeometry> = {};
-      Object.entries(nextPositionsById).forEach(([objectId, nextPosition]) => {
-        const geometry = getCurrentObjectGeometry(objectId) ?? {
-          x: nextPosition.x,
-          y: nextPosition.y,
-          width: 0,
-          height: 0,
-          rotationDeg: 0,
-        };
-        geometryOverrides[objectId] = {
-          ...geometry,
-          x: nextPosition.x,
-          y: nextPosition.y,
-        };
-      });
-
-      const containerSectionsById =
-        getContainerSectionsInfoById(geometryOverrides);
-      const nextPatches: Record<string, ContainerMembershipPatch> = {
-        ...seedPatches,
-      };
-
-      Object.entries(nextPositionsById).forEach(([objectId, nextPosition]) => {
-        const objectItem = objectsByIdRef.current.get(objectId);
-        if (
-          !objectItem ||
-          !isContainerChildEligible(objectItem.type, isConnectorKind)
-        ) {
-          return;
-        }
-
-        const geometry = geometryOverrides[objectId] ?? {
-          x: nextPosition.x,
-          y: nextPosition.y,
-          width: objectItem.width,
-          height: objectItem.height,
-          rotationDeg: objectItem.rotationDeg,
-        };
-        const nextMembership = resolveContainerMembershipForGeometry(
+    ) =>
+      buildMembershipPatches({
+        nextPositionsById,
+        seedPatches,
+        objectEntries: objectsByIdRef.current.entries(),
+        getCurrentObjectGeometry,
+        isConnectorKind,
+        resolveContainerMembershipForGeometry: (
           objectId,
           geometry,
           containerSectionsById,
-        );
-        const currentMembership = getMembershipPatchFromObject(objectItem);
-        const seedMembership = nextPatches[objectId];
-        if (
-          seedMembership &&
-          areContainerMembershipPatchesEqual(seedMembership, nextMembership)
-        ) {
-          return;
-        }
-        if (
-          !areContainerMembershipPatchesEqual(currentMembership, nextMembership)
-        ) {
-          nextPatches[objectId] = nextMembership;
-        }
-      });
-
-      return nextPatches;
-    },
+        ) =>
+          resolveContainerMembershipForGeometry(
+            objectId,
+            geometry,
+            containerSectionsById as Map<string, ContainerSectionsInfo>,
+          ),
+        getContainerSectionsInfoById: (geometryOverrides) =>
+          getContainerSectionsInfoById(geometryOverrides) as Map<string, unknown>,
+        getMembershipPatchFromObject,
+        areContainerMembershipPatchesEqual,
+      }),
     [
       getContainerSectionsInfoById,
       getCurrentObjectGeometry,

@@ -1,4 +1,8 @@
-import { FieldValue } from "firebase-admin/firestore";
+import {
+  FieldValue,
+  type DocumentData,
+  type DocumentReference,
+} from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 
 import type { BoardDetail, BoardPermissions } from "@/features/boards/types";
@@ -31,6 +35,35 @@ type BoardRouteContext = {
     boardId: string;
   }>;
 };
+
+const SUBCOLLECTION_DELETE_BATCH_SIZE = 400;
+
+async function deleteBoardSubcollection(options: {
+  db: ReturnType<typeof getFirebaseAdminDb>;
+  boardRef: DocumentReference<DocumentData>;
+  subcollection: string;
+}): Promise<void> {
+  while (true) {
+    const snapshot = await options.boardRef
+      .collection(options.subcollection)
+      .limit(SUBCOLLECTION_DELETE_BATCH_SIZE)
+      .get();
+
+    if (snapshot.empty) {
+      return;
+    }
+
+    const batch = options.db.batch();
+    snapshot.docs.forEach((documentSnapshot) => {
+      batch.delete(documentSnapshot.ref);
+    });
+    await batch.commit();
+
+    if (snapshot.size < SUBCOLLECTION_DELETE_BATCH_SIZE) {
+      return;
+    }
+  }
+}
 
 function toBoardDetail(
   boardId: string,
@@ -143,6 +176,21 @@ export async function DELETE(request: NextRequest, context: BoardRouteContext) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
 
+    await deleteBoardSubcollection({
+      db,
+      boardRef,
+      subcollection: "objects",
+    });
+    await deleteBoardSubcollection({
+      db,
+      boardRef,
+      subcollection: "presence",
+    });
+    await deleteBoardSubcollection({
+      db,
+      boardRef,
+      subcollection: "aiRuns",
+    });
     await boardRef.delete();
 
     return NextResponse.json({ ok: true });

@@ -36,6 +36,13 @@ This file records what was fixed quickly for submission risk reduction, what was
   - `src/features/boards/components/realtime-board-canvas.tsx`
   - `src/features/boards/components/realtime-canvas/legacy/legacy-canvas-geometry.ts`
 
+### 6) Board delete cascade cleanup
+- Board deletion now removes known board subcollections before deleting the board doc.
+  - `objects`
+  - `presence`
+  - `aiRuns`
+  - `src/app/api/boards/[boardId]/route.ts`
+
 ## God Component Reduction (In Progress, Behavior-Preserving)
 
 ### Already extracted

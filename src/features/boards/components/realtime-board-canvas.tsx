@@ -276,8 +276,10 @@ type ColorSwatch = {
 
 const BOARD_TOOLS: BoardObjectKind[] = [
   "sticky",
+  "text",
   "rect",
   "circle",
+  "line",
   "gridContainer",
   "connectorUndirected",
   "connectorArrow",
@@ -310,6 +312,7 @@ const GRID_CELL_SIZE = 20;
 const GRID_MAJOR_LINE_EVERY = 5;
 const GRID_MAJOR_SPACING = GRID_CELL_SIZE * GRID_MAJOR_LINE_EVERY;
 const GRID_SUPER_MAJOR_SPACING = GRID_MAJOR_SPACING * 10;
+const DUPLICATE_OFFSET_PX = 48;
 const BOARD_GRID_MINOR_LINE_COLOR = "var(--canvas-grid-minor)";
 const BOARD_GRID_MAJOR_LINE_COLOR = "var(--canvas-grid-major)";
 const BOARD_GRID_SUPER_MAJOR_LINE_COLOR = "var(--canvas-grid-super)";
@@ -647,6 +650,7 @@ function hashToColor(input: string): string {
 function isBoardObjectKind(value: unknown): value is BoardObjectKind {
   return (
     value === "sticky" ||
+    value === "text" ||
     value === "rect" ||
     value === "circle" ||
     value === "gridContainer" ||
@@ -689,6 +693,10 @@ function getDefaultObjectSize(kind: BoardObjectKind): {
     return { width: 220, height: 170 };
   }
 
+  if (kind === "text") {
+    return { width: 260, height: 96 };
+  }
+
   if (kind === "rect") {
     return { width: 240, height: 150 };
   }
@@ -727,6 +735,10 @@ function getMinimumObjectSize(kind: BoardObjectKind): {
     return { width: 140, height: 100 };
   }
 
+  if (kind === "text") {
+    return { width: 160, height: 60 };
+  }
+
   if (kind === "rect") {
     return { width: 80, height: 60 };
   }
@@ -756,6 +768,10 @@ function getMinimumObjectSize(kind: BoardObjectKind): {
 function getDefaultObjectColor(kind: BoardObjectKind): string {
   if (kind === "sticky") {
     return "#fde68a";
+  }
+
+  if (kind === "text") {
+    return "#0f172a";
   }
 
   if (kind === "rect") {
@@ -888,6 +904,10 @@ function getRenderedObjectColor(
     return color;
   }
 
+  if (type === "text") {
+    return mixHexColors(color, "#f8fafc", 0.44);
+  }
+
   if (isConnectorKind(type) || type === "line") {
     return mixHexColors(color, "#e2e8f0", 0.35);
   }
@@ -905,6 +925,10 @@ function getRenderedObjectColor(
 function getObjectLabel(kind: BoardObjectKind): string {
   if (kind === "sticky") {
     return "Sticky";
+  }
+
+  if (kind === "text") {
+    return "Text";
   }
 
   if (kind === "rect") {
@@ -1011,6 +1035,7 @@ function snapToGrid(value: number): number {
 function isSnapEligibleObjectType(type: BoardObjectKind): boolean {
   return (
     type === "sticky" ||
+    type === "text" ||
     type === "rect" ||
     type === "circle" ||
     type === "triangle" ||
@@ -1428,6 +1453,7 @@ function getAnchorPointForGeometry(
   anchor: ConnectorAnchor,
   shapeType:
     | "sticky"
+    | "text"
     | "rect"
     | "circle"
     | "gridContainer"
@@ -1929,6 +1955,21 @@ function ToolIcon({ kind }: { kind: BoardObjectKind }) {
     );
   }
 
+  if (kind === "text") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+        <path
+          d="M2 3.2h12M8 3.2v9.6M4.8 12.8h6.4"
+          stroke="#334155"
+          strokeWidth="1.9"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+        />
+      </svg>
+    );
+  }
+
   if (kind === "rect") {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -2177,6 +2218,36 @@ function TrashIcon() {
 }
 
 /**
+ * Handles duplicate icon.
+ */
+function DuplicateIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <rect
+        x="5.3"
+        y="2.4"
+        width="8"
+        height="8"
+        rx="1.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+      <rect
+        x="2.7"
+        y="5"
+        width="8"
+        height="8"
+        rx="1.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+    </svg>
+  );
+}
+
+/**
  * Handles briefcase icon.
  */
 function BriefcaseIcon() {
@@ -2295,7 +2366,10 @@ function toBoardObject(
     height: getNumber(rawData.height, defaults.height),
     rotationDeg: getNumber(rawData.rotationDeg, 0),
     color: getString(rawData.color, getDefaultObjectColor(type)),
-    text: getString(rawData.text, type === "sticky" ? "New sticky note" : ""),
+    text: getString(
+      rawData.text,
+      type === "sticky" ? "New sticky note" : type === "text" ? "Text" : "",
+    ),
     fromObjectId: getNullableString(rawData.fromObjectId),
     toObjectId: getNullableString(rawData.toObjectId),
     fromAnchor: getConnectorAnchor(rawData.fromAnchor),
@@ -2383,6 +2457,43 @@ function toBoardErrorMessage(error: unknown, fallback: string): string {
 }
 
 /**
+ * Creates a clipboard-safe clone of a board object.
+ */
+function cloneBoardObjectForClipboard(objectItem: BoardObject): BoardObject {
+  return {
+    ...objectItem,
+    gridCellColors: objectItem.gridCellColors
+      ? [...objectItem.gridCellColors]
+      : objectItem.gridCellColors,
+    gridSectionTitles: objectItem.gridSectionTitles
+      ? [...objectItem.gridSectionTitles]
+      : objectItem.gridSectionTitles,
+    gridSectionNotes: objectItem.gridSectionNotes
+      ? [...objectItem.gridSectionNotes]
+      : objectItem.gridSectionNotes,
+  };
+}
+
+/**
+ * Returns whether keyboard target is editable.
+ */
+function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  if (target.isContentEditable) {
+    return true;
+  }
+
+  if (target.closest("input, textarea, [contenteditable='true']")) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Handles realtime board canvas.
  */
 export default function RealtimeBoardCanvas({
@@ -2413,6 +2524,8 @@ export default function RealtimeBoardCanvas({
   const idTokenRef = useRef<string | null>(null);
   const objectsByIdRef = useRef<Map<string, BoardObject>>(new Map());
   const objectSpawnSequenceRef = useRef(0);
+  const copiedObjectsRef = useRef<BoardObject[]>([]);
+  const copyPasteSequenceRef = useRef(0);
   const selectedObjectIdsRef = useRef<Set<string>>(new Set());
   const draftGeometryByIdRef = useRef<Record<string, ObjectGeometry>>({});
   const draftConnectorByIdRef = useRef<Record<string, ConnectorDraft>>({});
@@ -4616,7 +4729,12 @@ export default function RealtimeBoardCanvas({
           height: connectorGeometry ? connectorGeometry.height : height,
           rotationDeg: 0,
           color: getDefaultObjectColor(kind),
-          text: kind === "sticky" ? "New sticky note" : "",
+          text:
+            kind === "sticky"
+              ? "New sticky note"
+              : kind === "text"
+                ? "Text"
+                : "",
           createdBy: user.uid,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
@@ -4654,6 +4772,188 @@ export default function RealtimeBoardCanvas({
     },
     [canEdit, objectsCollectionRef, user.uid],
   );
+
+  const createObjectsFromTemplates = useCallback(
+    async (
+      templates: BoardObject[],
+      options: { offsetX: number; offsetY: number },
+    ) => {
+      if (!canEdit || templates.length === 0) {
+        return [];
+      }
+
+      const highestZIndex = Array.from(objectsByIdRef.current.values()).reduce(
+        (maxValue, objectItem) => Math.max(maxValue, objectItem.zIndex),
+        0,
+      );
+      const lowestZIndex = Array.from(objectsByIdRef.current.values()).reduce(
+        (minValue, objectItem) => Math.min(minValue, objectItem.zIndex),
+        0,
+      );
+      const sortedTemplates = [...templates].sort(
+        (left, right) => left.zIndex - right.zIndex,
+      );
+      const templateRefs = sortedTemplates.map((template) => ({
+        template,
+        docRef: doc(objectsCollectionRef),
+      }));
+      const idMap = new Map<string, string>();
+      templateRefs.forEach(({ template, docRef }) => {
+        idMap.set(template.id, docRef.id);
+      });
+
+      let nextForegroundZIndex = highestZIndex + 1;
+      let nextBackgroundZIndex = lowestZIndex - 1;
+      const batch = writeBatch(db);
+
+      templateRefs.forEach(({ template, docRef }) => {
+        const isBackground = isBackgroundContainerType(template.type);
+        const nextZIndex = isBackground
+          ? nextBackgroundZIndex--
+          : nextForegroundZIndex++;
+        const nextXRaw = template.x + options.offsetX;
+        const nextYRaw = template.y + options.offsetY;
+        const nextX =
+          snapToGridEnabledRef.current && isSnapEligibleObjectType(template.type)
+            ? snapToGrid(nextXRaw)
+            : nextXRaw;
+        const nextY =
+          snapToGridEnabledRef.current && isSnapEligibleObjectType(template.type)
+            ? snapToGrid(nextYRaw)
+            : nextYRaw;
+        const mappedContainerId =
+          template.containerId && idMap.has(template.containerId)
+            ? (idMap.get(template.containerId) ?? null)
+            : null;
+        const mappedFromObjectId =
+          template.fromObjectId && idMap.has(template.fromObjectId)
+            ? (idMap.get(template.fromObjectId) ?? null)
+            : null;
+        const mappedToObjectId =
+          template.toObjectId && idMap.has(template.toObjectId)
+            ? (idMap.get(template.toObjectId) ?? null)
+            : null;
+
+        const payload: Record<string, unknown> = {
+          type: template.type,
+          zIndex: nextZIndex,
+          x: nextX,
+          y: nextY,
+          width: template.width,
+          height: template.height,
+          rotationDeg: template.rotationDeg,
+          color: template.color,
+          text: template.text,
+          createdBy: user.uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          fromObjectId: mappedFromObjectId,
+          toObjectId: mappedToObjectId,
+          fromAnchor: mappedFromObjectId ? template.fromAnchor ?? null : null,
+          toAnchor: mappedToObjectId ? template.toAnchor ?? null : null,
+          fromX:
+            template.fromX === null || template.fromX === undefined
+              ? null
+              : template.fromX + options.offsetX,
+          fromY:
+            template.fromY === null || template.fromY === undefined
+              ? null
+              : template.fromY + options.offsetY,
+          toX:
+            template.toX === null || template.toX === undefined
+              ? null
+              : template.toX + options.offsetX,
+          toY:
+            template.toY === null || template.toY === undefined
+              ? null
+              : template.toY + options.offsetY,
+          gridRows: template.gridRows ?? null,
+          gridCols: template.gridCols ?? null,
+          gridGap: template.gridGap ?? null,
+          gridCellColors: template.gridCellColors ?? null,
+          containerTitle: template.containerTitle ?? null,
+          gridSectionTitles: template.gridSectionTitles ?? null,
+          gridSectionNotes: template.gridSectionNotes ?? null,
+          containerId: mappedContainerId,
+          containerSectionIndex:
+            mappedContainerId !== null
+              ? (template.containerSectionIndex ?? null)
+              : null,
+          containerRelX:
+            mappedContainerId !== null ? (template.containerRelX ?? null) : null,
+          containerRelY:
+            mappedContainerId !== null ? (template.containerRelY ?? null) : null,
+        };
+
+        batch.set(docRef, payload);
+      });
+
+      await batch.commit();
+
+      const createdIds = templateRefs.map(({ docRef }) => docRef.id);
+      setSelectedObjectIds(createdIds);
+      return createdIds;
+    },
+    [canEdit, db, objectsCollectionRef, user.uid],
+  );
+
+  const copySelectedObjects = useCallback(() => {
+    const selectedTemplates = selectedObjectIds
+      .map((objectId) => objectsByIdRef.current.get(objectId))
+      .filter((objectItem): objectItem is BoardObject => Boolean(objectItem))
+      .sort((left, right) => left.zIndex - right.zIndex)
+      .map((objectItem) => cloneBoardObjectForClipboard(objectItem));
+
+    copiedObjectsRef.current = selectedTemplates;
+    copyPasteSequenceRef.current = 0;
+  }, [selectedObjectIds]);
+
+  const duplicateSelectedObjects = useCallback(async () => {
+    if (!canEdit) {
+      return;
+    }
+
+    const selectedTemplates = selectedObjectIds
+      .map((objectId) => objectsByIdRef.current.get(objectId))
+      .filter((objectItem): objectItem is BoardObject => Boolean(objectItem))
+      .sort((left, right) => left.zIndex - right.zIndex)
+      .map((objectItem) => cloneBoardObjectForClipboard(objectItem));
+    if (selectedTemplates.length === 0) {
+      return;
+    }
+
+    copiedObjectsRef.current = selectedTemplates;
+    copyPasteSequenceRef.current = 1;
+    try {
+      await createObjectsFromTemplates(selectedTemplates, {
+        offsetX: DUPLICATE_OFFSET_PX,
+        offsetY: DUPLICATE_OFFSET_PX,
+      });
+    } catch (error) {
+      console.error("Failed to duplicate selected objects", error);
+      setBoardError(
+        toBoardErrorMessage(error, "Failed to duplicate selected objects."),
+      );
+    }
+  }, [canEdit, createObjectsFromTemplates, selectedObjectIds]);
+
+  const pasteCopiedObjects = useCallback(async () => {
+    if (!canEdit || copiedObjectsRef.current.length === 0) {
+      return;
+    }
+
+    copyPasteSequenceRef.current += 1;
+    const offset = DUPLICATE_OFFSET_PX * copyPasteSequenceRef.current;
+    try {
+      await createObjectsFromTemplates(copiedObjectsRef.current, {
+        offsetX: offset,
+        offsetY: offset,
+      });
+    } catch (error) {
+      console.error("Failed to paste copied objects", error);
+      setBoardError(toBoardErrorMessage(error, "Failed to paste copied objects."));
+    }
+  }, [canEdit, createObjectsFromTemplates]);
 
   const createSwotTemplate = useCallback(async () => {
     if (!canEdit) {
@@ -5371,6 +5671,48 @@ export default function RealtimeBoardCanvas({
   const handleDeleteButtonClick = useCallback(() => {
     handleDeleteSelectedObjects();
   }, [handleDeleteSelectedObjects]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    /**
+     * Handles global keyboard shortcuts.
+     */
+    const handleGlobalKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) {
+        return;
+      }
+
+      if (isEditableKeyboardTarget(event.target)) {
+        return;
+      }
+
+      const normalizedKey = event.key.toLowerCase();
+      if (normalizedKey === "d" && !event.shiftKey) {
+        event.preventDefault();
+        void duplicateSelectedObjects();
+        return;
+      }
+
+      if (normalizedKey === "c" && !event.shiftKey) {
+        event.preventDefault();
+        copySelectedObjects();
+        return;
+      }
+
+      if (normalizedKey === "v" && !event.shiftKey) {
+        event.preventDefault();
+        void pasteCopiedObjects();
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleGlobalKeyDown);
+    };
+  }, [copySelectedObjects, duplicateSelectedObjects, pasteCopiedObjects]);
 
   const handleAiFooterResizeStart = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -7020,6 +7362,32 @@ export default function RealtimeBoardCanvas({
                 {hasDeletableSelection ? (
                   <button
                     type="button"
+                    onClick={() => {
+                      void duplicateSelectedObjects();
+                    }}
+                    title="Duplicate selected objects"
+                    style={{
+                      width: "100%",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "0.4rem",
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      background: "var(--surface)",
+                      color: "var(--text)",
+                      height: 34,
+                      fontSize: 12,
+                    }}
+                  >
+                    <DuplicateIcon />
+                    <span>Duplicate ({selectedObjectCount})</span>
+                  </button>
+                ) : null}
+
+                {hasDeletableSelection ? (
+                  <button
+                    type="button"
                     onClick={handleDeleteButtonClick}
                     title="Delete selected objects"
                     style={{
@@ -7481,7 +7849,9 @@ export default function RealtimeBoardCanvas({
                   draftGeometry?.rotationDeg ?? objectItem.rotationDeg;
                 const objectText = textDrafts[objectItem.id] ?? objectItem.text;
                 const objectLabelText =
-                  objectItem.type === "sticky" || objectItem.type === "gridContainer"
+                  objectItem.type === "sticky" ||
+                  objectItem.type === "gridContainer" ||
+                  objectItem.type === "text"
                     ? ""
                     : (objectItem.text ?? "").trim();
                 const isSelected = selectedObjectIds.includes(objectItem.id);
@@ -8157,6 +8527,286 @@ export default function RealtimeBoardCanvas({
                             }
                             aria-label="Rotate note"
                             title="Drag to rotate note (hold Shift to snap)"
+                            style={{
+                              position: "absolute",
+                              left: "50%",
+                              top: 0,
+                              transform: "translate(-50%, -168%)",
+                              width: 14,
+                              height: 14,
+                              borderRadius: "50%",
+                              border: "1px solid #1d4ed8",
+                              background: "var(--surface)",
+                              boxShadow: "0 1px 4px rgba(15, 23, 42, 0.25)",
+                              cursor: "grab",
+                            }}
+                          />
+                        </>
+                      ) : null}
+                    </article>
+                  );
+                }
+
+                if (objectItem.type === "text") {
+                  return (
+                    <article
+                      key={objectItem.id}
+                      data-board-object="true"
+                      onPointerDown={(event) => {
+                        event.stopPropagation();
+                        if (event.shiftKey) {
+                          toggleObjectSelection(objectItem.id);
+                          return;
+                        }
+
+                        if (shouldPreserveGroupSelection(objectItem.id)) {
+                          return;
+                        }
+                        selectSingleObject(objectItem.id);
+                      }}
+                      style={{
+                        position: "absolute",
+                        left: objectX,
+                        top: objectY,
+                        width: objectWidth,
+                        height: objectHeight,
+                        zIndex: 0,
+                        isolation: "isolate",
+                        borderRadius: 8,
+                        border: isSelected
+                          ? "1px dashed #2563eb"
+                          : "1px dashed transparent",
+                        background: "transparent",
+                        boxShadow: isSelected ? SELECTED_OBJECT_HALO : "none",
+                        overflow: "visible",
+                        transform: `rotate(${objectRotationDeg}deg)`,
+                        transformOrigin: "center center",
+                        transition: hasDraftGeometry
+                          ? "none"
+                          : "left 55ms linear, top 55ms linear, width 55ms linear, height 55ms linear, transform 55ms linear",
+                      }}
+                    >
+                      <div
+                        onPointerDown={(event) =>
+                          startObjectDrag(objectItem.id, event)
+                        }
+                        style={{
+                          height: 20,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: canEdit
+                            ? isObjectDragging
+                              ? "grabbing"
+                              : "grab"
+                            : "default",
+                          color: "var(--text-muted)",
+                          fontSize: 11,
+                          letterSpacing: "0.03em",
+                          userSelect: "none",
+                        }}
+                      >
+                        TEXT
+                      </div>
+                      <textarea
+                        value={objectText}
+                        onPointerDown={(event) => {
+                          event.stopPropagation();
+                          if (event.shiftKey) {
+                            toggleObjectSelection(objectItem.id);
+                            clearStickyTextHoldDrag();
+                            return;
+                          }
+
+                          if (!shouldPreserveGroupSelection(objectItem.id)) {
+                            selectSingleObject(objectItem.id);
+                          }
+
+                          if (!canEdit || event.button !== 0) {
+                            clearStickyTextHoldDrag();
+                            return;
+                          }
+
+                          clearStickyTextHoldDrag();
+                          const timerId = window.setTimeout(() => {
+                            const holdState = stickyTextHoldDragRef.current;
+                            if (
+                              !holdState ||
+                              holdState.objectId !== objectItem.id ||
+                              holdState.started
+                            ) {
+                              return;
+                            }
+
+                            stickyTextHoldDragRef.current = {
+                              ...holdState,
+                              started: true,
+                              timerId: null,
+                            };
+                            startObjectDrag(
+                              objectItem.id,
+                              {
+                                button: 0,
+                                shiftKey: false,
+                                clientX: holdState.startClientX,
+                                clientY: holdState.startClientY,
+                                preventDefault: () => {},
+                                stopPropagation: () => {},
+                              } as unknown as ReactPointerEvent<HTMLElement>,
+                            );
+                          }, STICKY_TEXT_HOLD_DRAG_DELAY_MS);
+
+                          stickyTextHoldDragRef.current = {
+                            objectId: objectItem.id,
+                            startClientX: event.clientX,
+                            startClientY: event.clientY,
+                            timerId,
+                            started: false,
+                          };
+                        }}
+                        onPointerMove={(event) => {
+                          const holdState = stickyTextHoldDragRef.current;
+                          if (
+                            !holdState ||
+                            holdState.objectId !== objectItem.id ||
+                            holdState.started
+                          ) {
+                            return;
+                          }
+
+                          if (!canEdit) {
+                            clearStickyTextHoldDrag();
+                            return;
+                          }
+
+                          const distance = Math.hypot(
+                            event.clientX - holdState.startClientX,
+                            event.clientY - holdState.startClientY,
+                          );
+                          if (distance < DRAG_CLICK_SLOP_PX) {
+                            return;
+                          }
+
+                          if (holdState.timerId !== null) {
+                            window.clearTimeout(holdState.timerId);
+                          }
+
+                          stickyTextHoldDragRef.current = {
+                            ...holdState,
+                            started: true,
+                            timerId: null,
+                          };
+                          event.preventDefault();
+                          startObjectDrag(
+                            objectItem.id,
+                            {
+                              button: 0,
+                              shiftKey: false,
+                              clientX: event.clientX,
+                              clientY: event.clientY,
+                              preventDefault: () => {},
+                              stopPropagation: () => {},
+                            } as unknown as ReactPointerEvent<HTMLElement>,
+                          );
+                        }}
+                        onPointerUp={() => {
+                          clearStickyTextHoldDrag();
+                        }}
+                        onPointerCancel={() => {
+                          clearStickyTextHoldDrag();
+                        }}
+                        onFocus={() => {
+                          if (!shouldPreserveGroupSelection(objectItem.id)) {
+                            selectSingleObject(objectItem.id);
+                          }
+                        }}
+                        onChange={(event) => {
+                          const nextText = event.target.value.slice(0, 2_000);
+                          setTextDrafts((previous) => ({
+                            ...previous,
+                            [objectItem.id]: nextText,
+                          }));
+                          queueStickyTextSync(objectItem.id, nextText);
+                        }}
+                        onBlur={(event) => {
+                          clearStickyTextHoldDrag();
+                          const nextText = event.target.value;
+                          setTextDrafts((previous) => {
+                            const next = { ...previous };
+                            delete next[objectItem.id];
+                            return next;
+                          });
+
+                          queueStickyTextSync(objectItem.id, nextText);
+                          flushStickyTextSync(objectItem.id);
+                        }}
+                        readOnly={!canEdit}
+                        style={{
+                          width: "100%",
+                          height: objectHeight - 20,
+                          border: "none",
+                          resize: "none",
+                          padding: "0.2rem 0.35rem",
+                          background: "transparent",
+                          color: renderedObjectColor,
+                          fontSize: 18,
+                          fontWeight: 600,
+                          lineHeight: 1.35,
+                          outline: "none",
+                          cursor: canEdit
+                            ? isObjectDragging
+                              ? "grabbing"
+                              : "text"
+                            : "default",
+                        }}
+                      />
+
+                      {isSingleSelected && canEdit ? (
+                        <div>
+                          {CORNER_HANDLES.map((corner) => (
+                            <button
+                              key={corner}
+                              type="button"
+                              onPointerDown={(event) =>
+                                startCornerResize(objectItem.id, corner, event)
+                              }
+                              style={{
+                                position: "absolute",
+                                ...getCornerPositionStyle(corner),
+                                width: RESIZE_HANDLE_SIZE,
+                                height: RESIZE_HANDLE_SIZE,
+                                border: "1px solid #1d4ed8",
+                                borderRadius: 2,
+                                background: "var(--surface)",
+                                cursor: getCornerCursor(corner),
+                              }}
+                              aria-label={`Resize ${corner} corner`}
+                            />
+                          ))}
+                        </div>
+                      ) : null}
+
+                      {isSingleSelected && canEdit ? (
+                        <>
+                          <div
+                            style={{
+                              position: "absolute",
+                              left: "50%",
+                              top: 0,
+                              width: 2,
+                              height: 16,
+                              background: "#93c5fd",
+                              transform: "translate(-50%, -102%)",
+                              pointerEvents: "none",
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onPointerDown={(event) =>
+                              startShapeRotate(objectItem.id, event)
+                            }
+                            aria-label="Rotate text"
+                            title="Drag to rotate text (hold Shift to snap)"
                             style={{
                               position: "absolute",
                               left: "50%",

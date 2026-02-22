@@ -4594,31 +4594,10 @@ export default function RealtimeBoardCanvas({
                 position: "absolute",
                 inset: 0,
                 pointerEvents: "none",
-                zIndex: 5,
+                zIndex: 0,
                 overflow: "hidden",
               }}
             >
-              {gridAxisLabels.xLabels.map((label) => (
-                <span
-                  key={`x-${label.value}`}
-                  style={{
-                    position: "absolute",
-                    left: Math.round(label.screen) + 3,
-                    top: 4,
-                    padding: "0 3px",
-                    borderRadius: 4,
-                    background: "var(--canvas-axis-label-bg)",
-                    color: "var(--canvas-axis-label-text)",
-                    fontSize: 10,
-                    lineHeight: 1.35,
-                    fontWeight: 600,
-                    fontVariantNumeric: "tabular-nums",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {label.value}
-                </span>
-              ))}
               {viewport.x >= -1 && viewport.x <= stageSize.width + 1 ? (
                 <span
                   aria-hidden
@@ -4645,6 +4624,39 @@ export default function RealtimeBoardCanvas({
                   }}
                 />
               ) : null}
+            </div>
+
+            <div
+              aria-hidden
+              style={{
+                position: "absolute",
+                inset: 0,
+                pointerEvents: "none",
+                zIndex: 6,
+                overflow: "hidden",
+              }}
+            >
+              {gridAxisLabels.xLabels.map((label) => (
+                <span
+                  key={`x-${label.value}`}
+                  style={{
+                    position: "absolute",
+                    left: Math.round(label.screen) + 3,
+                    top: 4,
+                    padding: "0 3px",
+                    borderRadius: 4,
+                    background: "var(--canvas-axis-label-bg)",
+                    color: "var(--canvas-axis-label-text)",
+                    fontSize: 10,
+                    lineHeight: 1.35,
+                    fontWeight: 600,
+                    fontVariantNumeric: "tabular-nums",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {label.value}
+                </span>
+              ))}
               {gridAxisLabels.yLabels.map((label) => (
                 <span
                   key={`y-${label.value}`}
@@ -4810,6 +4822,7 @@ export default function RealtimeBoardCanvas({
               style={{
                 position: "absolute",
                 inset: 0,
+                zIndex: 1,
                 transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`,
                 transformOrigin: "0 0",
               }}

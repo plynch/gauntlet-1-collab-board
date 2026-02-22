@@ -73,7 +73,6 @@ import {
 import {
   areGeometriesClose,
   arePointsClose,
-  buildConnectorRouteGeometry,
   clampScale,
   cloneBoardObjectForClipboard,
   CONNECTOR_ANCHORS,
@@ -86,7 +85,6 @@ import {
   getCornerCursor,
   getCornerPositionStyle,
   getDistance,
-  doBoundsOverlap,
   getLineEndpointOffsets,
   getLineEndpoints,
   getObjectVisualBounds,
@@ -98,8 +96,6 @@ import {
   POSITION_WRITE_STEP,
   roundToStep,
   snapToGrid,
-  scoreConnectorRoute,
-  scoreEndpointDirectionAlignment,
   toConnectorGeometryFromEndpoints,
   toDegrees,
   toNormalizedRect,
@@ -109,7 +105,6 @@ import {
   ZOOM_SLIDER_MIN_PERCENT,
   ZOOM_WHEEL_INTENSITY,
   inflateObjectBounds,
-  type ConnectorRouteGeometry,
   type ConnectorRoutingObstacle,
   type ObjectBounds,
   type ResolvedConnectorEndpoint,
@@ -123,7 +118,6 @@ import {
   CONNECTOR_DISCONNECTED_HANDLE_SIZE,
   CONNECTOR_HANDLE_SIZE,
   CONNECTOR_HIT_PADDING,
-  CONNECTOR_OBSTACLE_CULL_PADDING_PX,
   CONNECTOR_SNAP_DISTANCE_PX,
   CONNECTOR_VIEWPORT_CULL_PADDING_PX,
   CONTAINER_DRAG_THROTTLE_MS,
@@ -181,6 +175,7 @@ import type {
   StickyTextSyncState,
   ViewportState,
 } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-types";
+import { computeConnectorRoutes } from "@/features/boards/components/realtime-canvas/legacy/connector-route-runtime";
 import { useClipboardShortcuts } from "@/features/boards/components/realtime-canvas/legacy/use-clipboard-shortcuts";
 import {
   DEFAULT_SWOT_SECTION_TITLES,
@@ -4188,263 +4183,30 @@ export default function RealtimeBoardCanvas({
     });
     return ids;
   }, [selectedObjects]);
-  const connectorRoutesById = useMemo(() => {
-    const routes = new Map<
-      string,
-      {
-        resolved: {
-          from: ResolvedConnectorEndpoint;
-          to: ResolvedConnectorEndpoint;
-          draft: ConnectorDraft;
-        };
-        geometry: ConnectorRouteGeometry;
-      }
-    >();
-
-    objects.forEach((objectItem) => {
-      if (!isConnectorKind(objectItem.type)) {
-        return;
-      }
-
-      const localDraft = draftConnectorById[objectItem.id] ?? null;
-      const connectorGeometryDraft = draftGeometryById[objectItem.id] ?? {
-        x: objectItem.x,
-        y: objectItem.y,
-        width: objectItem.width,
-        height: objectItem.height,
-        rotationDeg: objectItem.rotationDeg,
-      };
-      const defaultFromX =
-        objectItem.fromX ??
-        connectorGeometryDraft.x +
-          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, connectorGeometryDraft.width) *
-            0.1;
-      const defaultFromY =
-        objectItem.fromY ??
-        connectorGeometryDraft.y +
-          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, connectorGeometryDraft.height) *
-            0.5;
-      const defaultToX =
-        objectItem.toX ??
-        connectorGeometryDraft.x +
-          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, connectorGeometryDraft.width) *
-            0.9;
-      const defaultToY =
-        objectItem.toY ??
-        connectorGeometryDraft.y +
-          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, connectorGeometryDraft.height) *
-            0.5;
-      const connectorDraft: ConnectorDraft = localDraft ?? {
-        fromObjectId: objectItem.fromObjectId ?? null,
-        toObjectId: objectItem.toObjectId ?? null,
-        fromAnchor: objectItem.fromAnchor ?? null,
-        toAnchor: objectItem.toAnchor ?? null,
-        fromX: defaultFromX,
-        fromY: defaultFromY,
-        toX: defaultToX,
-        toY: defaultToY,
-      };
-      const activeEndpointDrag = connectorEndpointDragStateRef.current;
-      const isConnectorSelected = selectedConnectorIds.has(objectItem.id);
-      const connectorScreenBounds = getConnectorHitBounds(
-        { x: connectorDraft.fromX, y: connectorDraft.fromY },
-        { x: connectorDraft.toX, y: connectorDraft.toY },
-        CONNECTOR_HIT_PADDING + CONNECTOR_OBSTACLE_CULL_PADDING_PX,
-      );
-      const shouldCullConnector =
-        connectorViewportBounds !== null &&
-        !isConnectorSelected &&
-        !localDraft &&
-        activeEndpointDrag?.objectId !== objectItem.id &&
-        !doBoundsOverlap(connectorScreenBounds, connectorViewportBounds);
-      if (shouldCullConnector) {
-        return;
-      }
-
-            const buildEndpointCandidates = (
-        endpoint: "from" | "to",
-      ): ResolvedConnectorEndpoint[] => {
-        const objectId =
-          endpoint === "from"
-            ? connectorDraft.fromObjectId
-            : connectorDraft.toObjectId;
-        const fallbackPoint =
-          endpoint === "from"
-            ? { x: connectorDraft.fromX, y: connectorDraft.fromY }
-            : { x: connectorDraft.toX, y: connectorDraft.toY };
-        const selectedAnchor =
-          endpoint === "from"
-            ? connectorDraft.fromAnchor
-            : connectorDraft.toAnchor;
-
-        if (!objectId) {
-          return [
-            {
-              x: fallbackPoint.x,
-              y: fallbackPoint.y,
-              objectId: null,
-              anchor: null,
-              direction: null,
-              connected: false,
-            },
-          ];
-        }
-
-        const endpointGeometry = connectableGeometryById.get(objectId);
-        if (!endpointGeometry) {
-          return [
-            {
-              x: fallbackPoint.x,
-              y: fallbackPoint.y,
-              objectId: null,
-              anchor: null,
-              direction: null,
-              connected: false,
-            },
-          ];
-        }
-        const endpointType = connectableTypeById.get(objectId) ?? "rect";
-
-        const isDraggingThisEndpoint =
-          activeEndpointDrag?.objectId === objectItem.id &&
-          activeEndpointDrag.endpoint === endpoint;
-        const anchors =
-          isDraggingThisEndpoint && selectedAnchor
-            ? [selectedAnchor]
-            : selectedAnchor
-              ? [
-                  selectedAnchor,
-                  ...CONNECTOR_ANCHORS.filter(
-                    (anchor) => anchor !== selectedAnchor,
-                  ),
-                ]
-              : [...CONNECTOR_ANCHORS];
-
-        return anchors.map((anchor) => {
-          const point = getAnchorPointForGeometry(
-            endpointGeometry,
-            anchor,
-            endpointType,
-          );
-          return {
-            x: point.x,
-            y: point.y,
-            objectId,
-            anchor,
-            direction: getAnchorDirectionForGeometry(anchor, endpointGeometry),
-            connected: true,
-          };
-        });
-      };
-
-      const fromCandidates = buildEndpointCandidates("from");
-      const toCandidates = buildEndpointCandidates("to");
-      let bestResolved: {
-        from: ResolvedConnectorEndpoint;
-        to: ResolvedConnectorEndpoint;
-      } | null = null;
-      let bestGeometry: ConnectorRouteGeometry | null = null;
-      let bestScore = Number.POSITIVE_INFINITY;
-
-      for (const fromCandidate of fromCandidates) {
-        for (const toCandidate of toCandidates) {
-          if (
-            fromCandidate.connected &&
-            toCandidate.connected &&
-            fromCandidate.objectId === toCandidate.objectId &&
-            fromCandidate.anchor === toCandidate.anchor
-          ) {
-            continue;
-          }
-
-          const routeSolveBounds = inflateObjectBounds(
-            {
-              left: Math.min(fromCandidate.x, toCandidate.x),
-              right: Math.max(fromCandidate.x, toCandidate.x),
-              top: Math.min(fromCandidate.y, toCandidate.y),
-              bottom: Math.max(fromCandidate.y, toCandidate.y),
-            },
-            CONNECTOR_HIT_PADDING + CONNECTOR_OBSTACLE_CULL_PADDING_PX,
-          );
-          const obstacles = connectorRoutingObstacles.filter(
-            (obstacle) =>
-              obstacle.objectId !== fromCandidate.objectId &&
-              obstacle.objectId !== toCandidate.objectId &&
-              doBoundsOverlap(obstacle.bounds, routeSolveBounds),
-          );
-          const geometry = buildConnectorRouteGeometry({
-            from: fromCandidate,
-            to: toCandidate,
-            obstacles,
-            padding: CONNECTOR_HIT_PADDING,
-          });
-
-          let score = scoreConnectorRoute(geometry.points, obstacles);
-          score += scoreEndpointDirectionAlignment(
-            fromCandidate,
-            toCandidate,
-            fromCandidate.direction,
-            toCandidate.direction,
-          );
-          if (
-            fromCandidate.connected &&
-            connectorDraft.fromAnchor &&
-            fromCandidate.anchor !== connectorDraft.fromAnchor
-          ) {
-            score += 14;
-          }
-          if (
-            toCandidate.connected &&
-            connectorDraft.toAnchor &&
-            toCandidate.anchor !== connectorDraft.toAnchor
-          ) {
-            score += 14;
-          }
-
-          if (
-            fromCandidate.connected &&
-            toCandidate.connected &&
-            fromCandidate.objectId === toCandidate.objectId
-          ) {
-            score += 300;
-          }
-
-          if (score < bestScore) {
-            bestScore = score;
-            bestResolved = {
-              from: fromCandidate,
-              to: toCandidate,
-            };
-            bestGeometry = geometry;
-          }
-        }
-      }
-
-      if (!bestResolved || !bestGeometry) {
-        return;
-      }
-
-      routes.set(objectItem.id, {
-        resolved: {
-          from: bestResolved.from,
-          to: bestResolved.to,
-          draft: connectorDraft,
-        },
-        geometry: bestGeometry,
-      });
-    });
-
-    return routes;
-  }, [
-    connectableGeometryById,
-    connectableTypeById,
-    connectorRoutingObstacles,
-    draftConnectorById,
-    draftGeometryById,
-    objects,
-    connectorViewportBounds,
-    selectedConnectorIds,
-  ]);
+  const connectorRoutesById = useMemo(
+    () =>
+      computeConnectorRoutes({
+        objects,
+        draftConnectorById,
+        draftGeometryById,
+        connectableGeometryById,
+        connectableTypeById,
+        connectorRoutingObstacles,
+        connectorViewportBounds,
+        selectedConnectorIds,
+        activeEndpointDrag: connectorEndpointDragStateRef.current,
+      }),
+    [
+      connectableGeometryById,
+      connectableTypeById,
+      connectorRoutingObstacles,
+      connectorViewportBounds,
+      draftConnectorById,
+      draftGeometryById,
+      objects,
+      selectedConnectorIds,
+    ],
+  );
   const selectedObjectBounds = useMemo(
     () =>
       mergeBounds(

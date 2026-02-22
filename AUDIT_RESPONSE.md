@@ -47,9 +47,11 @@ This file records what was fixed quickly for submission risk reduction, what was
   - `src/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-types.ts`
 - Clipboard shortcut effect:
   - `src/features/boards/components/realtime-canvas/legacy/use-clipboard-shortcuts.ts`
+- Connector route runtime:
+  - `src/features/boards/components/realtime-canvas/legacy/connector-route-runtime.ts`
 
 ### Current state
-- Primary file reduced from rollback baseline (~8363 lines) to ~7311 lines.
+- Primary file reduced from rollback baseline (~8363 lines) to ~7106 lines.
   - `src/features/boards/components/realtime-board-canvas.tsx`
 
 ## Audit “Missing Feature” Corrections (Already Implemented)

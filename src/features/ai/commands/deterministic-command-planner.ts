@@ -90,6 +90,7 @@ const MAX_STICKY_BATCH_COUNT = 50;
 const MAX_SUMMARY_BULLETS = 5;
 const MAX_ACTION_ITEM_CANDIDATES = 8;
 const ACTION_ITEM_GRID_COLUMNS = 4;
+const MAX_IMPLICIT_LAYOUT_OBJECTS = 50;
 const ACTION_ITEM_SPACING_X = 240;
 const ACTION_ITEM_SPACING_Y = 190;
 const ACTION_ITEM_COLOR = COLOR_KEYWORDS.green;
@@ -172,6 +173,105 @@ function getSelectedObjects(
     .filter((objectItem): objectItem is BoardObjectSnapshot =>
       Boolean(objectItem),
     );
+}
+
+/**
+ * Returns whether object is eligible for layout operations.
+ */
+function isLayoutEligibleObject(objectItem: BoardObjectSnapshot): boolean {
+  return (
+    objectItem.type !== "gridContainer" &&
+    objectItem.type !== "connectorUndirected" &&
+    objectItem.type !== "connectorArrow" &&
+    objectItem.type !== "connectorBidirectional"
+  );
+}
+
+/**
+ * Resolves layout targets from selection or natural-language context.
+ */
+function resolveLayoutTargets(
+  input: PlannerInput,
+  minimumCount: number,
+): {
+  objects: BoardObjectSnapshot[];
+  source: "selected" | "implicit" | "none";
+  tooMany: boolean;
+} {
+  const selectedObjects = getSelectedObjects(
+    input.boardState,
+    input.selectedObjectIds,
+  ).filter(isLayoutEligibleObject);
+  if (selectedObjects.length > 0) {
+    return {
+      objects: selectedObjects,
+      source: "selected",
+      tooMany: false,
+    };
+  }
+
+  const lower = normalizeMessage(input.message);
+  if (/\bselected\b/.test(lower)) {
+    return {
+      objects: [],
+      source: "none",
+      tooMany: false,
+    };
+  }
+
+  const hasImplicitReference =
+    /\b(these|them|those|elements?|objects?|notes?|stick(?:y|ies)|shapes?)\b/.test(
+      lower,
+    ) ||
+    /\b(arrange|organize|organise|layout|lay\s*out|distribute|space)\b/.test(
+      lower,
+    );
+  if (!hasImplicitReference) {
+    return {
+      objects: [],
+      source: "none",
+      tooMany: false,
+    };
+  }
+
+  let candidates = input.boardState.filter(isLayoutEligibleObject);
+  if (/\b(notes?|stick(?:y|ies))\b/.test(lower)) {
+    candidates = candidates.filter((objectItem) => objectItem.type === "sticky");
+  } else if (
+    /\b(shapes?|rectangles?|rects?|circles?|lines?|triangles?|stars?)\b/.test(
+      lower,
+    )
+  ) {
+    candidates = candidates.filter((objectItem) =>
+      objectItem.type === "rect" ||
+      objectItem.type === "circle" ||
+      objectItem.type === "triangle" ||
+      objectItem.type === "star" ||
+      objectItem.type === "line",
+    );
+  }
+
+  if (candidates.length > MAX_IMPLICIT_LAYOUT_OBJECTS) {
+    return {
+      objects: [],
+      source: "implicit",
+      tooMany: true,
+    };
+  }
+
+  if (candidates.length < minimumCount) {
+    return {
+      objects: [],
+      source: "implicit",
+      tooMany: false,
+    };
+  }
+
+  return {
+    objects: candidates,
+    source: "implicit",
+    tooMany: false,
+  };
 }
 
 /**
@@ -1629,11 +1729,16 @@ function planArrangeGrid(
     return null;
   }
 
-  const selectedObjects = getSelectedObjects(
-    input.boardState,
-    input.selectedObjectIds,
-  );
-  if (selectedObjects.length < 2) {
+  const resolvedTargets = resolveLayoutTargets(input, 2);
+  if (resolvedTargets.tooMany) {
+    return {
+      planned: false,
+      intent: "arrange-grid",
+      assistantMessage: `Arrange up to ${MAX_IMPLICIT_LAYOUT_OBJECTS} objects per command.`,
+    };
+  }
+
+  if (resolvedTargets.objects.length < 2) {
     return {
       planned: false,
       intent: "arrange-grid",
@@ -1644,11 +1749,19 @@ function planArrangeGrid(
   const columns = parseGridColumns(input.message) ?? GRID_DEFAULT_COLUMNS;
   const gap = parseGridGap(input.message);
   const centerInViewport = isArrangeGridCenterRequested(input.message);
+  const arrangedObjects = resolvedTargets.objects;
+  const arrangedCount = arrangedObjects.length;
+  const assistantMessage =
+    resolvedTargets.source === "selected"
+      ? `Arranged ${arrangedCount} selected object${arrangedCount === 1 ? "" : "s"} in a grid.`
+      : centerInViewport
+        ? `Arranged ${arrangedCount} objects in a centered grid.`
+        : `Arranged ${arrangedCount} objects in a grid.`;
 
   return {
     planned: true,
     intent: "arrange-grid",
-    assistantMessage: `Arranged ${selectedObjects.length} selected object${selectedObjects.length === 1 ? "" : "s"} in a grid.`,
+    assistantMessage,
     plan: toPlan({
       id: "command.arrange-grid",
       name: "Arrange Selected Objects In Grid",
@@ -1656,7 +1769,7 @@ function planArrangeGrid(
         {
           tool: "arrangeObjectsInGrid",
           args: {
-            objectIds: selectedObjects.map((objectItem) => objectItem.id),
+            objectIds: arrangedObjects.map((objectItem) => objectItem.id),
             columns,
             ...(gap?.gapX !== undefined ? { gapX: gap.gapX } : {}),
             ...(gap?.gapY !== undefined ? { gapY: gap.gapY } : {}),
@@ -1753,11 +1866,16 @@ function planDistributeSelected(
     return null;
   }
 
-  const selectedObjects = getSelectedObjects(
-    input.boardState,
-    input.selectedObjectIds,
-  );
-  if (selectedObjects.length < 3) {
+  const resolvedTargets = resolveLayoutTargets(input, 3);
+  if (resolvedTargets.tooMany) {
+    return {
+      planned: false,
+      intent: "distribute-objects",
+      assistantMessage: `Distribute up to ${MAX_IMPLICIT_LAYOUT_OBJECTS} objects per command.`,
+    };
+  }
+
+  if (resolvedTargets.objects.length < 3) {
     return {
       planned: false,
       intent: "distribute-objects",
@@ -1766,6 +1884,8 @@ function planDistributeSelected(
     };
   }
 
+  const targetObjects = resolvedTargets.objects;
+  const targetCount = targetObjects.length;
   const axis = parseDistributionAxis(input.message);
   const viewportDistributionRequested = isViewportDistributionRequested(
     input.message,
@@ -1778,7 +1898,7 @@ function planDistributeSelected(
     operations.push({
       tool: "alignObjects",
       args: {
-        objectIds: selectedObjects.map((objectItem) => objectItem.id),
+        objectIds: targetObjects.map((objectItem) => objectItem.id),
         alignment: axis === "horizontal" ? "middle" : "center",
       },
     });
@@ -1787,7 +1907,7 @@ function planDistributeSelected(
   operations.push({
     tool: "distributeObjects",
     args: {
-      objectIds: selectedObjects.map((objectItem) => objectItem.id),
+      objectIds: targetObjects.map((objectItem) => objectItem.id),
       axis,
       ...(shouldUseViewportBounds && input.viewportBounds
         ? { viewportBounds: input.viewportBounds }
@@ -1796,8 +1916,12 @@ function planDistributeSelected(
   });
 
   const assistantMessage = shouldUseViewportBounds
-    ? `Spaced ${selectedObjects.length} selected object${selectedObjects.length === 1 ? "" : "s"} evenly across the screen ${axis === "horizontal" ? "left to right" : "top to bottom"}.`
-    : `Spaced ${selectedObjects.length} selected object${selectedObjects.length === 1 ? "" : "s"} evenly ${axis === "horizontal" ? "left to right" : "top to bottom"}.`;
+    ? resolvedTargets.source === "selected"
+      ? `Spaced ${targetCount} selected object${targetCount === 1 ? "" : "s"} evenly across the screen ${axis === "horizontal" ? "left to right" : "top to bottom"}.`
+      : `Spaced ${targetCount} objects evenly across the screen ${axis === "horizontal" ? "left to right" : "top to bottom"}.`
+    : resolvedTargets.source === "selected"
+      ? `Spaced ${targetCount} selected object${targetCount === 1 ? "" : "s"} evenly ${axis === "horizontal" ? "left to right" : "top to bottom"}.`
+      : `Spaced ${targetCount} objects evenly ${axis === "horizontal" ? "left to right" : "top to bottom"}.`;
 
   return {
     planned: true,

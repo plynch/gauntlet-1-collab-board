@@ -18,9 +18,6 @@ export type SendBoardAiCommandResult = {
   selectionUpdate?: BoardSelectionUpdate;
 };
 
-/**
- * Sends board AI command request and returns normalized response payload.
- */
 export async function sendBoardAiCommand(
   input: SendBoardAiCommandInput,
 ): Promise<SendBoardAiCommandResult> {

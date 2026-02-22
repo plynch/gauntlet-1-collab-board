@@ -20,9 +20,6 @@ type AppHeaderProps = {
   titleAction?: ReactNode;
 };
 
-/**
- * Handles moon icon.
- */
 function MoonIcon() {
   return (
     <svg width="17" height="17" viewBox="0 0 20 20" aria-hidden="true">
@@ -38,9 +35,6 @@ function MoonIcon() {
   );
 }
 
-/**
- * Handles sun icon.
- */
 function SunIcon() {
   return (
     <svg width="17" height="17" viewBox="0 0 20 20" aria-hidden="true">
@@ -55,9 +49,6 @@ function SunIcon() {
   );
 }
 
-/**
- * Handles header back link.
- */
 export function HeaderBackLink({ href, label }: HeaderBackLinkProps) {
   return (
     <Link
@@ -76,9 +67,6 @@ export function HeaderBackLink({ href, label }: HeaderBackLinkProps) {
   );
 }
 
-/**
- * Handles app header.
- */
 export default function AppHeader({
   user,
   leftSlot,

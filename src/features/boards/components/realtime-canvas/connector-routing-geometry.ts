@@ -10,23 +10,14 @@ export type RoutingBounds = {
   bottom: number;
 };
 
-/**
- * Handles format path number.
- */
 function formatPathNumber(value: number): string {
   return Number(value.toFixed(2)).toString();
 }
 
-/**
- * Gets distance.
- */
 function getDistance(left: RoutingPoint, right: RoutingPoint): number {
   return Math.hypot(left.x - right.x, left.y - right.y);
 }
 
-/**
- * Gets segment direction.
- */
 export function getSegmentDirection(
   fromPoint: RoutingPoint,
   toPoint: RoutingPoint,
@@ -44,9 +35,6 @@ export function getSegmentDirection(
   };
 }
 
-/**
- * Gets point sequence bounds.
- */
 export function getPointSequenceBounds(
   points: RoutingPoint[],
   padding = 0,
@@ -61,9 +49,6 @@ export function getPointSequenceBounds(
   };
 }
 
-/**
- * Gets path length.
- */
 export function getPathLength(points: RoutingPoint[]): number {
   if (points.length < 2) {
     return 0;
@@ -76,9 +61,6 @@ export function getPathLength(points: RoutingPoint[]): number {
   return length;
 }
 
-/**
- * Gets path mid point.
- */
 export function getPathMidPoint(points: RoutingPoint[]): RoutingPoint {
   if (points.length === 0) {
     return { x: 0, y: 0 };
@@ -114,9 +96,6 @@ export function getPathMidPoint(points: RoutingPoint[]): RoutingPoint {
   return points[points.length - 1];
 }
 
-/**
- * Gets route end directions.
- */
 export function getRouteEndDirections(points: RoutingPoint[]): {
   startDirection: RoutingPoint;
   endDirection: RoutingPoint;
@@ -152,9 +131,6 @@ export function getRouteEndDirections(points: RoutingPoint[]): {
   };
 }
 
-/**
- * Handles to rounded connector path.
- */
 export function toRoundedConnectorPath(
   points: RoutingPoint[],
   cornerRadius = 14,

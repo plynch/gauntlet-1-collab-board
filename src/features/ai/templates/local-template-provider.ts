@@ -20,16 +20,10 @@ const TEMPLATE_CATALOG: TemplateSummary[] = [
   },
 ];
 
-/**
- * Handles list local templates.
- */
 export function listLocalTemplates(): TemplateSummary[] {
   return [...TEMPLATE_CATALOG];
 }
 
-/**
- * Handles instantiate local template.
- */
 export function instantiateLocalTemplate(
   input: TemplateInstantiateInput,
 ): TemplateInstantiateOutput {

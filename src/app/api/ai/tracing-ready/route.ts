@@ -16,9 +16,6 @@ const TRACE_READY_SCHEMA_VERSION = "2026-02-24-a";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * Parses required flag.
- */
 function parseRequiredFlag(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined) {
     return fallback;
@@ -34,9 +31,6 @@ function parseRequiredFlag(value: string | undefined, fallback: boolean): boolea
   return fallback;
 }
 
-/**
- * Handles get.
- */
 export async function GET(request: NextRequest) {
   try {
     await requireUser(request);

@@ -15,9 +15,6 @@ const CONNECTOR_TYPES: BoardObjectKind[] = [
   "connectorBidirectional",
 ];
 
-/**
- * Creates board object for membership tests.
- */
 function makeObject(
   overrides: Pick<BoardObject, "id" | "type"> & Partial<BoardObject>,
 ): BoardObject {
@@ -38,9 +35,6 @@ function makeObject(
   };
 }
 
-/**
- * Creates hook result for container membership behavior tests.
- */
 function renderContainerMembershipHook(objects: BoardObject[]) {
   const objectsByIdRef = {
     current: new Map(objects.map((objectItem) => [objectItem.id, objectItem])),

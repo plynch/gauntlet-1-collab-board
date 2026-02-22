@@ -72,17 +72,11 @@ const commandPlanArgsSchema = z.object({
     .optional(),
 });
 
-/**
- * Gets internal token.
- */
 function getInternalToken(): string | null {
   const token = process.env.MCP_INTERNAL_TOKEN?.trim();
   return token && token.length > 0 ? token : null;
 }
 
-/**
- * Returns whether authorized is true.
- */
 function isAuthorized(request: NextRequest): boolean {
   const expected = getInternalToken();
   if (!expected) {
@@ -93,9 +87,6 @@ function isAuthorized(request: NextRequest): boolean {
   return Boolean(received && received === expected);
 }
 
-/**
- * Handles to template instantiate input.
- */
 function toTemplateInstantiateInput(args: {
   templateId: string;
   boardBounds?: {
@@ -124,9 +115,6 @@ function toTemplateInstantiateInput(args: {
   };
 }
 
-/**
- * Handles to board state.
- */
 function toBoardState(raw: unknown): BoardObjectSnapshot[] {
   const parsed = boardStateSchema.safeParse(raw);
   if (!parsed.success) {
@@ -140,9 +128,6 @@ function toBoardState(raw: unknown): BoardObjectSnapshot[] {
   }));
 }
 
-/**
- * Creates template mcp server.
- */
 function createTemplateMcpServer(): McpServer {
   const server = new McpServer({
     name: "collabboard-template-mcp",
@@ -262,9 +247,6 @@ function createTemplateMcpServer(): McpServer {
   return server;
 }
 
-/**
- * Handles handle mcp request.
- */
 async function handleMcpRequest(request: NextRequest): Promise<Response> {
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
@@ -279,9 +261,6 @@ async function handleMcpRequest(request: NextRequest): Promise<Response> {
   }
 }
 
-/**
- * Handles handle method.
- */
 async function handleMethod(request: NextRequest): Promise<Response> {
   if (!getInternalToken()) {
     return NextResponse.json(
@@ -297,23 +276,14 @@ async function handleMethod(request: NextRequest): Promise<Response> {
   return handleMcpRequest(request);
 }
 
-/**
- * Handles post.
- */
 export async function POST(request: NextRequest) {
   return handleMethod(request);
 }
 
-/**
- * Handles get.
- */
 export async function GET(request: NextRequest) {
   return handleMethod(request);
 }
 
-/**
- * Handles delete.
- */
 export async function DELETE(request: NextRequest) {
   return handleMethod(request);
 }

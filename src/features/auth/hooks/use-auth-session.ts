@@ -23,9 +23,6 @@ type AuthSessionState = {
   signOutCurrentUser: () => Promise<void>;
 };
 
-/**
- * Handles use auth session.
- */
 export function useAuthSession(): AuthSessionState {
   const [user, setUser] = useState<User | null>(null);
   const [idToken, setIdToken] = useState<string | null>(null);

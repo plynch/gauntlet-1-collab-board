@@ -83,9 +83,6 @@ type UserIdentity = {
   email: string;
 };
 
-/**
- * Handles sanitize user key.
- */
 function sanitizeUserKey(value: string): string {
   const sanitized = value
     .toLowerCase()
@@ -96,9 +93,6 @@ function sanitizeUserKey(value: string): string {
   return sanitized.length > 0 ? sanitized : "e2e-user";
 }
 
-/**
- * Creates user identity for case.
- */
 function createUserIdentity(caseId: string): UserIdentity {
   const uid = sanitizeUserKey(`e2e-openai-${caseId}-${runSeed}`);
   return {
@@ -107,9 +101,6 @@ function createUserIdentity(caseId: string): UserIdentity {
   };
 }
 
-/**
- * Handles create board and open.
- */
 async function createBoardAndOpen(
   page: Page,
   caseId: string,
@@ -201,9 +192,6 @@ async function createBoardAndOpen(
   await expect(page).toHaveURL(/\/boards\//);
 }
 
-/**
- * Handles ensure ai input visible.
- */
 async function ensureAiInputVisible(page: Page): Promise<void> {
   const aiInput = page.getByPlaceholder("Ask AI agent...");
   if (await aiInput.isVisible()) {
@@ -216,9 +204,6 @@ async function ensureAiInputVisible(page: Page): Promise<void> {
   await expect(aiInput).toBeVisible();
 }
 
-/**
- * Handles send ai command.
- */
 async function sendAiCommand(
   page: Page,
   caseId: string,
@@ -305,23 +290,14 @@ async function sendAiCommand(
   };
 }
 
-/**
- * Gets board objects.
- */
 function getBoardObjects(page: Page): Locator {
   return page.locator("article[data-board-object='true']");
 }
 
-/**
- * Gets sticky text areas.
- */
 function getStickyTextAreas(page: Page): Locator {
   return page.locator("article[data-board-object='true'] textarea");
 }
 
-/**
- * Handles add manual sticky notes.
- */
 async function addManualStickyNotes(page: Page, count: number): Promise<void> {
   const objects = getBoardObjects(page);
   const initialCount = await objects.count();
@@ -332,9 +308,6 @@ async function addManualStickyNotes(page: Page, count: number): Promise<void> {
   }
 }
 
-/**
- * Handles add manual rectangles.
- */
 async function addManualRectangles(page: Page, count: number): Promise<void> {
   const objects = getBoardObjects(page);
   const initialCount = await objects.count();
@@ -345,9 +318,6 @@ async function addManualRectangles(page: Page, count: number): Promise<void> {
   }
 }
 
-/**
- * Handles select first object count.
- */
 async function selectFirstObjectCount(page: Page, count: number): Promise<void> {
   const objects = getBoardObjects(page);
   const total = await objects.count();
@@ -366,9 +336,6 @@ async function selectFirstObjectCount(page: Page, count: number): Promise<void> 
   ).toBeVisible();
 }
 
-/**
- * Handles get board object box.
- */
 async function getBoardObjectBox(page: Page, index: number) {
   const box = await getBoardObjects(page).nth(index).boundingBox();
   if (!box) {
@@ -377,9 +344,6 @@ async function getBoardObjectBox(page: Page, index: number) {
   return box;
 }
 
-/**
- * Handles assert command intent.
- */
 function assertOpenAiCommandResult(result: AiCommandResult): void {
   expect(result.provider).toBe("openai");
   expect(result.mode).toBe("llm");

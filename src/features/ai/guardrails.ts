@@ -23,9 +23,6 @@ type LayoutToolCall = Extract<
   }
 >;
 
-/**
- * Gets guardrail store.
- */
 function getGuardrailStore(): GuardrailStore {
   if (guardrailStore) {
     return guardrailStore;
@@ -39,16 +36,10 @@ function getGuardrailStore(): GuardrailStore {
   return guardrailStore;
 }
 
-/**
- * Sets guardrail store for tests.
- */
 export function setGuardrailStoreForTests(store: GuardrailStore | null): void {
   guardrailStore = store;
 }
 
-/**
- * Returns whether create tool is true.
- */
 function isCreateTool(toolCall: BoardToolCall): boolean {
   return (
     toolCall.tool === "createStickyNote" ||
@@ -61,9 +52,6 @@ function isCreateTool(toolCall: BoardToolCall): boolean {
   );
 }
 
-/**
- * Returns whether layout tool is true.
- */
 function isLayoutTool(toolCall: BoardToolCall): toolCall is LayoutToolCall {
   return (
     toolCall.tool === "arrangeObjectsInGrid" ||
@@ -72,9 +60,6 @@ function isLayoutTool(toolCall: BoardToolCall): toolCall is LayoutToolCall {
   );
 }
 
-/**
- * Handles count created objects.
- */
 export function countCreatedObjects(operations: BoardToolCall[]): number {
   return operations.reduce((total, operation) => {
     if (operation.tool === "createStickyBatch") {
@@ -88,9 +73,6 @@ export function countCreatedObjects(operations: BoardToolCall[]): number {
   }, 0);
 }
 
-/**
- * Handles validate template plan.
- */
 export function validateTemplatePlan(plan: TemplatePlan):
   | {
       ok: true;
@@ -188,9 +170,6 @@ export function validateTemplatePlan(plan: TemplatePlan):
   return { ok: true, objectsCreated };
 }
 
-/**
- * Handles check user rate limit.
- */
 export async function checkUserRateLimit(
   userId: string,
   nowMs = Date.now(),
@@ -212,9 +191,6 @@ export async function checkUserRateLimit(
   });
 }
 
-/**
- * Handles acquire board command lock.
- */
 export async function acquireBoardCommandLock(
   boardId: string,
   nowMs = Date.now(),
@@ -235,16 +211,10 @@ export async function acquireBoardCommandLock(
   });
 }
 
-/**
- * Handles release board command lock.
- */
 export async function releaseBoardCommandLock(boardId: string): Promise<void> {
   await getGuardrailStore().releaseBoardCommandLock(boardId);
 }
 
-/**
- * Handles with timeout.
- */
 export async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,

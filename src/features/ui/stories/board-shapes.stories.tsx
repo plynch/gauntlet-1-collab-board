@@ -17,9 +17,6 @@ type ShowcaseRow = {
   label: string;
 };
 
-/**
- * Returns whether kind is a connector preview.
- */
 function isConnectorPreviewKind(
   kind: PreviewKind,
 ): kind is "connectorUndirected" | "connectorArrow" | "connectorBidirectional" {
@@ -42,9 +39,6 @@ const SHAPE_ROWS: ShowcaseRow[] = [
   { kind: "connectorBidirectional", label: "Connector (two-way)" },
 ];
 
-/**
- * Renders story shell.
- */
 function StoryShell({ children }: { children: ReactNode }) {
   return (
     <div
@@ -91,9 +85,6 @@ function StoryShell({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * Renders row frame.
- */
 function RowFrame({ label, children }: { label: string; children: ReactNode }) {
   return (
     <section
@@ -130,9 +121,6 @@ function RowFrame({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/**
- * Renders preview tile.
- */
 function PreviewTile({
   title,
   children,
@@ -179,9 +167,6 @@ function PreviewTile({
   );
 }
 
-/**
- * Renders centered label pill.
- */
 function LabelPill({ text }: { text: string }) {
   return (
     <div
@@ -206,9 +191,6 @@ function LabelPill({ text }: { text: string }) {
   );
 }
 
-/**
- * Renders connector preview.
- */
 function ConnectorPreview({
   variant,
   text,
@@ -289,9 +271,6 @@ function ConnectorPreview({
   );
 }
 
-/**
- * Renders non-connector preview.
- */
 function PrimitivePreview({
   kind,
   text,
@@ -426,9 +405,6 @@ function PrimitivePreview({
   );
 }
 
-/**
- * Renders one row with and without text.
- */
 function ShapeRow({ row }: { row: ShowcaseRow }) {
   const text = `${row.label} label`;
 
@@ -457,9 +433,6 @@ function ShapeRow({ row }: { row: ShowcaseRow }) {
   );
 }
 
-/**
- * Renders shape label matrix.
- */
 function ShapeLabelMatrix() {
   return (
     <div style={{ padding: 14, display: "grid", gap: 10 }}>

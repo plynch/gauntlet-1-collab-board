@@ -2,9 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { AuthError } from "@/server/auth/require-user";
 
-/**
- * Gets debug message.
- */
 export function getDebugMessage(error: unknown): string | undefined {
   if (process.env.NODE_ENV === "production") {
     return undefined;
@@ -21,9 +18,6 @@ export function getDebugMessage(error: unknown): string | undefined {
   return undefined;
 }
 
-/**
- * Handles trim param.
- */
 export function trimParam(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
@@ -33,9 +27,6 @@ export function trimParam(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-/**
- * Handles read json body.
- */
 export async function readJsonBody(
   request: NextRequest,
 ): Promise<
@@ -57,9 +48,6 @@ export async function readJsonBody(
   }
 }
 
-/**
- * Handles handle route error.
- */
 export function handleRouteError(
   error: unknown,
   message: string,

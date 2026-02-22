@@ -57,9 +57,6 @@ type GridContainerProps = {
   containerTitleTextColor?: string;
 };
 
-/**
- * Renders pencil edit icon.
- */
 function PencilEditIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
@@ -82,9 +79,6 @@ function PencilEditIcon() {
   );
 }
 
-/**
- * Handles clamp dimension.
- */
 function clampDimension(value: number): number {
   if (!Number.isFinite(value)) {
     return 1;
@@ -93,23 +87,14 @@ function clampDimension(value: number): number {
   return Math.min(12, Math.max(1, Math.floor(value)));
 }
 
-/**
- * Clamps grid dimension to configured bounds.
- */
 function clampGridDimension(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, clampDimension(value)));
 }
 
-/**
- * Handles default section title.
- */
 function defaultSectionTitle(index: number): string {
   return `Section ${index + 1}`;
 }
 
-/**
- * Handles resolve values.
- */
 function resolveValues(
   preferred: string[] | undefined,
   fallback: string[],
@@ -121,9 +106,6 @@ function resolveValues(
   );
 }
 
-/**
- * Handles grid container.
- */
 export function GridContainer({
   rows,
   cols,
@@ -230,10 +212,7 @@ export function GridContainer({
     cellCount,
   );
   const isDarkChrome = chromeTone === "dark";
-  /**
-   * Handles commit grid dimensions.
-   */
-  const commitGridDimensions = useCallback(
+    const commitGridDimensions = useCallback(
     (nextRows: number, nextCols: number) => {
       if (!onGridDimensionsChange) {
         return;
@@ -321,10 +300,7 @@ export function GridContainer({
     };
   }, [commitGridDimensions, isDimensionDragSelecting]);
 
-  /**
-   * Handles handle color change.
-   */
-  const handleColorChange = (cellIndex: number, color: string) => {
+    const handleColorChange = (cellIndex: number, color: string) => {
     if (!cellColors) {
       setInternalColors((current) => {
         const next = [...current];
@@ -336,10 +312,7 @@ export function GridContainer({
     onCellColorChange?.(cellIndex, color);
   };
 
-  /**
-   * Handles commit container title.
-   */
-  const commitContainerTitle = () => {
+    const commitContainerTitle = () => {
     const nextTitle = containerTitleDraft.trim().slice(0, 120);
     if (!containerTitle) {
       setInternalContainerTitle(nextTitle);
@@ -349,10 +322,7 @@ export function GridContainer({
     setIsEditingContainerTitle(false);
   };
 
-  /**
-   * Handles commit section title.
-   */
-  const commitSectionTitle = (cellIndex: number) => {
+    const commitSectionTitle = (cellIndex: number) => {
     const nextTitle =
       (sectionTitleDrafts[cellIndex] ?? "").trim() ||
       defaultSectionTitle(cellIndex);
@@ -372,10 +342,7 @@ export function GridContainer({
     setEditingSectionIndex(null);
   };
 
-  /**
-   * Handles handle section note change.
-   */
-  const handleSectionNoteChange = (cellIndex: number, nextNote: string) => {
+    const handleSectionNoteChange = (cellIndex: number, nextNote: string) => {
     if (!sectionNotes) {
       setInternalSectionNotes((current) => {
         const next = [...current];

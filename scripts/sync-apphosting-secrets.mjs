@@ -4,9 +4,6 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-/**
- * Parses a simple dotenv file while preserving escaped newlines and quoted strings.
- */
 function parseEnvFile(content) {
   const result = {};
   const lines = content.split("\n");

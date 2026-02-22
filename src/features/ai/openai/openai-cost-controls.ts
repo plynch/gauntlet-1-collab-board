@@ -6,9 +6,6 @@ export const OPENAI_HARD_SPEND_LIMIT_USD = 10;
 
 let openAiSpendStore: OpenAiSpendStore | null = null;
 
-/**
- * Gets openai spend store.
- */
 function getOpenAiSpendStore(): OpenAiSpendStore {
   if (openAiSpendStore) {
     return openAiSpendStore;
@@ -22,23 +19,14 @@ function getOpenAiSpendStore(): OpenAiSpendStore {
   return openAiSpendStore;
 }
 
-/**
- * Sets openai spend store for tests.
- */
 export function setOpenAiSpendStoreForTests(store: OpenAiSpendStore | null): void {
   openAiSpendStore = store;
 }
 
-/**
- * Handles round usd.
- */
 function roundUsd(value: number): number {
   return Math.max(0, Math.round(value * 1_000_000) / 1_000_000);
 }
 
-/**
- * Estimates openai cost from usage.
- */
 export function estimateOpenAiCostUsd(input: {
   inputTokens: number;
   outputTokens: number;
@@ -52,9 +40,6 @@ export function estimateOpenAiCostUsd(input: {
   return roundUsd(inputCost + outputCost);
 }
 
-/**
- * Handles reserve openai budget.
- */
 export async function reserveOpenAiBudget(
   reserveUsd: number,
 ): Promise<
@@ -92,18 +77,12 @@ export async function reserveOpenAiBudget(
   };
 }
 
-/**
- * Handles release openai budget.
- */
 export async function releaseOpenAiBudgetReservation(
   reservedUsd: number,
 ): Promise<void> {
   await getOpenAiSpendStore().releaseBudget(reservedUsd);
 }
 
-/**
- * Handles finalize openai budget reservation.
- */
 export async function finalizeOpenAiBudgetReservation(input: {
   reservedUsd: number;
   actualUsd: number;

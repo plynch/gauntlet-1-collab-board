@@ -13,9 +13,6 @@ import { GridContainer } from "@/features/ui/components/grid-container";
 import { Input } from "@/features/ui/components/input";
 import { SectionHeading } from "@/features/ui/components/section-heading";
 
-/**
- * Handles styleguide workspace.
- */
 export function StyleguideWorkspace() {
   const [sampleText, setSampleText] = useState("Sprint planning");
 

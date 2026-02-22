@@ -6,9 +6,6 @@ type BoardSettingsPageProps = {
   }>;
 };
 
-/**
- * Handles board settings page.
- */
 export default async function BoardSettingsPage({
   params,
 }: BoardSettingsPageProps) {

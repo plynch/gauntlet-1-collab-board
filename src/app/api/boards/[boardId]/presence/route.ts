@@ -26,9 +26,6 @@ type BoardPresenceRouteContext = {
   }>;
 };
 
-/**
- * Handles patch.
- */
 export async function PATCH(
   request: NextRequest,
   context: BoardPresenceRouteContext,

@@ -12,16 +12,10 @@ import type { ChatMessage } from "@/features/boards/components/realtime-canvas/a
 
 const DEFAULT_MAX_CHAT_HISTORY = 50;
 
-/**
- * Creates chat message ID.
- */
 function createChatMessageId(prefix: "u" | "a"): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-/**
- * Returns whether message is a local help command.
- */
 export function isLocalAiHelpCommand(message: string): boolean {
   const normalized = message.trim().toLowerCase();
   return (
@@ -52,9 +46,6 @@ type UseAiChatStateResult = {
   ) => void;
 };
 
-/**
- * Handles AI chat state and command history navigation.
- */
 export function useAiChatState(
   input: UseAiChatStateInput,
 ): UseAiChatStateResult {

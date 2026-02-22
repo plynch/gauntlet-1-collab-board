@@ -33,9 +33,6 @@ type BoardAccessRouteContext = {
   }>;
 };
 
-/**
- * Handles to board detail.
- */
 function toBoardDetail(
   boardId: string,
   board: BoardDoc,
@@ -57,16 +54,10 @@ function toBoardDetail(
   };
 }
 
-/**
- * Handles normalize email.
- */
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
 }
 
-/**
- * Handles patch.
- */
 export async function PATCH(
   request: NextRequest,
   context: BoardAccessRouteContext,

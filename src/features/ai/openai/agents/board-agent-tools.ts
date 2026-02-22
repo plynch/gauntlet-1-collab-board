@@ -64,9 +64,6 @@ type BoardAgentToolFactoryResult = {
   ) => Promise<ExecuteToolResult>;
 };
 
-/**
- * Gets tool description by name.
- */
 function getToolDescription(
   name: BoardToolCall["tool"],
   fallback: string,
@@ -75,16 +72,10 @@ function getToolDescription(
   return match?.description ?? fallback;
 }
 
-/**
- * Returns whether tool call mutates board state.
- */
 function isMutatingToolCall(toolCall: BoardToolCall): boolean {
   return toolCall.tool !== "getBoardState";
 }
 
-/**
- * Returns whether tool call creates objects.
- */
 function createsObjects(toolCall: BoardToolCall): boolean {
   return (
     toolCall.tool === "createStickyNote" ||
@@ -97,16 +88,10 @@ function createsObjects(toolCall: BoardToolCall): boolean {
   );
 }
 
-/**
- * Handles to finite number.
- */
 function toFiniteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-/**
- * Handles bounded integer.
- */
 function toBoundedInt(
   value: number | null | undefined,
   fallback: number,
@@ -119,9 +104,6 @@ function toBoundedInt(
   return Math.max(minimum, Math.min(maximum, Math.floor(value)));
 }
 
-/**
- * Handles to default placement point.
- */
 function getDefaultPlacementPoint(
   viewportBounds: ViewportBounds | null,
 ): { x: number; y: number } {
@@ -138,9 +120,6 @@ function getDefaultPlacementPoint(
   };
 }
 
-/**
- * Returns whether coordinate hints contain explicit x/y.
- */
 function hasExplicitCoordinateHints(
   hints: CoordinateHints | null | undefined,
 ): hints is { hintedX: number; hintedY: number } {
@@ -152,9 +131,6 @@ function hasExplicitCoordinateHints(
   );
 }
 
-/**
- * Resolves sticky batch layout.
- */
 function resolveStickyBatchLayout(options: {
   count: number;
   args: {
@@ -268,9 +244,6 @@ function resolveStickyBatchLayout(options: {
   };
 }
 
-/**
- * Handles ensure object ids.
- */
 function ensureObjectIds(
   objectIds: string[] | null | undefined,
   selectedObjectIds: string[],
@@ -297,9 +270,6 @@ function ensureObjectIds(
   return resolved;
 }
 
-/**
- * Handles build synthetic plan.
- */
 function buildSyntheticPlan(operations: BoardToolCall[]): TemplatePlan {
   return {
     templateId: "openai.agents.direct-tools",
@@ -308,9 +278,6 @@ function buildSyntheticPlan(operations: BoardToolCall[]): TemplatePlan {
   };
 }
 
-/**
- * Creates board agent tools.
- */
 export function createBoardAgentTools(
   options: CreateBoardAgentToolsOptions,
 ): BoardAgentToolFactoryResult {
@@ -320,10 +287,7 @@ export function createBoardAgentTools(
   let deletedCount = 0;
   let toolCalls = 0;
 
-  /**
-   * Handles execute tool call.
-   */
-  async function executeToolCallWithGuardrails(
+    async function executeToolCallWithGuardrails(
     toolCall: BoardToolCall,
     traceMetadata?: Record<string, unknown>,
   ): Promise<ExecuteToolResult> {

@@ -23,9 +23,6 @@ type OwnedBoardsState = {
   ready: boolean;
 };
 
-/**
- * Handles to listener error message.
- */
 function toListenerErrorMessage(error: unknown, fallback: string): string {
   if (typeof error === "object" && error !== null) {
     const candidate = error as { code?: unknown; message?: unknown };
@@ -49,9 +46,6 @@ function toListenerErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-/**
- * Handles use owned boards live.
- */
 export function useOwnedBoardsLive(
   userUid: string | null,
 ): UseOwnedBoardsLiveResult {

@@ -11,7 +11,6 @@ import {
 } from "react";
 import type { User } from "firebase/auth";
 import {
-  Timestamp,
   addDoc,
   collection,
   deleteDoc,
@@ -58,6 +57,11 @@ import {
   isLabelEditableObjectType,
   LINE_MIN_LENGTH,
 } from "@/features/boards/components/realtime-canvas/board-object-helpers";
+import {
+  hashToColor,
+  toBoardObject,
+  toPresenceUser,
+} from "@/features/boards/components/realtime-canvas/board-doc-parsers";
 import {
   AI_FOOTER_COLLAPSED_HEIGHT,
   AI_FOOTER_DEFAULT_HEIGHT,
@@ -343,16 +347,10 @@ const INITIAL_VIEWPORT: ViewportState = {
   scale: 1,
 };
 
-/**
- * Handles clamp scale.
- */
 function clampScale(nextScale: number): number {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, nextScale));
 }
 
-/**
- * Gets accelerated wheel zoom delta.
- */
 function getAcceleratedWheelZoomDelta(deltaY: number): number {
   const magnitude = Math.abs(deltaY);
   const acceleration = 1 + Math.min(2.4, magnitude / 110);
@@ -364,9 +362,6 @@ function getAcceleratedWheelZoomDelta(deltaY: number): number {
   return Math.sign(deltaY) * acceleratedMagnitude;
 }
 
-/**
- * Handles to normalized rect.
- */
 function toNormalizedRect(
   start: BoardPoint,
   end: BoardPoint,
@@ -384,9 +379,6 @@ function toNormalizedRect(
   };
 }
 
-/**
- * Gets spawn offset.
- */
 function getSpawnOffset(index: number, step: number): BoardPoint {
   if (index <= 0) {
     return { x: 0, y: 0 };
@@ -423,123 +415,6 @@ function getSpawnOffset(index: number, step: number): BoardPoint {
   };
 }
 
-/**
- * Gets string.
- */
-function getString(value: unknown, fallback = ""): string {
-  return typeof value === "string" ? value : fallback;
-}
-
-/**
- * Gets nullable string.
- */
-function getNullableString(value: unknown): string | null {
-  if (typeof value === "string") {
-    return value;
-  }
-
-  return null;
-}
-
-/**
- * Gets number.
- */
-function getNumber(value: unknown, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
-/**
- * Gets timestamp millis.
- */
-function getTimestampMillis(value: unknown): number | null {
-  if (value instanceof Timestamp) {
-    return value.toMillis();
-  }
-
-  return null;
-}
-
-/**
- * Gets finite number.
- */
-function getFiniteNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-/**
- * Gets grid dimension.
- */
-function getGridDimension(
-  value: unknown,
-  fallback: number | null,
-): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return fallback;
-  }
-
-  return Math.max(
-    1,
-    Math.min(
-      Math.max(GRID_CONTAINER_MAX_ROWS, GRID_CONTAINER_MAX_COLS),
-      Math.floor(value),
-    ),
-  );
-}
-
-/**
- * Gets grid gap.
- */
-function getGridGap(value: unknown, fallback: number | null): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return fallback;
-  }
-
-  return Math.max(0, Math.min(24, Math.round(value)));
-}
-
-/**
- * Gets non negative integer.
- */
-function getNonNegativeInteger(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return null;
-  }
-
-  const floored = Math.floor(value);
-  return floored >= 0 ? floored : null;
-}
-
-/**
- * Gets grid cell colors.
- */
-function getGridCellColors(value: unknown): string[] | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-
-  const colors = value.filter(
-    (item): item is string => typeof item === "string",
-  );
-  return colors.length > 0 ? colors : null;
-}
-
-/**
- * Gets string array.
- */
-function getStringArray(value: unknown): string[] | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-
-  const values = value
-    .filter((item): item is string => typeof item === "string")
-    .map((item) => item.trim());
-  return values.length > 0 ? values : null;
-}
-
-/**
- * Gets default section titles.
- */
 function getDefaultSectionTitles(rows: number, cols: number): string[] {
   const count = Math.max(1, rows * cols);
   if (rows === 2 && cols === 2) {
@@ -553,9 +428,6 @@ function getDefaultSectionTitles(rows: number, cols: number): string[] {
   return Array.from({ length: count }, (_, index) => `Section ${index + 1}`);
 }
 
-/**
- * Handles normalize section values.
- */
 function normalizeSectionValues(
   values: string[] | null | undefined,
   count: number,
@@ -572,90 +444,22 @@ function normalizeSectionValues(
   });
 }
 
-/**
- * Gets timestamp iso.
- */
-function getTimestampIso(value: unknown): string | null {
-  if (value instanceof Timestamp) {
-    return value.toDate().toISOString();
-  }
-
-  return null;
-}
-
-/**
- * Handles hash to color.
- */
-function hashToColor(input: string): string {
-  const palette = [
-    "#2563eb",
-    "#0ea5e9",
-    "#0891b2",
-    "#16a34a",
-    "#f59e0b",
-    "#dc2626",
-    "#7c3aed",
-    "#db2777",
-  ];
-
-  let hash = 0;
-  for (let index = 0; index < input.length; index += 1) {
-    hash = (hash * 31 + input.charCodeAt(index)) % 2_147_483_647;
-  }
-
-  return palette[Math.abs(hash) % palette.length];
-}
-
-/**
- * Returns whether board object kind is true.
- */
-function isBoardObjectKind(value: unknown): value is BoardObjectKind {
-  return (
-    value === "sticky" ||
-    value === "text" ||
-    value === "rect" ||
-    value === "circle" ||
-    value === "gridContainer" ||
-    value === "line" ||
-    value === "connectorUndirected" ||
-    value === "connectorArrow" ||
-    value === "connectorBidirectional" ||
-    value === "triangle" ||
-    value === "star"
-  );
-}
-
-/**
- * Handles to radians.
- */
 function toRadians(degrees: number): number {
   return (degrees * Math.PI) / 180;
 }
 
-/**
- * Handles to degrees.
- */
 function toDegrees(radians: number): number {
   return (radians * 180) / Math.PI;
 }
 
-/**
- * Handles round to step.
- */
 function roundToStep(value: number, step: number): number {
   return Math.round(value / step) * step;
 }
 
-/**
- * Handles snap to grid.
- */
 function snapToGrid(value: number): number {
   return roundToStep(value, GRID_CELL_SIZE);
 }
 
-/**
- * Returns whether object should snap to grid is true.
- */
 function isSnapEligibleObjectType(type: BoardObjectKind): boolean {
   return (
     type === "sticky" ||
@@ -669,9 +473,6 @@ function isSnapEligibleObjectType(type: BoardObjectKind): boolean {
   );
 }
 
-/**
- * Handles to write point.
- */
 function toWritePoint(point: BoardPoint): BoardPoint {
   return {
     x: roundToStep(point.x, POSITION_WRITE_STEP),
@@ -679,16 +480,10 @@ function toWritePoint(point: BoardPoint): BoardPoint {
   };
 }
 
-/**
- * Gets distance.
- */
 function getDistance(left: BoardPoint, right: BoardPoint): number {
   return Math.hypot(left.x - right.x, left.y - right.y);
 }
 
-/**
- * Handles are points close.
- */
 function arePointsClose(
   left: BoardPoint,
   right: BoardPoint,
@@ -700,16 +495,10 @@ function arePointsClose(
   );
 }
 
-/**
- * Handles normalize rotation deg.
- */
 function normalizeRotationDeg(rotationDeg: number): number {
   return ((rotationDeg % 360) + 360) % 360;
 }
 
-/**
- * Gets rotation delta.
- */
 function getRotationDelta(
   leftRotationDeg: number,
   rightRotationDeg: number,
@@ -720,9 +509,6 @@ function getRotationDelta(
   return Math.min(rawDelta, 360 - rawDelta);
 }
 
-/**
- * Handles are geometries close.
- */
 function areGeometriesClose(
   leftGeometry: ObjectGeometry,
   rightGeometry: ObjectGeometry,
@@ -739,18 +525,12 @@ function areGeometriesClose(
   );
 }
 
-/**
- * Handles has meaningful rotation.
- */
 function hasMeaningfulRotation(rotationDeg: number): boolean {
   const normalized = normalizeRotationDeg(rotationDeg);
   const distanceToZero = Math.min(normalized, 360 - normalized);
   return distanceToZero > 0.25;
 }
 
-/**
- * Gets rotated bounds.
- */
 function getRotatedBounds(geometry: ObjectGeometry): ObjectBounds {
   const centerX = geometry.x + geometry.width / 2;
   const centerY = geometry.y + geometry.height / 2;
@@ -784,9 +564,6 @@ function getRotatedBounds(geometry: ObjectGeometry): ObjectBounds {
   return { left, right, top, bottom };
 }
 
-/**
- * Gets object visual bounds.
- */
 function getObjectVisualBounds(
   type: BoardObjectKind,
   geometry: ObjectGeometry,
@@ -804,9 +581,6 @@ function getObjectVisualBounds(
   return getRotatedBounds(geometry);
 }
 
-/**
- * Handles merge bounds.
- */
 function mergeBounds(bounds: ObjectBounds[]): ObjectBounds | null {
   if (bounds.length === 0) {
     return null;
@@ -820,9 +594,6 @@ function mergeBounds(bounds: ObjectBounds[]): ObjectBounds | null {
   }));
 }
 
-/**
- * Gets line endpoints.
- */
 function getLineEndpoints(geometry: ObjectGeometry): {
   start: BoardPoint;
   end: BoardPoint;
@@ -846,9 +617,6 @@ function getLineEndpoints(geometry: ObjectGeometry): {
   };
 }
 
-/**
- * Gets line endpoint offsets.
- */
 function getLineEndpointOffsets(geometry: ObjectGeometry): {
   start: BoardPoint;
   end: BoardPoint;
@@ -872,9 +640,6 @@ function getLineEndpointOffsets(geometry: ObjectGeometry): {
   };
 }
 
-/**
- * Handles rotate point around center.
- */
 function rotatePointAroundCenter(
   point: BoardPoint,
   center: BoardPoint,
@@ -892,9 +657,6 @@ function rotatePointAroundCenter(
   };
 }
 
-/**
- * Handles rotate vector.
- */
 function rotateVector(vector: BoardPoint, rotationDeg: number): BoardPoint {
   if (Math.abs(rotationDeg) < 0.001) {
     return vector;
@@ -910,9 +672,6 @@ function rotateVector(vector: BoardPoint, rotationDeg: number): BoardPoint {
   };
 }
 
-/**
- * Gets anchor direction vector.
- */
 function getAnchorDirectionVector(anchor: ConnectorAnchor): BoardPoint {
   if (anchor === "top") {
     return { x: 0, y: -1 };
@@ -926,9 +685,6 @@ function getAnchorDirectionVector(anchor: ConnectorAnchor): BoardPoint {
   return { x: -1, y: 0 };
 }
 
-/**
- * Gets anchor direction for geometry.
- */
 function getAnchorDirectionForGeometry(
   anchor: ConnectorAnchor,
   geometry: ObjectGeometry,
@@ -936,9 +692,6 @@ function getAnchorDirectionForGeometry(
   return rotateVector(getAnchorDirectionVector(anchor), geometry.rotationDeg);
 }
 
-/**
- * Gets ray box intersection.
- */
 function getRayBoxIntersection(
   direction: BoardPoint,
   halfWidth: number,
@@ -960,9 +713,6 @@ function getRayBoxIntersection(
   };
 }
 
-/**
- * Gets ray ellipse intersection.
- */
 function getRayEllipseIntersection(
   direction: BoardPoint,
   halfWidth: number,
@@ -983,16 +733,10 @@ function getRayEllipseIntersection(
   };
 }
 
-/**
- * Handles cross2d.
- */
 function cross2d(left: BoardPoint, right: BoardPoint): number {
   return left.x * right.y - left.y * right.x;
 }
 
-/**
- * Gets ray polygon intersection.
- */
 function getRayPolygonIntersection(
   direction: BoardPoint,
   polygonPoints: BoardPoint[],
@@ -1035,9 +779,6 @@ function getRayPolygonIntersection(
   return bestPoint;
 }
 
-/**
- * Handles to local polygon point.
- */
 function toLocalPolygonPoint(
   u: number,
   v: number,
@@ -1069,9 +810,6 @@ const STAR_POLYGON_NORMALIZED: ReadonlyArray<readonly [number, number]> = [
   [0.39, 0.38],
 ];
 
-/**
- * Gets anchor point for geometry.
- */
 function getAnchorPointForGeometry(
   geometry: ObjectGeometry,
   anchor: ConnectorAnchor,
@@ -1122,9 +860,6 @@ function getAnchorPointForGeometry(
   return rotatePointAroundCenter(unrotatedPoint, center, geometry.rotationDeg);
 }
 
-/**
- * Gets connector bounds from endpoints.
- */
 function getConnectorBoundsFromEndpoints(
   fromPoint: BoardPoint,
   toPoint: BoardPoint,
@@ -1138,9 +873,6 @@ function getConnectorBoundsFromEndpoints(
   };
 }
 
-/**
- * Handles to connector geometry from endpoints.
- */
 function toConnectorGeometryFromEndpoints(
   fromPoint: BoardPoint,
   toPoint: BoardPoint,
@@ -1168,9 +900,6 @@ type ConnectorRouteGeometry = {
   endDirection: BoardPoint;
 };
 
-/**
- * Handles inflate object bounds.
- */
 function inflateObjectBounds(
   bounds: ObjectBounds,
   padding: number,
@@ -1183,9 +912,6 @@ function inflateObjectBounds(
   };
 }
 
-/**
- * Handles segment intersects bounds.
- */
 function segmentIntersectsBounds(
   start: BoardPoint,
   end: BoardPoint,
@@ -1220,9 +946,6 @@ function segmentIntersectsBounds(
   return false;
 }
 
-/**
- * Handles count route intersections.
- */
 function countRouteIntersections(
   points: BoardPoint[],
   obstacles: ConnectorRoutingObstacle[],
@@ -1244,9 +967,6 @@ function countRouteIntersections(
   return hits;
 }
 
-/**
- * Handles simplify route points.
- */
 function simplifyRoutePoints(points: BoardPoint[]): BoardPoint[] {
   if (points.length <= 2) {
     return points;
@@ -1290,9 +1010,6 @@ function simplifyRoutePoints(points: BoardPoint[]): BoardPoint[] {
   return simplified;
 }
 
-/**
- * Gets anchor direction.
- */
 function getAnchorDirection(anchor: ConnectorAnchor | null): BoardPoint | null {
   if (anchor === "top") {
     return { x: 0, y: -1 };
@@ -1309,9 +1026,6 @@ function getAnchorDirection(anchor: ConnectorAnchor | null): BoardPoint | null {
   return null;
 }
 
-/**
- * Handles score endpoint direction alignment.
- */
 function scoreEndpointDirectionAlignment(
   fromPoint: BoardPoint,
   toPoint: BoardPoint,
@@ -1353,9 +1067,6 @@ function scoreEndpointDirectionAlignment(
   return penalty;
 }
 
-/**
- * Creates orthogonal route candidates.
- */
 function createOrthogonalRouteCandidates(
   fromPoint: BoardPoint,
   toPoint: BoardPoint,
@@ -1434,9 +1145,6 @@ function createOrthogonalRouteCandidates(
   return Array.from(unique.values());
 }
 
-/**
- * Handles score connector route.
- */
 function scoreConnectorRoute(
   points: BoardPoint[],
   obstacles: ConnectorRoutingObstacle[],
@@ -1447,9 +1155,6 @@ function scoreConnectorRoute(
   return intersections * 1_000_000 + bends * 120 + length;
 }
 
-/**
- * Builds connector route geometry.
- */
 function buildConnectorRouteGeometry(options: {
   from: ResolvedConnectorEndpoint;
   to: ResolvedConnectorEndpoint;
@@ -1537,16 +1242,10 @@ function buildConnectorRouteGeometry(options: {
 
 const CORNER_HANDLES: ResizeCorner[] = ["nw", "ne", "sw", "se"];
 
-/**
- * Gets corner cursor.
- */
 function getCornerCursor(corner: ResizeCorner): string {
   return corner === "nw" || corner === "se" ? "nwse-resize" : "nesw-resize";
 }
 
-/**
- * Gets corner position style.
- */
 function getCornerPositionStyle(corner: ResizeCorner): {
   left?: number;
   right?: number;
@@ -1569,111 +1268,6 @@ function getCornerPositionStyle(corner: ResizeCorner): {
   return { right: 0, bottom: 0, transform: "translate(50%, 50%)" };
 }
 
-/**
- * Gets connector anchor.
- */
-function getConnectorAnchor(value: unknown): ConnectorAnchor | null {
-  if (
-    value === "top" ||
-    value === "right" ||
-    value === "bottom" ||
-    value === "left"
-  ) {
-    return value;
-  }
-
-  return null;
-}
-
-/**
- * Handles to board object.
- */
-function toBoardObject(
-  rawId: string,
-  rawData: Record<string, unknown>,
-): BoardObject | null {
-  const type = rawData.type;
-  if (!isBoardObjectKind(type)) {
-    return null;
-  }
-
-  const defaults = getDefaultObjectSize(type);
-  const createdAtMs = getTimestampMillis(rawData.createdAt);
-
-  return {
-    id: rawId,
-    type,
-    zIndex: getNumber(rawData.zIndex, createdAtMs ?? 0),
-    x: getNumber(rawData.x, 0),
-    y: getNumber(rawData.y, 0),
-    width: getNumber(rawData.width, defaults.width),
-    height: getNumber(rawData.height, defaults.height),
-    rotationDeg: getNumber(rawData.rotationDeg, 0),
-    color: getString(rawData.color, getDefaultObjectColor(type)),
-    text: getString(
-      rawData.text,
-      type === "sticky" ? "New sticky note" : type === "text" ? "Text" : "",
-    ),
-    fromObjectId: getNullableString(rawData.fromObjectId),
-    toObjectId: getNullableString(rawData.toObjectId),
-    fromAnchor: getConnectorAnchor(rawData.fromAnchor),
-    toAnchor: getConnectorAnchor(rawData.toAnchor),
-    fromX: getFiniteNumber(rawData.fromX),
-    fromY: getFiniteNumber(rawData.fromY),
-    toX: getFiniteNumber(rawData.toX),
-    toY: getFiniteNumber(rawData.toY),
-    gridRows: getGridDimension(
-      rawData.gridRows,
-      type === "gridContainer" ? 2 : null,
-    ),
-    gridCols: getGridDimension(
-      rawData.gridCols,
-      type === "gridContainer" ? 2 : null,
-    ),
-    gridGap: getGridGap(
-      rawData.gridGap,
-      type === "gridContainer" ? GRID_CONTAINER_DEFAULT_GAP : null,
-    ),
-    gridCellColors: getGridCellColors(rawData.gridCellColors),
-    containerTitle:
-      type === "gridContainer"
-        ? getString(rawData.containerTitle, "")
-        : getNullableString(rawData.containerTitle),
-    gridSectionTitles: getStringArray(rawData.gridSectionTitles),
-    gridSectionNotes: getStringArray(rawData.gridSectionNotes),
-    containerId: getNullableString(rawData.containerId),
-    containerSectionIndex: getNonNegativeInteger(rawData.containerSectionIndex),
-    containerRelX: getFiniteNumber(rawData.containerRelX),
-    containerRelY: getFiniteNumber(rawData.containerRelY),
-    updatedAt: getTimestampIso(rawData.updatedAt),
-  };
-}
-
-/**
- * Handles to presence user.
- */
-function toPresenceUser(
-  rawId: string,
-  rawData: Record<string, unknown>,
-): PresenceUser {
-  const lastSeenAtMs = getFiniteNumber(rawData.lastSeenAtMs);
-  const lastSeenAt = lastSeenAtMs ?? getTimestampMillis(rawData.lastSeenAt);
-
-  return {
-    uid: rawId,
-    displayName: getNullableString(rawData.displayName),
-    email: getNullableString(rawData.email),
-    color: getString(rawData.color, hashToColor(rawId)),
-    cursorX: typeof rawData.cursorX === "number" ? rawData.cursorX : null,
-    cursorY: typeof rawData.cursorY === "number" ? rawData.cursorY : null,
-    active: Boolean(rawData.active),
-    lastSeenAt,
-  };
-}
-
-/**
- * Creates a clipboard-safe clone of a board object.
- */
 function cloneBoardObjectForClipboard(objectItem: BoardObject): BoardObject {
   return {
     ...objectItem,
@@ -1689,9 +1283,6 @@ function cloneBoardObjectForClipboard(objectItem: BoardObject): BoardObject {
   };
 }
 
-/**
- * Returns whether keyboard target is editable.
- */
 function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -1708,9 +1299,6 @@ function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   return false;
 }
 
-/**
- * Handles realtime board canvas.
- */
 export default function RealtimeBoardCanvas({
   boardId,
   user,
@@ -2043,10 +1631,7 @@ export default function RealtimeBoardCanvas({
       return;
     }
 
-    /**
-     * Handles sync stage size.
-     */
-    const syncStageSize = () => {
+        const syncStageSize = () => {
       setStageSize({
         width: stageElement.clientWidth,
         height: stageElement.clientHeight,
@@ -2093,10 +1678,7 @@ export default function RealtimeBoardCanvas({
   useEffect(() => {
     let cancelled = false;
 
-    /**
-     * Handles refresh id token.
-     */
-    const refreshIdToken = async () => {
+        const refreshIdToken = async () => {
       try {
         const token = await user.getIdToken();
         if (!cancelled) {
@@ -2185,6 +1767,11 @@ export default function RealtimeBoardCanvas({
           const parsed = toBoardObject(
             documentSnapshot.id,
             documentSnapshot.data() as Record<string, unknown>,
+            {
+              gridContainerMaxRows: GRID_CONTAINER_MAX_ROWS,
+              gridContainerMaxCols: GRID_CONTAINER_MAX_COLS,
+              gridContainerDefaultGap: GRID_CONTAINER_DEFAULT_GAP,
+            },
           );
           if (parsed) {
             nextObjects.push(parsed);
@@ -2248,10 +1835,7 @@ export default function RealtimeBoardCanvas({
   }, [presenceCollectionRef]);
 
   useEffect(() => {
-    /**
-     * Sets presence state.
-     */
-    const setPresenceState = async (
+        const setPresenceState = async (
       cursor: BoardPoint | null,
       active: boolean,
     ) => {
@@ -2292,10 +1876,7 @@ export default function RealtimeBoardCanvas({
   ]);
 
   useEffect(() => {
-    /**
-     * Handles handle page hide.
-     */
-    const handlePageHide = () => {
+        const handlePageHide = () => {
       markPresenceInactive(true);
     };
 
@@ -3094,10 +2675,7 @@ export default function RealtimeBoardCanvas({
   );
 
   useEffect(() => {
-    /**
-     * Handles handle window pointer move.
-     */
-    const handleWindowPointerMove = (event: PointerEvent) => {
+        const handleWindowPointerMove = (event: PointerEvent) => {
       const aiFooterResizeState = aiFooterResizeStateRef.current;
       if (aiFooterResizeState) {
         const deltaY = aiFooterResizeState.startClientY - event.clientY;
@@ -3490,10 +3068,7 @@ export default function RealtimeBoardCanvas({
       }
     };
 
-    /**
-     * Handles handle window pointer up.
-     */
-    const handleWindowPointerUp = (event: PointerEvent) => {
+        const handleWindowPointerUp = (event: PointerEvent) => {
       clearStickyTextHoldDrag();
 
       if (aiFooterResizeStateRef.current) {
@@ -4858,10 +4433,7 @@ export default function RealtimeBoardCanvas({
     });
   }, []);
 
-  /**
-   * Returns whether selection should be preserved for group drag.
-   */
-  const shouldPreserveGroupSelection = useCallback((objectId: string) => {
+    const shouldPreserveGroupSelection = useCallback((objectId: string) => {
     const currentSelectedIds = selectedObjectIdsRef.current;
     return currentSelectedIds.size > 1 && currentSelectedIds.has(objectId);
   }, []);
@@ -4893,10 +4465,7 @@ export default function RealtimeBoardCanvas({
       return;
     }
 
-    /**
-     * Handles global keyboard shortcuts.
-     */
-    const handleGlobalKeyDown = (event: KeyboardEvent) => {
+        const handleGlobalKeyDown = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.altKey) {
         return;
       }
@@ -5312,10 +4881,7 @@ export default function RealtimeBoardCanvas({
       return;
     }
 
-    /**
-     * Handles handle native wheel.
-     */
-    const handleNativeWheel = (event: WheelEvent) => {
+        const handleNativeWheel = (event: WheelEvent) => {
       event.preventDefault();
       event.stopPropagation();
 
@@ -5756,10 +5322,7 @@ export default function RealtimeBoardCanvas({
       };
       const activeEndpointDrag = connectorEndpointDragStateRef.current;
 
-      /**
-       * Builds endpoint candidates.
-       */
-      const buildEndpointCandidates = (
+            const buildEndpointCandidates = (
         endpoint: "from" | "to",
       ): ResolvedConnectorEndpoint[] => {
         const objectId =
@@ -6086,10 +5649,7 @@ export default function RealtimeBoardCanvas({
       return;
     }
 
-    /**
-     * Handles sync hud size.
-     */
-    const syncHudSize = () => {
+        const syncHudSize = () => {
       const nextWidth = hudElement.offsetWidth;
       const nextHeight = hudElement.offsetHeight;
       setSelectionHudSize((previous) =>
@@ -7030,10 +6590,7 @@ export default function RealtimeBoardCanvas({
                     connectorEndpointDragStateRef.current?.objectId ===
                     objectItem.id;
 
-                  /**
-                   * Builds arrow head points.
-                   */
-                  const buildArrowHeadPoints = (
+                                    const buildArrowHeadPoints = (
                     tip: BoardPoint,
                     direction: BoardPoint,
                   ): string => {

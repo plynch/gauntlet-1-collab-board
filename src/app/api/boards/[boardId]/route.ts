@@ -31,9 +31,6 @@ type BoardRouteContext = {
   }>;
 };
 
-/**
- * Handles to board detail.
- */
 function toBoardDetail(
   boardId: string,
   board: BoardDoc,
@@ -55,9 +52,6 @@ function toBoardDetail(
   };
 }
 
-/**
- * Handles get.
- */
 export async function GET(request: NextRequest, context: BoardRouteContext) {
   try {
     const user = await requireUser(request);
@@ -110,9 +104,6 @@ export async function GET(request: NextRequest, context: BoardRouteContext) {
   }
 }
 
-/**
- * Handles delete.
- */
 export async function DELETE(request: NextRequest, context: BoardRouteContext) {
   try {
     assertFirestoreWritesAllowedInDev();
@@ -154,9 +145,6 @@ export async function DELETE(request: NextRequest, context: BoardRouteContext) {
   }
 }
 
-/**
- * Handles patch.
- */
 export async function PATCH(request: NextRequest, context: BoardRouteContext) {
   try {
     assertFirestoreWritesAllowedInDev();

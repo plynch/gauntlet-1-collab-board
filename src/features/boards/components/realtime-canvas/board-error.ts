@@ -1,6 +1,3 @@
-/**
- * Normalizes realtime board errors for user-safe display.
- */
 export function toBoardErrorMessage(error: unknown, fallback: string): string {
   if (typeof error === "object" && error !== null) {
     const candidate = error as {

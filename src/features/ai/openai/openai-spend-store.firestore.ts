@@ -9,9 +9,6 @@ import { getFirebaseAdminDb } from "@/lib/firebase/admin";
 
 const OPENAI_BUDGET_DOC_PATH = "system/aiBudget";
 
-/**
- * Gets openai spent from raw.
- */
 function getOpenAiSpentFromRaw(raw: unknown): number {
   if (!raw || typeof raw !== "object") {
     return 0;
@@ -25,23 +22,14 @@ function getOpenAiSpentFromRaw(raw: unknown): number {
   return value;
 }
 
-/**
- * Handles round usd.
- */
 function roundUsd(value: number): number {
   return Math.max(0, Math.round(value * 1_000_000) / 1_000_000);
 }
 
-/**
- * Creates firestore openai spend store.
- */
 export function createFirestoreOpenAiSpendStore(): OpenAiSpendStore {
   const budgetRef = getFirebaseAdminDb().doc(OPENAI_BUDGET_DOC_PATH);
 
-  /**
-   * Handles reserve budget.
-   */
-  const reserveBudget = async (
+    const reserveBudget = async (
     input: ReserveOpenAiBudgetInput,
   ): Promise<ReserveOpenAiBudgetResult> => {
     const reserveUsd = roundUsd(Math.max(0, input.reserveUsd));
@@ -80,10 +68,7 @@ export function createFirestoreOpenAiSpendStore(): OpenAiSpendStore {
     return result;
   };
 
-  /**
-   * Handles release budget.
-   */
-  const releaseBudget = async (reservedUsd: number): Promise<void> => {
+    const releaseBudget = async (reservedUsd: number): Promise<void> => {
     const reserved = roundUsd(Math.max(0, reservedUsd));
     if (reserved <= 0) {
       return;
@@ -104,10 +89,7 @@ export function createFirestoreOpenAiSpendStore(): OpenAiSpendStore {
     });
   };
 
-  /**
-   * Handles finalize budget.
-   */
-  const finalizeBudget = async (input: {
+    const finalizeBudget = async (input: {
     reservedUsd: number;
     actualUsd: number;
   }): Promise<{ totalSpentUsd: number }> => {

@@ -48,9 +48,6 @@ const STICKY_NOUN_PATTERN = "stick(?:y|ies)|notes?";
 const SHAPE_NOUN_PATTERN =
   "rectangles?|rects?|circles?|lines?|triangles?|stars?|shapes?";
 
-/**
- * Parses positive integer.
- */
 function toPositiveInteger(value: string): number | null {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -59,9 +56,6 @@ function toPositiveInteger(value: string): number | null {
   return Math.min(parsed, MAX_COUNT_HINT);
 }
 
-/**
- * Parses bounded layout integer.
- */
 function toBoundedLayoutInteger(
   value: string | undefined,
   maximum: number,
@@ -76,9 +70,6 @@ function toBoundedLayoutInteger(
   return Math.max(0, Math.min(maximum, Math.floor(parsed)));
 }
 
-/**
- * Sums explicit noun-bound counts (e.g. "5 sticky notes", "3 rectangles").
- */
 function sumNounCounts(input: string, nounPattern: string): number {
   const regex = new RegExp(
     `\\b(\\d{1,5})\\s+(?:[a-z-]+\\s+){0,3}?(?:${nounPattern})\\b`,
@@ -94,9 +85,6 @@ function sumNounCounts(input: string, nounPattern: string): number {
   return total;
 }
 
-/**
- * Sums grid-like counts (e.g. "2x3 grid of sticky notes", "2 by 3 stickies").
- */
 function sumGridCounts(input: string, nounPattern: string): number {
   const regex = new RegExp(
     `\\b(\\d{1,3})\\s*(?:x|by)\\s*(\\d{1,3})\\b(?=[^\\n]{0,48}\\b(?:${nounPattern})\\b)`,
@@ -113,9 +101,6 @@ function sumGridCounts(input: string, nounPattern: string): number {
   return total;
 }
 
-/**
- * Parses requested create count from message for relevant noun groups.
- */
 function parseRequestedCreateCount(
   normalized: string,
   nounPattern: string,
@@ -135,9 +120,6 @@ function parseRequestedCreateCount(
   return toPositiveInteger(directCreateCountMatch[1]);
 }
 
-/**
- * Parses sticky layout hints from message.
- */
 function parseStickyLayoutHints(normalized: string): StickyLayoutHints {
   const columnsMatch = normalized.match(/\b(\d{1,2})\s+columns?\b/i);
   const gapXYMatch = normalized.match(/\bgap\s*x\s*(\d{1,3})\s*y\s*(\d{1,3})\b/i);
@@ -178,9 +160,6 @@ function parseStickyLayoutHints(normalized: string): StickyLayoutHints {
   };
 }
 
-/**
- * Returns whether command asks for viewport/screen-spanning layout.
- */
 function isViewportLayoutRequested(normalized: string): boolean {
   return (
     /\bacross\b[\w\s]{0,24}\b(screen|viewport|canvas|view)\b/i.test(normalized) ||
@@ -189,9 +168,6 @@ function isViewportLayoutRequested(normalized: string): boolean {
   );
 }
 
-/**
- * Returns whether command asks for centered/middle placement.
- */
 function isCenterLayoutRequested(normalized: string): boolean {
   return (
     /\b(in|at)\s+the\s+(middle|center|centre)\b/i.test(normalized) ||
@@ -199,9 +175,6 @@ function isCenterLayoutRequested(normalized: string): boolean {
   );
 }
 
-/**
- * Parses message intent hints.
- */
 export function parseMessageIntentHints(message: string): OpenAiMessageIntentHints {
   const normalized = message.trim().toLowerCase();
   const stickyColorHint =

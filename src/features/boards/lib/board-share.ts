@@ -1,14 +1,8 @@
-/**
- * Builds a board share URL.
- */
 export function getBoardShareUrl(boardId: string, origin: string): string {
   const normalizedOrigin = origin.endsWith("/") ? origin.slice(0, -1) : origin;
   return `${normalizedOrigin}/boards/${boardId}`;
 }
 
-/**
- * Copies board URL to clipboard.
- */
 export async function copyBoardUrlToClipboard(
   boardId: string,
   origin: string,

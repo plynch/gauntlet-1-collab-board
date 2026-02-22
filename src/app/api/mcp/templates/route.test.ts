@@ -1,15 +1,9 @@
-/**
- * @vitest-environment node
- */
 
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { POST } from "./route";
 
-/**
- * Creates post request.
- */
 function createPostRequest(options?: {
   headers?: Record<string, string>;
   body?: unknown;

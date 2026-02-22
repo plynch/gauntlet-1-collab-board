@@ -26,9 +26,6 @@ type LiveBoardState = {
   ready: boolean;
 };
 
-/**
- * Handles to listener error message.
- */
 function toListenerErrorMessage(error: unknown, fallback: string): string {
   if (typeof error === "object" && error !== null) {
     const candidate = error as { code?: unknown };
@@ -50,9 +47,6 @@ function toListenerErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-/**
- * Handles use board live.
- */
 export function useBoardLive(
   boardId: string,
   userUid: string | null,

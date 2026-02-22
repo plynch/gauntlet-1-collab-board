@@ -12,9 +12,6 @@ type AiCommandResult = {
   traceId: string;
 };
 
-/**
- * Handles ensure ai input visible.
- */
 async function ensureAiInputVisible(page: Page): Promise<void> {
   const aiInput = page.getByPlaceholder("Ask AI agent...");
   if (await aiInput.isVisible()) {
@@ -27,9 +24,6 @@ async function ensureAiInputVisible(page: Page): Promise<void> {
   await expect(aiInput).toBeVisible();
 }
 
-/**
- * Handles send ai command.
- */
 async function sendAiCommand(
   page: Page,
   message: string,
@@ -64,9 +58,6 @@ async function sendAiCommand(
   };
 }
 
-/**
- * Triggers ai quick action button.
- */
 async function triggerAiQuickAction(
   page: Page,
   label: string,
@@ -98,9 +89,6 @@ async function triggerAiQuickAction(
   };
 }
 
-/**
- * Handles create board and open.
- */
 async function createBoardAndOpen(page: Page, boardTitle: string): Promise<void> {
   await page.goto("/e2e/emulator-login");
   await page.getByTestId("emulator-login-button").click();

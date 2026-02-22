@@ -4,9 +4,6 @@ export const AI_FOOTER_MAX_HEIGHT = 460;
 export const AI_FOOTER_COLLAPSED_HEIGHT = 34;
 export const AI_FOOTER_HEIGHT_STORAGE_KEY = "collabboard-ai-footer-height-v1";
 
-/**
- * Clamps AI footer height to supported bounds.
- */
 export function clampAiFooterHeight(nextHeight: number): number {
   return Math.min(
     AI_FOOTER_MAX_HEIGHT,

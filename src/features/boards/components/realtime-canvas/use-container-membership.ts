@@ -70,9 +70,6 @@ type UseContainerMembershipArgs = {
   isConnectorKind: (value: BoardObjectKind) => boolean;
 };
 
-/**
- * Gets object center for placement.
- */
 function getObjectCenterForPlacement(
   geometry: MembershipObjectGeometry,
 ): MembershipBoardPoint {
@@ -82,9 +79,6 @@ function getObjectCenterForPlacement(
   };
 }
 
-/**
- * Returns whether point inside bounds is true.
- */
 function isPointInsideBounds(
   point: MembershipBoardPoint,
   bounds: MembershipObjectBounds,
@@ -97,9 +91,6 @@ function isPointInsideBounds(
   );
 }
 
-/**
- * Returns whether container child eligible is true.
- */
 function isContainerChildEligible(
   type: BoardObjectKind,
   isConnectorKind: (value: BoardObjectKind) => boolean,
@@ -107,9 +98,6 @@ function isContainerChildEligible(
   return type !== "gridContainer" && !isConnectorKind(type);
 }
 
-/**
- * Gets membership patch from object.
- */
 export function getMembershipPatchFromObject(
   objectItem: BoardObject,
 ): ContainerMembershipPatch {
@@ -121,9 +109,6 @@ export function getMembershipPatchFromObject(
   };
 }
 
-/**
- * Handles are container membership patches equal.
- */
 export function areContainerMembershipPatchesEqual(
   left: ContainerMembershipPatch,
   right: ContainerMembershipPatch,
@@ -136,9 +121,6 @@ export function areContainerMembershipPatchesEqual(
   );
 }
 
-/**
- * Handles use container membership.
- */
 export function useContainerMembership({
   objectsByIdRef,
   getCurrentObjectGeometry,

@@ -68,9 +68,6 @@ type RunBoardCommandWithOpenAiAgentsInput = {
   trace: AiTraceRun;
 };
 
-/**
- * Handles to board context object.
- */
 function toBoardContextObject(objectItem: BoardObjectSnapshot) {
   return {
     id: objectItem.id,
@@ -84,9 +81,6 @@ function toBoardContextObject(objectItem: BoardObjectSnapshot) {
   };
 }
 
-/**
- * Handles to openai usage.
- */
 function toOpenAiUsage(input: {
   model: string;
   inputTokens: number;
@@ -111,9 +105,6 @@ function toOpenAiUsage(input: {
   };
 }
 
-/**
- * Creates empty usage object for policy-blocked runs with no model call.
- */
 function createEmptyUsage(model: string): OpenAiAgentsRunnerUsage {
   return {
     model,
@@ -150,9 +141,6 @@ const OPENAI_AGENTS_SYSTEM_PROMPT = [
   ...BOARD_AI_TOOLS.map((toolItem) => `- ${toolItem.name}`),
 ].join("\n");
 
-/**
- * Runs board command with OpenAI Agents SDK.
- */
 export async function runBoardCommandWithOpenAiAgents(
   input: RunBoardCommandWithOpenAiAgentsInput,
 ): Promise<OpenAiAgentsRunnerResult> {
@@ -320,9 +308,6 @@ export async function runBoardCommandWithOpenAiAgents(
   };
 }
 
-/**
- * Flushes queued OpenAI traces.
- */
 export async function flushOpenAiTraces(): Promise<void> {
   await getGlobalTraceProvider().forceFlush();
 }

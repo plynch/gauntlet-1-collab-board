@@ -26,9 +26,6 @@ type OpenAiPlannerConfig = {
 
 let openAiClient: OpenAI | null | undefined;
 
-/**
- * Parses positive number env.
- */
 function parsePositiveNumberEnv(
   value: string | undefined,
   fallback: number,
@@ -40,9 +37,6 @@ function parsePositiveNumberEnv(
   return parsed;
 }
 
-/**
- * Parses positive integer env.
- */
 function parsePositiveIntegerEnv(
   value: string | undefined,
   fallback: number,
@@ -54,9 +48,6 @@ function parsePositiveIntegerEnv(
   return Math.max(1, Math.floor(parsed));
 }
 
-/**
- * Parses planner mode env.
- */
 function parsePlannerModeEnv(value: string | undefined): AiPlannerMode {
   const normalized = value?.trim().toLowerCase();
   if (normalized === "openai-strict") {
@@ -68,9 +59,6 @@ function parsePlannerModeEnv(value: string | undefined): AiPlannerMode {
   return "openai-with-fallback";
 }
 
-/**
- * Parses openai runtime env.
- */
 function parseOpenAiRuntimeEnv(value: string | undefined): OpenAiRuntime {
   const normalized = value?.trim().toLowerCase();
   if (normalized === "chat-completions") {
@@ -79,9 +67,6 @@ function parseOpenAiRuntimeEnv(value: string | undefined): OpenAiRuntime {
   return "agents-sdk";
 }
 
-/**
- * Parses boolean env.
- */
 function parseBooleanEnv(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined) {
     return fallback;
@@ -102,9 +87,6 @@ function parseBooleanEnv(value: string | undefined, fallback: boolean): boolean 
   return fallback;
 }
 
-/**
- * Gets openai planner config.
- */
 export function getOpenAiPlannerConfig(): OpenAiPlannerConfig {
   const apiKey = process.env.OPENAI_API_KEY?.trim() || null;
   const baseUrl = process.env.OPENAI_BASE_URL?.trim() || null;
@@ -159,9 +141,6 @@ export function getOpenAiPlannerConfig(): OpenAiPlannerConfig {
   };
 }
 
-/**
- * Gets openai client.
- */
 export function getOpenAiClient(): OpenAI | null {
   if (openAiClient !== undefined) {
     return openAiClient;
@@ -180,9 +159,6 @@ export function getOpenAiClient(): OpenAI | null {
   return openAiClient;
 }
 
-/**
- * Sets openai client for tests.
- */
 export function setOpenAiClientForTests(client: OpenAI | null | undefined): void {
   openAiClient = client;
 }

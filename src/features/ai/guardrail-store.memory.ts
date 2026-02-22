@@ -14,9 +14,6 @@ type MemoryGuardrailStoreOptions = {
   boardLocks?: Map<string, number>;
 };
 
-/**
- * Creates memory guardrail store.
- */
 export function createMemoryGuardrailStore(
   options?: MemoryGuardrailStoreOptions,
 ): GuardrailStore {
@@ -24,10 +21,7 @@ export function createMemoryGuardrailStore(
     options?.userRateWindows ?? new Map<string, RateWindow>();
   const boardLocks = options?.boardLocks ?? new Map<string, number>();
 
-  /**
-   * Handles check user rate limit.
-   */
-  async function checkUserRateLimit(
+    async function checkUserRateLimit(
     input: GuardrailRateLimitOptions,
   ): Promise<GuardrailResult> {
     const windowStart = input.nowMs - input.windowMs;
@@ -50,10 +44,7 @@ export function createMemoryGuardrailStore(
     return { ok: true };
   }
 
-  /**
-   * Handles acquire board command lock.
-   */
-  async function acquireBoardCommandLock(
+    async function acquireBoardCommandLock(
     input: GuardrailLockOptions,
   ): Promise<GuardrailResult> {
     const existingExpiresAt = boardLocks.get(input.boardId) ?? 0;
@@ -69,10 +60,7 @@ export function createMemoryGuardrailStore(
     return { ok: true };
   }
 
-  /**
-   * Handles release board command lock.
-   */
-  async function releaseBoardCommandLock(boardId: string): Promise<void> {
+    async function releaseBoardCommandLock(boardId: string): Promise<void> {
     boardLocks.delete(boardId);
   }
 

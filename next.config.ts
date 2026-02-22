@@ -1,10 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /**
-   * Handles headers.
-   */
-  async headers() {
+    async headers() {
     const headers: Array<{ key: string; value: string }> = [
       {
         key: "X-Content-Type-Options",

@@ -26,16 +26,10 @@ export type AiTraceRun = {
   finishError: (errorMessage: string, details?: JsonRecord) => void;
 };
 
-/**
- * Handles now iso.
- */
 function nowIso(): string {
   return new Date().toISOString();
 }
 
-/**
- * Handles update span.
- */
 function updateSpan(
   span: LangfuseSpanClient,
   payload: {
@@ -53,9 +47,6 @@ function updateSpan(
   });
 }
 
-/**
- * Creates noop span handle.
- */
 function createNoopSpanHandle(): SpanHandle {
   return {
     end: () => {
@@ -67,9 +58,6 @@ function createNoopSpanHandle(): SpanHandle {
   };
 }
 
-/**
- * Creates ai trace run.
- */
 export function createAiTraceRun(options: CreateTraceRunOptions): AiTraceRun {
   const langfuse = getLangfuseClient();
   const trace: LangfuseTraceClient | null = langfuse

@@ -24,9 +24,6 @@ export type SectionSize = {
 
 const DEFAULT_SECTION_PADDING = 8;
 
-/**
- * Handles clamp to range.
- */
 export function clampToRange(
   value: number,
   minValue: number,
@@ -35,9 +32,6 @@ export function clampToRange(
   return Math.max(minValue, Math.min(maxValue, value));
 }
 
-/**
- * Gets section bounds center.
- */
 export function getSectionBoundsCenter(
   bounds: ContainerObjectBounds,
 ): ContainerBoardPoint {
@@ -47,9 +41,6 @@ export function getSectionBoundsCenter(
   };
 }
 
-/**
- * Gets grid section bounds from geometry.
- */
 export function getGridSectionBoundsFromGeometry(
   containerGeometry: ContainerObjectGeometry,
   rows: number,
@@ -89,9 +80,6 @@ export function getGridSectionBoundsFromGeometry(
   return sections;
 }
 
-/**
- * Gets closest section index.
- */
 export function getClosestSectionIndex(
   point: ContainerBoardPoint,
   sections: ContainerObjectBounds[],
@@ -115,9 +103,6 @@ export function getClosestSectionIndex(
   return bestIndex;
 }
 
-/**
- * Handles to section relative coordinate.
- */
 export function toSectionRelativeCoordinate(
   center: ContainerBoardPoint,
   section: ContainerObjectBounds,
@@ -130,9 +115,6 @@ export function toSectionRelativeCoordinate(
   };
 }
 
-/**
- * Handles clamp object top left to section.
- */
 export function clampObjectTopLeftToSection(
   section: ContainerObjectBounds,
   objectSize: SectionSize,

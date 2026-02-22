@@ -13,9 +13,6 @@ const toneClasses: Record<NonNullable<BadgeProps["tone"]>, string> = {
   danger: "bg-rose-100 text-rose-700",
 };
 
-/**
- * Handles badge.
- */
 export function Badge({ className, tone = "neutral", ...props }: BadgeProps) {
   return (
     <span

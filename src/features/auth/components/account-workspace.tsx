@@ -9,9 +9,6 @@ import AppHeader, {
   HeaderBackLink,
 } from "@/features/layout/components/app-header";
 
-/**
- * Handles account workspace.
- */
 export default function AccountWorkspace() {
   const router = useRouter();
   const [displayNameInput, setDisplayNameInput] = useState("");

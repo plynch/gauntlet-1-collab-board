@@ -70,24 +70,15 @@ export const dynamic = "force-dynamic";
 const DEFAULT_AI_TRACE_FLUSH_TIMEOUT_MS = 250;
 const MAX_AI_TRACE_FLUSH_TIMEOUT_MS = 3_000;
 
-/**
- * Returns whether ai audit enabled is true.
- */
 function isAiAuditEnabled(): boolean {
   return process.env.AI_AUDIT_LOG_ENABLED === "true";
 }
 
-/**
- * Gets internal mcp token.
- */
 function getInternalMcpToken(): string | null {
   const value = process.env.MCP_INTERNAL_TOKEN?.trim();
   return value && value.length > 0 ? value : null;
 }
 
-/**
- * Gets traceable error reason.
- */
 function getErrorReason(error: unknown): string {
   if (error instanceof Error) {
     const message = error.message?.trim();
@@ -138,9 +129,6 @@ function getErrorReason(error: unknown): string {
     : "Non-error throwable (object)";
 }
 
-/**
- * Gets debug message.
- */
 function getDebugMessage(error: unknown): string | undefined {
   if (process.env.NODE_ENV === "production") {
     return undefined;
@@ -149,9 +137,6 @@ function getDebugMessage(error: unknown): string | undefined {
   return getErrorReason(error);
 }
 
-/**
- * Creates http error.
- */
 function createHttpError(
   status: number,
   message: string,
@@ -161,9 +146,6 @@ function createHttpError(
   return error;
 }
 
-/**
- * Parses required flag.
- */
 function parseRequiredFlag(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined) {
     return fallback;
@@ -179,9 +161,6 @@ function parseRequiredFlag(value: string | undefined, fallback: boolean): boolea
   return fallback;
 }
 
-/**
- * Gets ai trace flush timeout ms.
- */
 function getAiTraceFlushTimeoutMs(): number {
   const rawValue = process.env.AI_TRACE_FLUSH_TIMEOUT_MS?.trim();
   if (!rawValue) {
@@ -199,9 +178,6 @@ function getAiTraceFlushTimeoutMs(): number {
   );
 }
 
-/**
- * Returns whether ai tracing is required is true.
- */
 function isAiTracingRequired(): boolean {
   return parseRequiredFlag(
     process.env.AI_REQUIRE_TRACING,
@@ -209,9 +185,6 @@ function isAiTracingRequired(): boolean {
   );
 }
 
-/**
- * Returns whether openai tracing is required is true.
- */
 function isOpenAiTracingRequired(): boolean {
   return parseRequiredFlag(
     process.env.AI_REQUIRE_OPENAI_TRACING,
@@ -219,9 +192,6 @@ function isOpenAiTracingRequired(): boolean {
   );
 }
 
-/**
- * Gets ai tracing configuration error.
- */
 function getAiTracingConfigurationError(): string | null {
   if (isAiTracingRequired() && !isLangfuseConfigured()) {
     return "AI tracing misconfigured: missing LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY.";
@@ -291,9 +261,6 @@ const LANGCHAIN_TOOL_PLAN_SERIALIZED: Serialized = {
   id: ["collabboard", "ai", "tool-plan"],
 };
 
-/**
- * Returns whether deterministic intent is safe to execute directly.
- */
 function isSafeDeterministicIntent(intent: string): boolean {
   if (SAFE_DETERMINISTIC_EXACT_INTENTS.has(intent)) {
     return true;
@@ -303,9 +270,6 @@ function isSafeDeterministicIntent(intent: string): boolean {
   );
 }
 
-/**
- * Returns whether the deterministic plan should be executed directly.
- */
 function shouldExecuteDeterministicPlan(
   plannerMode: string,
   intent: string,
@@ -317,9 +281,6 @@ function shouldExecuteDeterministicPlan(
   return isSafeDeterministicIntent(intent);
 }
 
-/**
- * Handles to serialized tool.
- */
 function toSerializedTool(toolName: BoardToolCall["tool"]): Serialized {
   return {
     lc: 1,
@@ -328,9 +289,6 @@ function toSerializedTool(toolName: BoardToolCall["tool"]): Serialized {
   };
 }
 
-/**
- * Returns whether tool call creates object is true.
- */
 function createsObject(toolCall: BoardToolCall): boolean {
   return (
     toolCall.tool === "createStickyNote" ||
@@ -424,9 +382,6 @@ type OpenAiPlanAttempt =
       };
     };
 
-/**
- * Handles build openai plan trace fields.
- */
 function buildOpenAiPlanTraceFields(
   plan: TemplatePlan | null | undefined,
 ): {
@@ -469,9 +424,6 @@ function buildOpenAiPlanTraceFields(
   };
 }
 
-/**
- * Handles build operation counts by tool.
- */
 function buildOperationCountsByTool(
   plan: TemplatePlan | null | undefined,
 ): string {
@@ -483,9 +435,6 @@ function buildOperationCountsByTool(
   return JSON.stringify(Object.fromEntries(counts));
 }
 
-/**
- * Handles build tool call arg trace fields.
- */
 function buildToolCallArgTraceFields(toolCall: BoardToolCall): {
   argKeysJson: string;
   argsPreviewJson: string;
@@ -527,9 +476,6 @@ function buildToolCallArgTraceFields(toolCall: BoardToolCall): {
   };
 }
 
-/**
- * Builds assistant message from actual execution outcome.
- */
 function buildOutcomeAssistantMessageFromExecution(input: {
   fallbackAssistantMessage: string;
   operations: BoardToolCall[];
@@ -612,9 +558,6 @@ function buildOutcomeAssistantMessageFromExecution(input: {
   return message.length > 0 ? message : "Completed your board command.";
 }
 
-/**
- * Builds openai execution summary.
- */
 function buildOpenAiExecutionSummary(openAiAttempt: OpenAiPlanAttempt): {
   attempted: boolean;
   status:
@@ -702,9 +645,6 @@ function buildOpenAiExecutionSummary(openAiAttempt: OpenAiPlanAttempt): {
   };
 }
 
-/**
- * Gets openai usage from planner error.
- */
 function getOpenAiUsageFromError(error: unknown): {
   model: string;
   inputTokens: number;
@@ -743,16 +683,10 @@ function getOpenAiUsageFromError(error: unknown): {
   };
 }
 
-/**
- * Returns whether openai is required for stub commands is true.
- */
 function isOpenAiRequiredForStubCommands(): boolean {
   return process.env.AI_REQUIRE_OPENAI === "true";
 }
 
-/**
- * Handles attempt openai planner.
- */
 async function attemptOpenAiPlanner(options: {
   message: string;
   boardState: BoardObjectSnapshot[];
@@ -1030,9 +964,6 @@ async function attemptOpenAiPlanner(options: {
   }
 }
 
-/**
- * Handles execute plan with tracing.
- */
 async function executePlanWithTracing(options: {
   executor: BoardToolExecutor;
   trace: ReturnType<typeof createAiTraceRun>;
@@ -1132,9 +1063,6 @@ async function executePlanWithTracing(options: {
   }
 }
 
-/**
- * Handles list all board object ids.
- */
 async function listAllBoardObjectIds(boardId: string): Promise<string[]> {
   const snapshot = await getFirebaseAdminDb()
     .collection("boards")
@@ -1144,9 +1072,6 @@ async function listAllBoardObjectIds(boardId: string): Promise<string[]> {
   return snapshot.docs.map((documentSnapshot) => documentSnapshot.id);
 }
 
-/**
- * Handles delete board objects by id.
- */
 async function deleteBoardObjectsById(
   boardId: string,
   objectIds: string[],
@@ -1177,9 +1102,6 @@ async function deleteBoardObjectsById(
   }
 }
 
-/**
- * Handles write ai audit log if enabled.
- */
 async function writeAiAuditLogIfEnabled(options: {
   boardId: string;
   userId: string;
@@ -1212,9 +1134,6 @@ async function writeAiAuditLogIfEnabled(options: {
     });
 }
 
-/**
- * Handles post.
- */
 export async function POST(request: NextRequest) {
   let activeTrace: ReturnType<typeof createAiTraceRun> | null = null;
   let boardLockId: string | null = null;

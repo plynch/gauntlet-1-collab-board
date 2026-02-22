@@ -9,10 +9,7 @@ type Snapshot = {
 };
 
 class FakeDocRef {
-  /**
-   * Initializes this class instance.
-   */
-  constructor(
+    constructor(
     private readonly namespace: string,
     private readonly id: string,
     private readonly store: Map<string, Record<string, unknown>>,
@@ -22,10 +19,7 @@ class FakeDocRef {
     return `${this.namespace}/${this.id}`;
   }
 
-  /**
-   * Gets snapshot.
-   */
-  getSnapshot(): Snapshot {
+    getSnapshot(): Snapshot {
     const value = this.store.get(this.key);
     return {
       exists: Boolean(value),
@@ -33,10 +27,7 @@ class FakeDocRef {
     };
   }
 
-  /**
-   * Sets data.
-   */
-  setData(value: Record<string, unknown>, options?: { merge?: boolean }): void {
+    setData(value: Record<string, unknown>, options?: { merge?: boolean }): void {
     if (options?.merge) {
       const current = this.store.get(this.key) ?? {};
       this.store.set(this.key, {
@@ -49,50 +40,32 @@ class FakeDocRef {
     this.store.set(this.key, { ...value });
   }
 
-  /**
-   * Handles delete data.
-   */
-  deleteData(): void {
+    deleteData(): void {
     this.store.delete(this.key);
   }
 
-  /**
-   * Handles delete.
-   */
-  async delete(): Promise<void> {
+    async delete(): Promise<void> {
     this.deleteData();
   }
 }
 
 class FakeCollectionRef {
-  /**
-   * Initializes this class instance.
-   */
-  constructor(
+    constructor(
     private readonly namespace: string,
     private readonly store: Map<string, Record<string, unknown>>,
   ) {}
 
-  /**
-   * Handles doc.
-   */
-  doc(id: string): FakeDocRef {
+    doc(id: string): FakeDocRef {
     return new FakeDocRef(this.namespace, id, this.store);
   }
 }
 
 class FakeTransaction {
-  /**
-   * Handles get.
-   */
-  async get(docRef: FakeDocRef): Promise<Snapshot> {
+    async get(docRef: FakeDocRef): Promise<Snapshot> {
     return docRef.getSnapshot();
   }
 
-  /**
-   * Handles set.
-   */
-  set(
+    set(
     docRef: FakeDocRef,
     value: Record<string, unknown>,
     options?: { merge?: boolean },
@@ -100,10 +73,7 @@ class FakeTransaction {
     docRef.setData(value, options);
   }
 
-  /**
-   * Handles delete.
-   */
-  delete(docRef: FakeDocRef): void {
+    delete(docRef: FakeDocRef): void {
     docRef.deleteData();
   }
 }
@@ -111,17 +81,11 @@ class FakeTransaction {
 class FakeFirestore {
   private readonly data = new Map<string, Record<string, unknown>>();
 
-  /**
-   * Handles collection.
-   */
-  collection(namespace: string): FakeCollectionRef {
+    collection(namespace: string): FakeCollectionRef {
     return new FakeCollectionRef(namespace, this.data);
   }
 
-  /**
-   * Handles run transaction.
-   */
-  async runTransaction<T>(
+    async runTransaction<T>(
     callback: (transaction: FakeTransaction) => Promise<T>,
   ): Promise<T> {
     const transaction = new FakeTransaction();

@@ -48,9 +48,6 @@ const OBJECT_SIZE = {
   height: 72,
 };
 
-/**
- * Handles point inside bounds.
- */
 function pointInsideBounds(
   point: ContainerBoardPoint,
   bounds: ContainerObjectBounds,
@@ -63,9 +60,6 @@ function pointInsideBounds(
   );
 }
 
-/**
- * Gets container bounds.
- */
 function getContainerBounds(): ContainerObjectBounds {
   return {
     left: CONTAINER_GEOMETRY.x,
@@ -75,9 +69,6 @@ function getContainerBounds(): ContainerObjectBounds {
   };
 }
 
-/**
- * Gets object center from state.
- */
 function getObjectCenterFromState(state: LabState): ContainerBoardPoint {
   return {
     x: state.objectX + OBJECT_SIZE.width / 2,
@@ -85,9 +76,6 @@ function getObjectCenterFromState(state: LabState): ContainerBoardPoint {
   };
 }
 
-/**
- * Gets section index for center.
- */
 function getSectionIndexForCenter(
   center: ContainerBoardPoint,
   sections: ContainerObjectBounds[],
@@ -102,9 +90,6 @@ function getSectionIndexForCenter(
   return getClosestSectionIndex(center, sections);
 }
 
-/**
- * Handles snap state to dimensions.
- */
 function snapStateToDimensions(
   state: LabState,
   rows: number,
@@ -158,9 +143,6 @@ function snapStateToDimensions(
   };
 }
 
-/**
- * Builds initial state.
- */
 function buildInitialState(): LabState {
   const sections = getGridSectionBoundsFromGeometry(
     CONTAINER_GEOMETRY,
@@ -193,9 +175,6 @@ function buildInitialState(): LabState {
   };
 }
 
-/**
- * Handles container membership lab.
- */
 export default function ContainerMembershipLab() {
   const [rows, setRows] = useState(2);
   const [cols, setCols] = useState(2);
@@ -213,10 +192,7 @@ export default function ContainerMembershipLab() {
     [rows, cols],
   );
 
-  /**
-   * Handles apply dimensions.
-   */
-  const applyDimensions = (nextRowsRaw: number, nextColsRaw: number) => {
+    const applyDimensions = (nextRowsRaw: number, nextColsRaw: number) => {
     const nextRows = Math.max(1, Math.min(4, Math.floor(nextRowsRaw)));
     const nextCols = Math.max(1, Math.min(4, Math.floor(nextColsRaw)));
     setRows(nextRows);
@@ -226,10 +202,7 @@ export default function ContainerMembershipLab() {
     );
   };
 
-  /**
-   * Handles handle object pointer down.
-   */
-  const handleObjectPointerDown = (
+    const handleObjectPointerDown = (
     event: ReactPointerEvent<HTMLDivElement>,
   ) => {
     if (event.button !== 0) {
@@ -247,10 +220,7 @@ export default function ContainerMembershipLab() {
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
-  /**
-   * Handles handle object pointer move.
-   */
-  const handleObjectPointerMove = (
+    const handleObjectPointerMove = (
     event: ReactPointerEvent<HTMLDivElement>,
   ) => {
     const dragState = dragRef.current;
@@ -275,10 +245,7 @@ export default function ContainerMembershipLab() {
     }));
   };
 
-  /**
-   * Handles handle object pointer up.
-   */
-  const handleObjectPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const handleObjectPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
     const dragState = dragRef.current;
     if (!dragState || dragState.pointerId !== event.pointerId) {
       return;

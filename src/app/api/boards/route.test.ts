@@ -1,6 +1,3 @@
-/**
- * @vitest-environment node
- */
 
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,10 +10,7 @@ vi.mock("@/server/auth/require-user", () => {
   class AuthError extends Error {
     readonly status: number;
 
-    /**
-     * Initializes this class instance.
-     */
-    constructor(message: string, status = 401) {
+        constructor(message: string, status = 401) {
       super(message);
       this.status = status;
     }
@@ -35,9 +29,6 @@ vi.mock("@/lib/firebase/admin", () => ({
 
 type BoardDocData = Record<string, unknown>;
 
-/**
- * Creates fake boards db.
- */
 function createFakeBoardsDb(
   initialBoards: Array<{ id: string; data: BoardDocData }>,
 ) {
@@ -46,20 +37,11 @@ function createFakeBoardsDb(
   );
   let nextId = 1;
 
-  /**
-   * Creates query.
-   */
-  const createQuery = (ownerId: string, max = Number.POSITIVE_INFINITY) => ({
-    /**
-     * Handles limit.
-     */
-    limit(limitCount: number) {
+    const createQuery = (ownerId: string, max = Number.POSITIVE_INFINITY) => ({
+        limit(limitCount: number) {
       return createQuery(ownerId, limitCount);
     },
-    /**
-     * Handles get.
-     */
-    async get() {
+        async get() {
       const docs = Array.from(boards.entries())
         .filter(([, value]) => value.ownerId === ownerId)
         .slice(0, max)
@@ -76,32 +58,20 @@ function createFakeBoardsDb(
   });
 
   const collectionApi = {
-    /**
-     * Handles where.
-     */
-    where(field: string, _op: string, value: string) {
+        where(field: string, _op: string, value: string) {
       if (field !== "ownerId") {
         throw new Error(`Unsupported where field: ${field}`);
       }
       return createQuery(value);
     },
-    /**
-     * Handles doc.
-     */
-    doc(id?: string) {
+        doc(id?: string) {
       const resolvedId = id ?? `generated-${nextId++}`;
       return {
         id: resolvedId,
-        /**
-         * Handles set.
-         */
-        async set(value: BoardDocData) {
+                async set(value: BoardDocData) {
           boards.set(resolvedId, { ...value });
         },
-        /**
-         * Handles update.
-         */
-        async update(value: BoardDocData) {
+                async update(value: BoardDocData) {
           const existing = boards.get(resolvedId);
           if (!existing) {
             throw new Error("Missing board");
@@ -112,10 +82,7 @@ function createFakeBoardsDb(
             ...value,
           });
         },
-        /**
-         * Handles get.
-         */
-        async get() {
+                async get() {
           const value = boards.get(resolvedId);
           return {
             id: resolvedId,
@@ -123,10 +90,7 @@ function createFakeBoardsDb(
             data: () => value,
           };
         },
-        /**
-         * Handles delete.
-         */
-        async delete() {
+                async delete() {
           boards.delete(resolvedId);
         },
       };
@@ -134,10 +98,7 @@ function createFakeBoardsDb(
   };
 
   return {
-    /**
-     * Handles collection.
-     */
-    collection(name: string) {
+        collection(name: string) {
       if (name !== "boards") {
         throw new Error(`Unsupported collection: ${name}`);
       }
@@ -146,9 +107,6 @@ function createFakeBoardsDb(
   };
 }
 
-/**
- * Creates json request.
- */
 function createJsonRequest(
   method: "GET" | "POST",
   body?: unknown,
@@ -162,9 +120,6 @@ function createJsonRequest(
   });
 }
 
-/**
- * Creates raw request.
- */
 function createRawRequest(method: "POST", rawBody: string): NextRequest {
   return new NextRequest("http://localhost:3000/api/boards", {
     method,

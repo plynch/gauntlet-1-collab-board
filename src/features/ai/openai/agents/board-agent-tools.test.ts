@@ -4,9 +4,6 @@ import type { FunctionTool } from "@openai/agents";
 import { createBoardAgentTools } from "@/features/ai/openai/agents/board-agent-tools";
 import type { BoardToolCall } from "@/features/ai/types";
 
-/**
- * Creates trace stub.
- */
 function createTraceStub() {
   return {
     traceId: "trace-test-1",

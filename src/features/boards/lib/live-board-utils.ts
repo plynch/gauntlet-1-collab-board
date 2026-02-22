@@ -10,9 +10,6 @@ type RawBoardDoc = Record<string, unknown>;
 
 export type LiveBoardDetail = Omit<BoardDetail, "editors" | "readers">;
 
-/**
- * Handles to string array.
- */
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -24,9 +21,6 @@ function toStringArray(value: unknown): string[] {
     .filter((entry) => entry.length > 0);
 }
 
-/**
- * Handles to iso date.
- */
 function toIsoDate(value: unknown): string | null {
   if (value instanceof Timestamp) {
     return value.toDate().toISOString();
@@ -35,17 +29,11 @@ function toIsoDate(value: unknown): string | null {
   return null;
 }
 
-/**
- * Handles board sort value.
- */
 export function boardSortValue(board: BoardSummary): number {
   const rawValue = board.updatedAt ?? board.createdAt;
   return rawValue ? Date.parse(rawValue) : 0;
 }
 
-/**
- * Handles to board summary.
- */
 export function toBoardSummary(
   boardId: string,
   rawData: RawBoardDoc,
@@ -61,9 +49,6 @@ export function toBoardSummary(
   };
 }
 
-/**
- * Handles to live board detail.
- */
 export function toLiveBoardDetail(
   boardId: string,
   rawData: RawBoardDoc,
@@ -89,9 +74,6 @@ export function toLiveBoardDetail(
   };
 }
 
-/**
- * Gets board permissions.
- */
 export function getBoardPermissions(
   board: LiveBoardDetail,
   userUid: string,

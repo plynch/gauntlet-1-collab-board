@@ -27,9 +27,6 @@ const VIEWPORT_FILL_RATIO = 0.9;
 const MAX_GRID_WIDTH = 2_400;
 const MAX_GRID_HEIGHT = 1_600;
 
-/**
- * Normalizes viewport bounds.
- */
 function normalizeViewportBounds(
   bounds: TemplateInstantiateInput["viewportBounds"] | null | undefined,
 ):
@@ -61,9 +58,6 @@ function normalizeViewportBounds(
   };
 }
 
-/**
- * Builds swot quadrants.
- */
 function buildSwotQuadrants(): SwotQuadrant[] {
   return [
     {
@@ -97,9 +91,6 @@ function buildSwotQuadrants(): SwotQuadrant[] {
   ];
 }
 
-/**
- * Builds swot template plan.
- */
 export function buildSwotTemplatePlan(
   input: TemplateInstantiateInput,
 ): TemplatePlan {

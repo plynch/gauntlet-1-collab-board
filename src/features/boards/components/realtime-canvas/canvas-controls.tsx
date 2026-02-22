@@ -18,9 +18,6 @@ const BOARD_COLOR_SWATCHES: ColorSwatch[] = [
   { name: "Tan", value: "#d2b48c" },
 ];
 
-/**
- * Handles tool icon.
- */
 export function ToolIcon({ kind }: { kind: BoardObjectKind }) {
   if (kind === "sticky") {
     return (
@@ -254,9 +251,6 @@ export function ToolIcon({ kind }: { kind: BoardObjectKind }) {
   );
 }
 
-/**
- * Handles color swatch picker.
- */
 export function ColorSwatchPicker({
   currentColor,
   onSelectColor,
@@ -306,9 +300,6 @@ export function ColorSwatchPicker({
   );
 }
 
-/**
- * Handles trash icon.
- */
 export function TrashIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -324,9 +315,6 @@ export function TrashIcon() {
   );
 }
 
-/**
- * Handles duplicate icon.
- */
 export function DuplicateIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
@@ -354,9 +342,6 @@ export function DuplicateIcon() {
   );
 }
 
-/**
- * Handles briefcase icon.
- */
 export function BriefcaseIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -382,9 +367,6 @@ export function BriefcaseIcon() {
   );
 }
 
-/**
- * Handles clear text icon.
- */
 export function ClearTextIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">

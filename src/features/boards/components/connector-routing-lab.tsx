@@ -37,9 +37,6 @@ const RECT_SHAPE: Shape = {
   height: 100,
 };
 
-/**
- * Gets anchor point.
- */
 function getAnchorPoint(shape: Shape, anchor: Anchor): Point {
   const centerX = shape.x + shape.width / 2;
   const centerY = shape.y + shape.height / 2;
@@ -56,9 +53,6 @@ function getAnchorPoint(shape: Shape, anchor: Anchor): Point {
   return { x: shape.x, y: centerY };
 }
 
-/**
- * Handles to bounds.
- */
 function toBounds(shape: Shape, padding = 0): Bounds {
   return {
     left: shape.x - padding,
@@ -68,9 +62,6 @@ function toBounds(shape: Shape, padding = 0): Bounds {
   };
 }
 
-/**
- * Handles segment intersects bounds.
- */
 function segmentIntersectsBounds(
   start: Point,
   end: Point,
@@ -105,9 +96,6 @@ function segmentIntersectsBounds(
   return false;
 }
 
-/**
- * Handles path intersections.
- */
 function pathIntersections(points: Point[], bounds: Bounds): number {
   let count = 0;
   for (let index = 0; index < points.length - 1; index += 1) {
@@ -118,9 +106,6 @@ function pathIntersections(points: Point[], bounds: Bounds): number {
   return count;
 }
 
-/**
- * Handles path length.
- */
 function pathLength(points: Point[]): number {
   let total = 0;
   for (let index = 0; index < points.length - 1; index += 1) {
@@ -132,9 +117,6 @@ function pathLength(points: Point[]): number {
   return total;
 }
 
-/**
- * Handles simplify.
- */
 function simplify(points: Point[]): Point[] {
   if (points.length <= 2) {
     return points;
@@ -174,9 +156,6 @@ function simplify(points: Point[]): Point[] {
   return result;
 }
 
-/**
- * Handles rounded path.
- */
 function roundedPath(points: Point[]): string {
   if (points.length === 0) {
     return "";
@@ -230,9 +209,6 @@ function roundedPath(points: Point[]): string {
   return d;
 }
 
-/**
- * Handles choose route.
- */
 function chooseRoute(from: Point, to: Point, obstacles: Bounds[]): Point[] {
   const detour = 80;
   const midX = (from.x + to.x) / 2;
@@ -283,9 +259,6 @@ type DragState = {
   originY: number;
 };
 
-/**
- * Handles connector routing lab.
- */
 export default function ConnectorRoutingLab() {
   const [circle, setCircle] = useState<Shape>({
     x: 560,
@@ -335,10 +308,7 @@ export default function ConnectorRoutingLab() {
 
   const routePath = roundedPath(routeState.route);
 
-  /**
-   * Handles handle circle pointer down.
-   */
-  const handleCirclePointerDown = (
+    const handleCirclePointerDown = (
     event: ReactPointerEvent<HTMLDivElement>,
   ) => {
     if (event.button !== 0) {
@@ -355,10 +325,7 @@ export default function ConnectorRoutingLab() {
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
-  /**
-   * Handles handle circle pointer move.
-   */
-  const handleCirclePointerMove = (
+    const handleCirclePointerMove = (
     event: ReactPointerEvent<HTMLDivElement>,
   ) => {
     const dragState = dragRef.current;
@@ -381,10 +348,7 @@ export default function ConnectorRoutingLab() {
     }));
   };
 
-  /**
-   * Handles handle circle pointer up.
-   */
-  const handleCirclePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const handleCirclePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
     const dragState = dragRef.current;
     if (!dragState || dragState.pointerId !== event.pointerId) {
       return;

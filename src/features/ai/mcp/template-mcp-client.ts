@@ -65,9 +65,6 @@ const commandPlanOutputSchema = z.discriminatedUnion("planned", [
   }),
 ]);
 
-/**
- * Parses template instantiate output.
- */
 function parseTemplateInstantiateOutput(
   value: unknown,
 ): TemplateInstantiateOutput | null {
@@ -75,9 +72,6 @@ function parseTemplateInstantiateOutput(
   return parsed.success ? (parsed.data as TemplateInstantiateOutput) : null;
 }
 
-/**
- * Parses command plan output.
- */
 function parseCommandPlanOutput(
   value: unknown,
 ): DeterministicCommandPlanResult | null {
@@ -87,9 +81,6 @@ function parseCommandPlanOutput(
     : null;
 }
 
-/**
- * Handles with mcp client.
- */
 async function withMcpClient<T>(
   options: TemplateMcpClientOptions,
   callback: (client: Client) => Promise<T>,
@@ -119,9 +110,6 @@ async function withMcpClient<T>(
   }
 }
 
-/**
- * Handles call template instantiate tool.
- */
 export async function callTemplateInstantiateTool(
   options: CallTemplateOptions,
 ): Promise<TemplateInstantiateOutput> {
@@ -146,9 +134,6 @@ export async function callTemplateInstantiateTool(
   });
 }
 
-/**
- * Handles call command plan tool.
- */
 export async function callCommandPlanTool(
   options: CallCommandPlanOptions,
 ): Promise<DeterministicCommandPlanResult> {

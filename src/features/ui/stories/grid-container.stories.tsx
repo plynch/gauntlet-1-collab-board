@@ -3,9 +3,6 @@ import type { ReactNode } from "react";
 
 import { GridContainer } from "@/features/ui/components/grid-container";
 
-/**
- * Renders board canvas frame around a story.
- */
 function CanvasFrame({ children }: { children: ReactNode }) {
   return (
     <div

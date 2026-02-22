@@ -44,9 +44,6 @@ const titleActionButtonStyle: CSSProperties = {
   flexShrink: 0,
 };
 
-/**
- * Gets error message from API response payload.
- */
 function getErrorMessage(payload: unknown, fallback: string): string {
   if (typeof payload === "object" && payload !== null && "error" in payload) {
     const message = (payload as { error?: unknown }).error;
@@ -58,16 +55,10 @@ function getErrorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
-/**
- * Returns whether message indicates an access-denied board state.
- */
 function isBoardAccessDeniedMessage(message: string): boolean {
   return message.toLowerCase().includes("no longer have access");
 }
 
-/**
- * Handles google brand icon.
- */
 function GoogleBrandIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
@@ -91,9 +82,6 @@ function GoogleBrandIcon() {
   );
 }
 
-/**
- * Handles share board icon.
- */
 function ShareBoardIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -109,9 +97,6 @@ function ShareBoardIcon() {
   );
 }
 
-/**
- * Handles edit icon.
- */
 function EditIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -134,9 +119,6 @@ function EditIcon() {
   );
 }
 
-/**
- * Handles board workspace.
- */
 export default function BoardWorkspace({ boardId }: BoardWorkspaceProps) {
   const router = useRouter();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);

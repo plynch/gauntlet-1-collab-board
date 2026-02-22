@@ -6,19 +6,13 @@ import { getFirebaseAdminAuth } from "@/lib/firebase/admin";
 export class AuthError extends Error {
   readonly status: number;
 
-  /**
-   * Initializes this class instance.
-   */
-  constructor(message: string, status = 401) {
+    constructor(message: string, status = 401) {
     super(message);
     this.name = "AuthError";
     this.status = status;
   }
 }
 
-/**
- * Gets bearer token.
- */
 function getBearerToken(request: NextRequest): string {
   const headerValue = request.headers.get("authorization");
 
@@ -39,9 +33,6 @@ function getBearerToken(request: NextRequest): string {
   return token;
 }
 
-/**
- * Handles require user.
- */
 export async function requireUser(
   request: NextRequest,
 ): Promise<DecodedIdToken> {

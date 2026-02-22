@@ -2,9 +2,6 @@ import type { HTMLAttributes } from "react";
 
 import { cn } from "@/features/ui/lib/cn";
 
-/**
- * Handles section heading.
- */
 export function SectionHeading({
   className,
   ...props

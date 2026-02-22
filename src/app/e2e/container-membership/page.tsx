@@ -4,9 +4,6 @@ import ContainerMembershipLab from "@/features/boards/components/container-membe
 
 export const dynamic = "force-dynamic";
 
-/**
- * Handles container membership lab page.
- */
 export default function ContainerMembershipLabPage() {
   if (
     process.env.NODE_ENV === "production" &&

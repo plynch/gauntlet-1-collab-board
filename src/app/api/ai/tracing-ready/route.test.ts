@@ -1,6 +1,3 @@
-/**
- * @vitest-environment node
- */
 
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -15,10 +12,7 @@ vi.mock("@/server/auth/require-user", () => {
   class AuthError extends Error {
     readonly status: number;
 
-    /**
-     * Initializes this class instance.
-     */
-    constructor(message: string, status = 401) {
+        constructor(message: string, status = 401) {
       super(message);
       this.status = status;
       this.name = "AuthError";

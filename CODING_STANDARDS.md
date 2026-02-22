@@ -4,35 +4,22 @@ This document defines baseline engineering standards for this repository.
 
 ## Scope
 
-These standards apply to all production code, tests, scripts, and API route handlers in this repository.
+These standards apply to production code, tests, scripts, and API route handlers.
 
-## 1. Documentation Standard
+## 1. File Size and Modularity
 
-1. Every named function must include JSDoc.
-2. Every class method and constructor must include JSDoc.
-3. JSDoc must include a meaningful one-line description.
-4. Anonymous inline callbacks are exempt when they are not named declarations.
+1. Keep files small so humans and AI agents can reason about them quickly.
+2. Target max file size: `<= 400` lines for new files.
+3. Soft limit: `> 600` lines requires a split plan in the same PR notes.
+4. Hard limit: `> 800` lines is blocked unless the change is a short-lived emergency fix.
+5. Break large files by behavior boundaries (hooks, helpers, UI subcomponents, route services).
 
-### Enforced By
+## 2. Comments and Documentation
 
-- ESLint rules in `/Users/patrick/Code/gauntlet/1-collab-board/eslint.config.mjs`.
-- Auto-annotation helper: `npm run jsdoc:add`.
-
-## 2. API Documentation Generation
-
-Generate API docs from TypeScript source with:
-
-```bash
-npm run docs:api
-```
-
-Output is written to:
-
-- `/Users/patrick/Code/gauntlet/1-collab-board/docs/api`
-
-Configuration file:
-
-- `/Users/patrick/Code/gauntlet/1-collab-board/typedoc.json`
+1. Do not add JSDoc boilerplate.
+2. Use short inline comments only when code intent is not obvious.
+3. Prefer clear naming, small functions, and focused modules over heavy comments.
+4. Keep architecture and behavior docs in `/Users/patrick/Code/gauntlet/1-collab-board/docs`, not inside large comment blocks.
 
 ## 3. TypeScript and Linting
 
@@ -45,7 +32,7 @@ Configuration file:
 1. `npm run test` must pass before merge.
 2. Any user-visible feature or behavior change must ship with unit tests in the same commit.
 3. Any user-visible feature or behavior change must also ship with Playwright e2e coverage in the same commit.
-4. If an e2e test is intentionally skipped or deferred, document the reason in the PR notes and backlog before merge.
+4. If an e2e test is intentionally skipped or deferred, document the reason in PR notes and backlog before merge.
 5. Tests should assert behavior, not implementation detail.
 
 ## 5. Commit and Review Quality
@@ -70,4 +57,4 @@ Configuration file:
 
 1. Any npm script that can spend paid model tokens must end with the exact suffix `:PAID`.
 2. Paid scripts must fail fast with an actionable setup error when required credentials are missing.
-3. New paid scripts must document expected spend behavior in `README.md`.
+3. New paid scripts must document expected spend behavior in `/Users/patrick/Code/gauntlet/1-collab-board/README.md`.

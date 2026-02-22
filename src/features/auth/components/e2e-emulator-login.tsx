@@ -12,9 +12,6 @@ type CustomTokenResponse = {
   email: string;
 };
 
-/**
- * Gets error message.
- */
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
@@ -23,9 +20,6 @@ function getErrorMessage(error: unknown): string {
   return "Failed to sign in with emulator user.";
 }
 
-/**
- * Handles e2e emulator login.
- */
 export default function E2eEmulatorLogin() {
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -35,10 +29,7 @@ export default function E2eEmulatorLogin() {
   const requestedUid = searchParams.get("uid");
   const requestedEmail = searchParams.get("email");
 
-  /**
-   * Handles handle sign in.
-   */
-  const handleSignIn = async () => {
+    const handleSignIn = async () => {
     setPending(true);
     setErrorMessage(null);
 

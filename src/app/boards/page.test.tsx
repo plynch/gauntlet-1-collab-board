@@ -24,9 +24,6 @@ vi.mock("next/navigation", () => ({
 
 import BoardsPage from "./page";
 
-/**
- * Creates user.
- */
 function createUser(email: string): User {
   return {
     uid: "user-1",
@@ -36,9 +33,6 @@ function createUser(email: string): User {
   } as User;
 }
 
-/**
- * Creates board.
- */
 function createBoard(id: string, title: string): BoardSummary {
   return {
     id,

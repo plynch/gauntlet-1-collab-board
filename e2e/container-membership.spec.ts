@@ -7,9 +7,6 @@ type Bounds = {
   bottom: number;
 };
 
-/**
- * Parses position.
- */
 function parsePosition(text: string): { x: number; y: number } {
   const [xText, yText] = text.split(",");
   return {
@@ -18,9 +15,6 @@ function parsePosition(text: string): { x: number; y: number } {
   };
 }
 
-/**
- * Gets section bounds.
- */
 async function getSectionBounds(page: Page, index: number): Promise<Bounds> {
   const section = page.getByTestId(`lab-section-${index}`);
   const left = Number(await section.getAttribute("data-left"));
@@ -30,9 +24,6 @@ async function getSectionBounds(page: Page, index: number): Promise<Bounds> {
   return { left, right, top, bottom };
 }
 
-/**
- * Handles drag object to point.
- */
 async function dragObjectToPoint(
   page: Page,
   object: Locator,

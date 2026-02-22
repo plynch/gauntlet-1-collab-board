@@ -10,16 +10,10 @@ import {
 import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 
-/**
- * Returns whether true is true.
- */
 function isTrue(value: string | undefined): boolean {
   return value === "true";
 }
 
-/**
- * Handles should require firestore emulator in dev.
- */
 function shouldRequireFirestoreEmulatorInDev(): boolean {
   return (
     process.env.NODE_ENV === "development" &&
@@ -27,9 +21,6 @@ function shouldRequireFirestoreEmulatorInDev(): boolean {
   );
 }
 
-/**
- * Gets private key.
- */
 function getPrivateKey(): string | undefined {
   const value = process.env.FIREBASE_ADMIN_PRIVATE_KEY;
 
@@ -40,9 +31,6 @@ function getPrivateKey(): string | undefined {
   return value.replace(/\\n/g, "\n");
 }
 
-/**
- * Handles can use application default credentials.
- */
 function canUseApplicationDefaultCredentials(): boolean {
   return Boolean(
     process.env.GOOGLE_APPLICATION_CREDENTIALS ||
@@ -51,9 +39,6 @@ function canUseApplicationDefaultCredentials(): boolean {
   );
 }
 
-/**
- * Returns whether using firebase emulators is true.
- */
 function isUsingFirebaseEmulators(): boolean {
   return Boolean(
     process.env.FIRESTORE_EMULATOR_HOST?.trim() ||
@@ -61,9 +46,6 @@ function isUsingFirebaseEmulators(): boolean {
   );
 }
 
-/**
- * Gets emulator project id.
- */
 function getEmulatorProjectId(): string {
   const projectId =
     process.env.FIREBASE_ADMIN_PROJECT_ID?.trim() ||
@@ -78,9 +60,6 @@ let firebaseAdminApp: App | null = null;
 let firebaseAdminAuth: Auth | null = null;
 let firebaseAdminDb: Firestore | null = null;
 
-/**
- * Gets firebase admin app.
- */
 export function getFirebaseAdminApp(): App {
   if (firebaseAdminApp) {
     return firebaseAdminApp;
@@ -123,9 +102,6 @@ export function getFirebaseAdminApp(): App {
   );
 }
 
-/**
- * Gets firebase admin auth.
- */
 export function getFirebaseAdminAuth(): Auth {
   if (!firebaseAdminAuth) {
     firebaseAdminAuth = getAuth(getFirebaseAdminApp());
@@ -134,9 +110,6 @@ export function getFirebaseAdminAuth(): Auth {
   return firebaseAdminAuth;
 }
 
-/**
- * Gets firebase admin db.
- */
 export function getFirebaseAdminDb(): Firestore {
   if (!firebaseAdminDb) {
     firebaseAdminDb = getFirestore(getFirebaseAdminApp());
@@ -145,9 +118,6 @@ export function getFirebaseAdminDb(): Firestore {
   return firebaseAdminDb;
 }
 
-/**
- * Handles assert firestore writes allowed in dev.
- */
 export function assertFirestoreWritesAllowedInDev(): void {
   if (!shouldRequireFirestoreEmulatorInDev()) {
     return;

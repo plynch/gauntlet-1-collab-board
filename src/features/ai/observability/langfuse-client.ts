@@ -3,9 +3,6 @@ import { Langfuse } from "langfuse";
 let langfuseClient: Langfuse | null | undefined;
 let loggedMissingConfig = false;
 
-/**
- * Gets langfuse config.
- */
 function getLangfuseConfig(): {
   publicKey: string;
   secretKey: string;
@@ -30,9 +27,6 @@ function getLangfuseConfig(): {
   };
 }
 
-/**
- * Gets langfuse public key preview.
- */
 export function getLangfusePublicKeyPreview(): string | null {
   const publicKey = process.env.LANGFUSE_PUBLIC_KEY?.trim();
   if (!publicKey) {
@@ -46,16 +40,10 @@ export function getLangfusePublicKeyPreview(): string | null {
   return `${publicKey.slice(0, 6)}...${publicKey.slice(-4)}`;
 }
 
-/**
- * Returns whether langfuse is configured is true.
- */
 export function isLangfuseConfigured(): boolean {
   return getLangfuseConfig() !== null;
 }
 
-/**
- * Gets langfuse client.
- */
 export function getLangfuseClient(): Langfuse | null {
   if (langfuseClient !== undefined) {
     return langfuseClient;
@@ -82,9 +70,6 @@ export function getLangfuseClient(): Langfuse | null {
   return langfuseClient;
 }
 
-/**
- * Handles flush langfuse client.
- */
 export async function flushLangfuseClient(): Promise<void> {
   const client = getLangfuseClient();
   if (!client) {

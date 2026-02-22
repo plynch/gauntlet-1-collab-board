@@ -28,9 +28,6 @@ type UpdateBoardResponse = {
   board: BoardSummary;
 };
 
-/**
- * Gets error message.
- */
 function getErrorMessage(payload: unknown, fallback: string): string {
   if (typeof payload === "object" && payload !== null && "error" in payload) {
     const message = (payload as { error?: unknown }).error;
@@ -57,9 +54,6 @@ const boardActionButtonStyle: CSSProperties = {
   cursor: "pointer",
 };
 
-/**
- * Handles share board icon.
- */
 function ShareBoardIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -75,9 +69,6 @@ function ShareBoardIcon() {
   );
 }
 
-/**
- * Handles access icon.
- */
 function AccessIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -93,9 +84,6 @@ function AccessIcon() {
   );
 }
 
-/**
- * Handles edit icon.
- */
 function EditIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -118,9 +106,6 @@ function EditIcon() {
   );
 }
 
-/**
- * Handles delete icon.
- */
 function DeleteIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -136,9 +121,6 @@ function DeleteIcon() {
   );
 }
 
-/**
- * Handles google brand icon.
- */
 function GoogleBrandIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
@@ -162,9 +144,6 @@ function GoogleBrandIcon() {
   );
 }
 
-/**
- * Handles boards page.
- */
 export default function BoardsPage() {
   const router = useRouter();
   const [showCreateBoardForm, setShowCreateBoardForm] = useState(false);

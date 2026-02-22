@@ -7,9 +7,6 @@ test.skip(
   "Firebase emulator e2e runs only when PLAYWRIGHT_EMULATOR_MODE=1.",
 );
 
-/**
- * Handles create board and open.
- */
 async function createBoardAndOpen(page: Page, boardTitle: string): Promise<void> {
   await page.goto("/e2e/emulator-login");
   await page.getByTestId("emulator-login-button").click();

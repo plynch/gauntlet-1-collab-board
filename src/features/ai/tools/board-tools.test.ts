@@ -27,19 +27,13 @@ class FakeFirestore {
   batchCommitCount = 0;
   private createdIdCounter = 0;
 
-  /**
-   * Initializes this class instance.
-   */
-  constructor(initialObjects: Array<{ id: string; data: ObjectDoc }>) {
+    constructor(initialObjects: Array<{ id: string; data: ObjectDoc }>) {
     initialObjects.forEach((entry) => {
       this.objects.set(entry.id, { ...entry.data });
     });
   }
 
-  /**
-   * Handles collection.
-   */
-  collection(name: string) {
+    collection(name: string) {
     if (name !== "boards") {
       throw new Error(`Unsupported collection: ${name}`);
     }
@@ -116,10 +110,7 @@ class FakeFirestore {
     };
   }
 
-  /**
-   * Handles batch.
-   */
-  batch() {
+    batch() {
     const pending: string[] = [];
     const pendingUpdates: Array<{ id: string; payload: UpdatePayload }> = [];
     const pendingCreates: Array<{ id: string; payload: Record<string, unknown> }> =
@@ -189,9 +180,6 @@ class FakeFirestore {
   }
 }
 
-/**
- * Creates object.
- */
 function createObject(
   id: string,
   zIndex: number,

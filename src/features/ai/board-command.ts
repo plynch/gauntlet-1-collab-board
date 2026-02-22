@@ -11,9 +11,6 @@ export const MCP_TEMPLATE_TIMEOUT_MS = 1_200;
 
 export type BoardCommandIntent = "swot-template" | "stub";
 
-/**
- * Parses viewport bounds payload.
- */
 function parseViewportBounds(input: unknown):
   | {
       left: number;
@@ -58,9 +55,6 @@ function parseViewportBounds(input: unknown):
   };
 }
 
-/**
- * Parses board command request.
- */
 export function parseBoardCommandRequest(
   input: unknown,
 ): BoardCommandRequest | null {
@@ -133,9 +127,6 @@ export function parseBoardCommandRequest(
   };
 }
 
-/**
- * Builds stub board command response.
- */
 export function buildStubBoardCommandResponse(options: {
   message: string;
   canEdit: boolean;
@@ -161,9 +152,6 @@ export function buildStubBoardCommandResponse(options: {
   };
 }
 
-/**
- * Handles detect board command intent.
- */
 export function detectBoardCommandIntent(message: string): BoardCommandIntent {
   const normalized = message.trim().toLowerCase();
   const swotMatches =
@@ -181,9 +169,6 @@ export function detectBoardCommandIntent(message: string): BoardCommandIntent {
   return "stub";
 }
 
-/**
- * Builds swot assistant message.
- */
 export function buildSwotAssistantMessage(options: {
   fallbackUsed: boolean;
   objectsCreated: number;
@@ -192,9 +177,6 @@ export function buildSwotAssistantMessage(options: {
   return `Created SWOT analysis template with 4 labeled quadrants (${options.objectsCreated} objects).${suffix}`;
 }
 
-/**
- * Builds clear board assistant message.
- */
 export function buildClearBoardAssistantMessage(options: {
   deletedCount: number;
   remainingCount: number;
@@ -213,9 +195,6 @@ export function buildClearBoardAssistantMessage(options: {
   return `Deleted ${deletedCount} object${deletedCount === 1 ? "" : "s"}, but ${remainingCount} object${remainingCount === 1 ? "" : "s"} still remain. Try clear board again.`;
 }
 
-/**
- * Builds deterministic board command response.
- */
 export function buildDeterministicBoardCommandResponse(options: {
   assistantMessage: string;
   traceId: string;
@@ -232,9 +211,6 @@ export function buildDeterministicBoardCommandResponse(options: {
   };
 }
 
-/**
- * Builds openai board command response.
- */
 export function buildOpenAiBoardCommandResponse(options: {
   assistantMessage: string;
   traceId: string;
@@ -251,9 +227,6 @@ export function buildOpenAiBoardCommandResponse(options: {
   };
 }
 
-/**
- * Gets board command error message.
- */
 export function getBoardCommandErrorMessage(options: {
   status: number | null;
   timedOut?: boolean;

@@ -14,9 +14,6 @@ type RecordedSpan = {
   };
 };
 
-/**
- * Creates fake trace run.
- */
 function createFakeTraceRun(records: RecordedSpan[]): AiTraceRun {
   return {
     traceId: "trace-test-1",

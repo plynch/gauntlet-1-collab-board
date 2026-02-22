@@ -61,9 +61,6 @@ const RELATIVE_POSITION_PRESETS: Array<{ x: number; y: number }> = [
   { x: 0.72, y: 0.26 },
 ];
 
-/**
- * Returns whether connector kind is true.
- */
 function isConnectorKind(kind: BoardObjectKind): boolean {
   return (
     kind === "connectorUndirected" ||
@@ -72,16 +69,10 @@ function isConnectorKind(kind: BoardObjectKind): boolean {
   );
 }
 
-/**
- * Handles round to step.
- */
 function roundToStep(value: number, step: number): number {
   return Math.round(value / step) * step;
 }
 
-/**
- * Gets distance.
- */
 function getDistance(
   left: { x: number; y: number },
   right: { x: number; y: number },
@@ -89,9 +80,6 @@ function getDistance(
   return Math.hypot(left.x - right.x, left.y - right.y);
 }
 
-/**
- * Builds container object.
- */
 function buildContainerObject(overrides?: Partial<BoardObject>): BoardObject {
   return {
     id: CONTAINER_ID,
@@ -116,9 +104,6 @@ function buildContainerObject(overrides?: Partial<BoardObject>): BoardObject {
   };
 }
 
-/**
- * Gets object geometry.
- */
 function getObjectGeometry(objectItem: BoardObject): ObjectGeometry {
   return {
     x: objectItem.x,
@@ -129,9 +114,6 @@ function getObjectGeometry(objectItem: BoardObject): ObjectGeometry {
   };
 }
 
-/**
- * Gets sticky center.
- */
 function getStickyCenter(sticky: BoardObject): { x: number; y: number } {
   return {
     x: sticky.x + sticky.width / 2,
@@ -139,9 +121,6 @@ function getStickyCenter(sticky: BoardObject): { x: number; y: number } {
   };
 }
 
-/**
- * Handles swot resize lab.
- */
 export default function SwotResizeLab() {
   const [user, setUser] = useState<LabUser | null>(null);
   const [objects, setObjects] = useState<BoardObject[]>([]);
@@ -252,10 +231,7 @@ export default function SwotResizeLab() {
     [getSectionAnchoredObjectUpdatesForContainer],
   );
 
-  /**
-   * Handles handle resize pointer down.
-   */
-  const handleResizePointerDown = (
+    const handleResizePointerDown = (
     event: ReactPointerEvent<HTMLButtonElement>,
   ) => {
     if (event.button !== 0 || !containerObject) {
@@ -273,10 +249,7 @@ export default function SwotResizeLab() {
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
-  /**
-   * Handles handle resize pointer move.
-   */
-  const handleResizePointerMove = (
+    const handleResizePointerMove = (
     event: ReactPointerEvent<HTMLButtonElement>,
   ) => {
     const resizeState = resizeStateRef.current;
@@ -292,10 +265,7 @@ export default function SwotResizeLab() {
     );
   };
 
-  /**
-   * Handles handle resize pointer up.
-   */
-  const handleResizePointerUp = (
+    const handleResizePointerUp = (
     event: ReactPointerEvent<HTMLButtonElement>,
   ) => {
     const resizeState = resizeStateRef.current;
@@ -306,18 +276,12 @@ export default function SwotResizeLab() {
     event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
-  /**
-   * Creates swot.
-   */
-  const createSwot = () => {
+    const createSwot = () => {
     setObjects([buildContainerObject()]);
     setStickySequence(0);
   };
 
-  /**
-   * Handles add sticky to section.
-   */
-  const addStickyToSection = (sectionIndex: number) => {
+    const addStickyToSection = (sectionIndex: number) => {
     const currentContainer = objectsByIdRef.current.get(CONTAINER_ID);
     if (!currentContainer || currentContainer.type !== "gridContainer") {
       return;

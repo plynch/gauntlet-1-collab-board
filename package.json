@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "jsdoc:add": "node scripts/add-jsdoc-comments.mjs",
     "dev": "next dev",
     "build": "next build",
     "build-storybook": "storybook build",

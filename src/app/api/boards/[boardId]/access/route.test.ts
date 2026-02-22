@@ -1,6 +1,3 @@
-/**
- * @vitest-environment node
- */
 
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,10 +13,7 @@ vi.mock("@/server/auth/require-user", () => {
   class AuthError extends Error {
     readonly status: number;
 
-    /**
-     * Initializes this class instance.
-     */
-    constructor(message: string, status = 401) {
+        constructor(message: string, status = 401) {
       super(message);
       this.status = status;
     }
@@ -45,45 +39,30 @@ vi.mock("@/server/boards/board-access", () => ({
 
 type BoardDoc = Record<string, unknown>;
 
-/**
- * Creates fake db.
- */
 function createFakeDb(initialBoard?: BoardDoc) {
   const board = initialBoard ? { ...initialBoard } : null;
 
   const boardRef = {
-    /**
-     * Handles get.
-     */
-    async get() {
+        async get() {
       return {
         exists: Boolean(board),
         data: () => board,
       };
     },
-    /**
-     * Handles update.
-     */
-    async update(value: Record<string, unknown>) {
+        async update(value: Record<string, unknown>) {
       void value;
       // no-op in test double
     },
   };
 
   return {
-    /**
-     * Handles collection.
-     */
-    collection(name: string) {
+        collection(name: string) {
       if (name !== "boards") {
         throw new Error(`Unsupported collection: ${name}`);
       }
 
       return {
-        /**
-         * Handles doc.
-         */
-        doc(id: string) {
+                doc(id: string) {
           void id;
           return boardRef;
         },
@@ -92,9 +71,6 @@ function createFakeDb(initialBoard?: BoardDoc) {
   };
 }
 
-/**
- * Creates request.
- */
 function createRequest(body: unknown) {
   return new NextRequest("http://localhost:3000/api/boards/board-1/access", {
     method: "PATCH",

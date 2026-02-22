@@ -20,9 +20,6 @@ export type BoardEditorProfile = {
   displayName: string | null;
 };
 
-/**
- * Handles to string array.
- */
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -34,9 +31,6 @@ function toStringArray(value: unknown): string[] {
     .filter((entry) => entry.length > 0);
 }
 
-/**
- * Parses board doc.
- */
 export function parseBoardDoc(raw: unknown): BoardDoc | null {
   if (!raw || typeof raw !== "object") {
     return null;
@@ -65,9 +59,6 @@ export function parseBoardDoc(raw: unknown): BoardDoc | null {
   };
 }
 
-/**
- * Handles to iso date.
- */
 export function toIsoDate(value: unknown): string | null {
   if (value instanceof Timestamp) {
     return value.toDate().toISOString();
@@ -76,9 +67,6 @@ export function toIsoDate(value: unknown): string | null {
   return null;
 }
 
-/**
- * Handles can user read board.
- */
 export function canUserReadBoard(board: BoardDoc, userUid: string): boolean {
   return (
     board.openRead ||
@@ -89,9 +77,6 @@ export function canUserReadBoard(board: BoardDoc, userUid: string): boolean {
   );
 }
 
-/**
- * Handles can user edit board.
- */
 export function canUserEditBoard(board: BoardDoc, userUid: string): boolean {
   return (
     board.openEdit ||
@@ -100,9 +85,6 @@ export function canUserEditBoard(board: BoardDoc, userUid: string): boolean {
   );
 }
 
-/**
- * Handles resolve user profiles.
- */
 export async function resolveUserProfiles(
   userIds: string[],
 ): Promise<BoardEditorProfile[]> {
@@ -135,9 +117,6 @@ export async function resolveUserProfiles(
   }
 }
 
-/**
- * Handles resolve editor profiles.
- */
 export async function resolveEditorProfiles(
   editorIds: string[],
 ): Promise<BoardEditorProfile[]> {

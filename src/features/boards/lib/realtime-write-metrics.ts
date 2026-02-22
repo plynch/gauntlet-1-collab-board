@@ -33,9 +33,6 @@ const WRITE_CHANNELS: RealtimeWriteChannel[] = [
   "sticky-text",
 ];
 
-/**
- * Creates empty counters.
- */
 function createEmptyCounters(): RealtimeWriteCounters {
   return {
     attempted: 0,
@@ -44,9 +41,6 @@ function createEmptyCounters(): RealtimeWriteCounters {
   };
 }
 
-/**
- * Handles normalize count.
- */
 function normalizeCount(value: number | undefined): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return 1;
@@ -55,9 +49,6 @@ function normalizeCount(value: number | undefined): number {
   return Math.max(1, Math.floor(value));
 }
 
-/**
- * Creates realtime write metrics.
- */
 export function createRealtimeWriteMetrics(): RealtimeWriteMetricsCollector {
   const counters = WRITE_CHANNELS.reduce(
     (result, channel) => {
@@ -67,10 +58,7 @@ export function createRealtimeWriteMetrics(): RealtimeWriteMetricsCollector {
     {} as Record<RealtimeWriteChannel, RealtimeWriteCounters>,
   );
 
-  /**
-   * Handles mark.
-   */
-  const mark = (
+    const mark = (
     channel: RealtimeWriteChannel,
     metricKind: RealtimeWriteMetricKind,
     count = 1,
@@ -78,10 +66,7 @@ export function createRealtimeWriteMetrics(): RealtimeWriteMetricsCollector {
     counters[channel][metricKind] += normalizeCount(count);
   };
 
-  /**
-   * Handles snapshot.
-   */
-  const snapshot = (): RealtimeWriteMetricsSnapshot => {
+    const snapshot = (): RealtimeWriteMetricsSnapshot => {
     const channels = WRITE_CHANNELS.reduce(
       (result, channel) => {
         result[channel] = {
@@ -108,10 +93,7 @@ export function createRealtimeWriteMetrics(): RealtimeWriteMetricsCollector {
     };
   };
 
-  /**
-   * Handles reset.
-   */
-  const reset = () => {
+    const reset = () => {
     WRITE_CHANNELS.forEach((channel) => {
       counters[channel] = createEmptyCounters();
     });
@@ -126,9 +108,6 @@ export function createRealtimeWriteMetrics(): RealtimeWriteMetricsCollector {
   };
 }
 
-/**
- * Returns whether write metrics debug enabled is true.
- */
 export function isWriteMetricsDebugEnabled(
   flag = process.env.NEXT_PUBLIC_DEBUG_WRITE_METRICS,
 ): boolean {

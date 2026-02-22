@@ -64,9 +64,6 @@ const SHAPE_TYPE_ALIASES: Record<string, "rect" | "circle" | "line" | "triangle"
   arrow: "line",
 };
 
-/**
- * Converts to plain object record.
- */
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -75,9 +72,6 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
-/**
- * Parses object-like value from unknown or json string.
- */
 function parseObjectLikeValue(value: unknown): Record<string, unknown> | null {
   const direct = asRecord(value);
   if (direct) {
@@ -100,9 +94,6 @@ function parseObjectLikeValue(value: unknown): Record<string, unknown> | null {
   }
 }
 
-/**
- * Handles parse number value.
- */
 function parseNumberValue(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -118,9 +109,6 @@ function parseNumberValue(value: unknown): number | null {
   return null;
 }
 
-/**
- * Handles normalize tool name.
- */
 function normalizeToolName(value: unknown): string | null {
   const structured = asRecord(value);
   if (structured && typeof structured.name === "string") {
@@ -159,9 +147,6 @@ function normalizeToolName(value: unknown): string | null {
   return trimmed;
 }
 
-/**
- * Gets operation tool candidate.
- */
 function getOperationToolCandidate(operation: Record<string, unknown>): unknown {
   const functionRecord = asRecord(operation.function);
   const callRecord = asRecord(operation.call);
@@ -179,9 +164,6 @@ function getOperationToolCandidate(operation: Record<string, unknown>): unknown 
   );
 }
 
-/**
- * Handles normalize operation args.
- */
 function normalizeOperationArgs(
   tool: string,
   operation: Record<string, unknown>,
@@ -546,9 +528,6 @@ function normalizeOperationArgs(
   return args;
 }
 
-/**
- * Normalizes openai planner output object.
- */
 function normalizeOpenAiPlannerOutput(raw: unknown): unknown {
   const plannerOutput = asRecord(raw);
   if (!plannerOutput) {
@@ -861,9 +840,6 @@ export type OpenAiPlannerFailureError = Error & {
   usage?: OpenAiPlannerUsage;
 };
 
-/**
- * Handles to board context object.
- */
 function toBoardContextObject(objectItem: BoardObjectSnapshot) {
   return {
     id: objectItem.id,
@@ -877,9 +853,6 @@ function toBoardContextObject(objectItem: BoardObjectSnapshot) {
   };
 }
 
-/**
- * Extracts json candidate from text.
- */
 function extractJsonCandidate(content: string): string {
   const fencedMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fencedMatch?.[1]) {
@@ -895,9 +868,6 @@ function extractJsonCandidate(content: string): string {
   return content.trim();
 }
 
-/**
- * Gets openai planner usage from completion.
- */
 function getOpenAiPlannerUsage(input: {
   model: string;
   inputTokens: number;
@@ -922,9 +892,6 @@ function getOpenAiPlannerUsage(input: {
   };
 }
 
-/**
- * Handles create planner failure error.
- */
 function createOpenAiPlannerFailureError(
   reason: string,
   usage: OpenAiPlannerUsage,
@@ -934,9 +901,6 @@ function createOpenAiPlannerFailureError(
   return error;
 }
 
-/**
- * Gets compact text preview.
- */
 function getCompactTextPreview(value: string, maxChars: number): string {
   const compact = value.replace(/\s+/g, " ").trim();
   if (compact.length <= maxChars) {
@@ -945,9 +909,6 @@ function getCompactTextPreview(value: string, maxChars: number): string {
   return `${compact.slice(0, maxChars)}…`;
 }
 
-/**
- * Parses openai planner output.
- */
 export function parseOpenAiPlannerOutput(content: string): {
   intent: string;
   planned: boolean;
@@ -965,9 +926,6 @@ export function parseOpenAiPlannerOutput(content: string): {
   };
 }
 
-/**
- * Plans board command with openai.
- */
 export async function planBoardCommandWithOpenAi(input: {
   message: string;
   selectedObjectIds: string[];

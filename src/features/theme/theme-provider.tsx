@@ -24,9 +24,6 @@ type ThemeContextValue = {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-/**
- * Gets initial theme mode.
- */
 function getInitialThemeMode(): ThemeMode {
   if (typeof window === "undefined") {
     return "system";
@@ -40,9 +37,6 @@ function getInitialThemeMode(): ThemeMode {
   return "system";
 }
 
-/**
- * Gets whether system prefers dark mode.
- */
 function getInitialSystemDarkMode(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
     return false;
@@ -51,9 +45,6 @@ function getInitialSystemDarkMode(): boolean {
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
-/**
- * Handles resolve theme.
- */
 function resolveTheme(
   mode: ThemeMode,
   systemPrefersDark: boolean,
@@ -69,9 +60,6 @@ function resolveTheme(
   return systemPrefersDark ? "dark" : "light";
 }
 
-/**
- * Handles theme provider.
- */
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<ThemeMode>(getInitialThemeMode);
   const [systemPrefersDark, setSystemPrefersDark] = useState(
@@ -136,9 +124,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * Handles use theme.
- */
 export function useTheme(): ThemeContextValue {
   const context = useContext(ThemeContext);
   if (!context) {

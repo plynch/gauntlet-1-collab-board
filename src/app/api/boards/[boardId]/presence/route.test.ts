@@ -1,6 +1,3 @@
-/**
- * @vitest-environment node
- */
 
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,10 +12,7 @@ vi.mock("@/server/auth/require-user", () => {
   class AuthError extends Error {
     readonly status: number;
 
-    /**
-     * Initializes this class instance.
-     */
-    constructor(message: string, status = 401) {
+        constructor(message: string, status = 401) {
       super(message);
       this.status = status;
     }
@@ -40,41 +34,26 @@ vi.mock("@/server/boards/board-access", () => ({
   parseBoardDoc: parseBoardDocMock,
 }));
 
-/**
- * Creates fake db.
- */
 function createFakeDb(boardData: Record<string, unknown> | null) {
   const presenceWrites: Array<Record<string, unknown>> = [];
 
   const boardDocRef = {
-    /**
-     * Handles get.
-     */
-    async get() {
+        async get() {
       return {
         exists: Boolean(boardData),
         data: () => boardData,
       };
     },
-    /**
-     * Handles collection.
-     */
-    collection(name: string) {
+        collection(name: string) {
       if (name !== "presence") {
         throw new Error(`Unsupported subcollection: ${name}`);
       }
 
       return {
-        /**
-         * Handles doc.
-         */
-        doc(id: string) {
+                doc(id: string) {
           void id;
           return {
-            /**
-             * Handles set.
-             */
-            async set(value: Record<string, unknown>) {
+                        async set(value: Record<string, unknown>) {
               presenceWrites.push(value);
             },
           };
@@ -85,19 +64,13 @@ function createFakeDb(boardData: Record<string, unknown> | null) {
 
   return {
     presenceWrites,
-    /**
-     * Handles collection.
-     */
-    collection(name: string) {
+        collection(name: string) {
       if (name !== "boards") {
         throw new Error(`Unsupported collection: ${name}`);
       }
 
       return {
-        /**
-         * Handles doc.
-         */
-        doc(id: string) {
+                doc(id: string) {
           void id;
           return boardDocRef;
         },
@@ -106,9 +79,6 @@ function createFakeDb(boardData: Record<string, unknown> | null) {
   };
 }
 
-/**
- * Creates request.
- */
 function createRequest(body: unknown) {
   return new NextRequest("http://localhost:3000/api/boards/board-1/presence", {
     method: "PATCH",

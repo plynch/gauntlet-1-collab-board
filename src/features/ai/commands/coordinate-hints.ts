@@ -3,9 +3,6 @@ export type CoordinateHints = {
   hintedY: number | null;
 };
 
-/**
- * Parses coordinate hints from message text.
- */
 export function parseCoordinateHintsFromMessage(
   message: string,
 ): CoordinateHints {

@@ -1,6 +1,3 @@
-/**
- * @vitest-environment node
- */
 
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,10 +14,7 @@ vi.mock("@/server/auth/require-user", () => {
   class AuthError extends Error {
     readonly status: number;
 
-    /**
-     * Initializes this class instance.
-     */
-    constructor(message: string, status = 401) {
+        constructor(message: string, status = 401) {
       super(message);
       this.status = status;
     }
@@ -47,33 +41,21 @@ vi.mock("@/server/boards/board-access", () => ({
 
 type BoardDoc = Record<string, unknown>;
 
-/**
- * Creates fake db.
- */
 function createFakeDb(initialBoards: Array<{ id: string; data: BoardDoc }>) {
   const boards = new Map(
     initialBoards.map((entry) => [entry.id, { ...entry.data }]),
   );
 
   return {
-    /**
-     * Handles collection.
-     */
-    collection(name: string) {
+        collection(name: string) {
       if (name !== "boards") {
         throw new Error(`Unsupported collection: ${name}`);
       }
 
       return {
-        /**
-         * Handles doc.
-         */
-        doc(id: string) {
+                doc(id: string) {
           return {
-            /**
-             * Handles get.
-             */
-            async get() {
+                        async get() {
               const board = boards.get(id);
               return {
                 id,
@@ -81,10 +63,7 @@ function createFakeDb(initialBoards: Array<{ id: string; data: BoardDoc }>) {
                 data: () => board,
               };
             },
-            /**
-             * Handles update.
-             */
-            async update(value: Record<string, unknown>) {
+                        async update(value: Record<string, unknown>) {
               const board = boards.get(id);
               if (!board) {
                 throw new Error("Board not found");
@@ -95,10 +74,7 @@ function createFakeDb(initialBoards: Array<{ id: string; data: BoardDoc }>) {
                 ...value,
               });
             },
-            /**
-             * Handles delete.
-             */
-            async delete() {
+                        async delete() {
               boards.delete(id);
             },
           };
@@ -108,9 +84,6 @@ function createFakeDb(initialBoards: Array<{ id: string; data: BoardDoc }>) {
   };
 }
 
-/**
- * Creates request.
- */
 function createRequest(method: "GET" | "PATCH" | "DELETE", body?: unknown) {
   return new NextRequest("http://localhost:3000/api/boards/board-1", {
     method,

@@ -38,9 +38,6 @@ export type OpenAiRequiredAttempt =
       };
     };
 
-/**
- * Handles to safe openai reason.
- */
 function toSafeOpenAiReason(reason: string): string {
   const normalized = reason.toLowerCase();
   if (
@@ -53,9 +50,6 @@ function toSafeOpenAiReason(reason: string): string {
   return reason.replace(/sk-[a-z0-9_-]+/gi, "sk-REDACTED");
 }
 
-/**
- * Gets openai required error response.
- */
 export function getOpenAiRequiredErrorResponse(
   openAiAttempt: OpenAiRequiredAttempt,
 ): {

@@ -4,9 +4,6 @@ import ConnectorRoutingLab from "@/features/boards/components/connector-routing-
 
 export const dynamic = "force-dynamic";
 
-/**
- * Handles connector routing lab page.
- */
 export default function ConnectorRoutingLabPage() {
   if (
     process.env.NODE_ENV === "production" &&

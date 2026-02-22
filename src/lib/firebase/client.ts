@@ -15,9 +15,6 @@ type PublicFirebaseConfig = {
   appId: string;
 };
 
-/**
- * Gets public firebase config.
- */
 function getPublicFirebaseConfig(): PublicFirebaseConfig | null {
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
   const authDomain = process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN;
@@ -59,16 +56,10 @@ let firebaseApp: FirebaseApp | null = null;
 let firebaseAuth: Auth | null = null;
 let firebaseDb: Firestore | null = null;
 
-/**
- * Returns whether true is true.
- */
 function isTrue(value: string | undefined): boolean {
   return value === "true";
 }
 
-/**
- * Handles should use auth emulator.
- */
 function shouldUseAuthEmulator(): boolean {
   return (
     isTrue(process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR) ||
@@ -76,9 +67,6 @@ function shouldUseAuthEmulator(): boolean {
   );
 }
 
-/**
- * Handles should use firestore emulator.
- */
 function shouldUseFirestoreEmulator(): boolean {
   return (
     isTrue(process.env.NEXT_PUBLIC_USE_FIRESTORE_EMULATOR) ||
@@ -86,9 +74,6 @@ function shouldUseFirestoreEmulator(): boolean {
   );
 }
 
-/**
- * Handles should require firestore emulator in dev.
- */
 function shouldRequireFirestoreEmulatorInDev(): boolean {
   return (
     process.env.NODE_ENV === "development" &&
@@ -96,16 +81,10 @@ function shouldRequireFirestoreEmulatorInDev(): boolean {
   );
 }
 
-/**
- * Returns whether firebase client configured is true.
- */
 export function isFirebaseClientConfigured(): boolean {
   return firebaseConfig !== null;
 }
 
-/**
- * Handles connect client emulators.
- */
 function connectClientEmulators(auth: Auth, db: Firestore): void {
   if (typeof window === "undefined") {
     return;
@@ -130,9 +109,6 @@ function connectClientEmulators(auth: Auth, db: Firestore): void {
   }
 }
 
-/**
- * Handles assert firestore client usage is safe.
- */
 function assertFirestoreClientUsageIsSafe(): void {
   if (!shouldRequireFirestoreEmulatorInDev()) {
     return;
@@ -145,9 +121,6 @@ function assertFirestoreClientUsageIsSafe(): void {
   }
 }
 
-/**
- * Gets firebase client app.
- */
 export function getFirebaseClientApp(): FirebaseApp {
   if (!firebaseConfig) {
     throw new Error(
@@ -172,9 +145,6 @@ export function getFirebaseClientApp(): FirebaseApp {
   return firebaseApp;
 }
 
-/**
- * Gets firebase client auth.
- */
 export function getFirebaseClientAuth(): Auth {
   if (!firebaseAuth) {
     firebaseAuth = getAuth(getFirebaseClientApp());
@@ -202,9 +172,6 @@ export function getFirebaseClientAuth(): Auth {
   return firebaseAuth;
 }
 
-/**
- * Gets firebase client db.
- */
 export function getFirebaseClientDb(): Firestore {
   assertFirestoreClientUsageIsSafe();
 

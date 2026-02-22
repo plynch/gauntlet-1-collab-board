@@ -1,6 +1,3 @@
-/**
- * @vitest-environment node
- */
 
 import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
@@ -12,9 +9,6 @@ import {
 import { getOpenAiRequiredErrorResponse } from "@/features/ai/openai/openai-required-response";
 import { POST } from "./route";
 
-/**
- * Creates post request.
- */
 function createPostRequest(body: unknown): NextRequest {
   return new NextRequest("http://localhost:3000/api/ai/board-command", {
     method: "POST",
@@ -25,9 +19,6 @@ function createPostRequest(body: unknown): NextRequest {
   });
 }
 
-/**
- * Creates raw post request.
- */
 function createRawPostRequest(body: string): NextRequest {
   return new NextRequest("http://localhost:3000/api/ai/board-command", {
     method: "POST",

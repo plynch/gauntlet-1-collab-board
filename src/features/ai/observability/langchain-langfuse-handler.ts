@@ -10,9 +10,6 @@ type RunSpan = {
   type: "chain" | "tool";
 };
 
-/**
- * Handles parse serialized name.
- */
 function parseSerializedName(
   serialized: Serialized,
   fallback: string,
@@ -38,9 +35,6 @@ function parseSerializedName(
   return fallback;
 }
 
-/**
- * Handles to safe json.
- */
 function toSafeJson(input: string): unknown {
   try {
     return JSON.parse(input) as unknown;
@@ -49,9 +43,6 @@ function toSafeJson(input: string): unknown {
   }
 }
 
-/**
- * Gets error message.
- */
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim().length > 0) {
     return error.message;
@@ -62,9 +53,6 @@ function getErrorMessage(error: unknown): string {
   return "Unknown LangChain execution error.";
 }
 
-/**
- * LangChain callback bridge that emits chain/tool runs into Langfuse spans.
- */
 export class LangChainLangfuseCallbackHandler extends BaseCallbackHandler {
   name = "langchain-langfuse-callback-handler";
   ignoreLLM = true;
@@ -74,17 +62,11 @@ export class LangChainLangfuseCallbackHandler extends BaseCallbackHandler {
 
   private readonly spansByRunId = new Map<string, RunSpan>();
 
-  /**
-   * Initializes this class instance.
-   */
-  constructor(private readonly trace: AiTraceRun) {
+    constructor(private readonly trace: AiTraceRun) {
     super();
   }
 
-  /**
-   * Handles start chain.
-   */
-  handleChainStart(
+    handleChainStart(
     chain: Serialized,
     inputs: Record<string, unknown>,
     runId: string,
@@ -110,10 +92,7 @@ export class LangChainLangfuseCallbackHandler extends BaseCallbackHandler {
     });
   }
 
-  /**
-   * Handles end chain.
-   */
-  handleChainEnd(outputs: Record<string, unknown>, runId: string): void {
+    handleChainEnd(outputs: Record<string, unknown>, runId: string): void {
     const runSpan = this.spansByRunId.get(runId);
     if (!runSpan || runSpan.type !== "chain") {
       return;
@@ -125,10 +104,7 @@ export class LangChainLangfuseCallbackHandler extends BaseCallbackHandler {
     this.spansByRunId.delete(runId);
   }
 
-  /**
-   * Handles chain error.
-   */
-  handleChainError(error: unknown, runId: string): void {
+    handleChainError(error: unknown, runId: string): void {
     const runSpan = this.spansByRunId.get(runId);
     if (!runSpan || runSpan.type !== "chain") {
       return;
@@ -140,10 +116,7 @@ export class LangChainLangfuseCallbackHandler extends BaseCallbackHandler {
     this.spansByRunId.delete(runId);
   }
 
-  /**
-   * Handles start tool.
-   */
-  handleToolStart(
+    handleToolStart(
     tool: Serialized,
     input: string,
     runId: string,
@@ -167,10 +140,7 @@ export class LangChainLangfuseCallbackHandler extends BaseCallbackHandler {
     });
   }
 
-  /**
-   * Handles end tool.
-   */
-  handleToolEnd(output: unknown, runId: string): void {
+    handleToolEnd(output: unknown, runId: string): void {
     const runSpan = this.spansByRunId.get(runId);
     if (!runSpan || runSpan.type !== "tool") {
       return;
@@ -182,10 +152,7 @@ export class LangChainLangfuseCallbackHandler extends BaseCallbackHandler {
     this.spansByRunId.delete(runId);
   }
 
-  /**
-   * Handles tool error.
-   */
-  handleToolError(error: unknown, runId: string): void {
+    handleToolError(error: unknown, runId: string): void {
     const runSpan = this.spansByRunId.get(runId);
     if (!runSpan || runSpan.type !== "tool") {
       return;

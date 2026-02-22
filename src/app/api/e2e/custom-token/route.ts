@@ -2,16 +2,10 @@ import { getFirebaseAdminAuth } from "@/lib/firebase/admin";
 
 import { NextRequest, NextResponse } from "next/server";
 
-/**
- * Returns whether e2e route enabled is true.
- */
 function isE2eRouteEnabled(): boolean {
   return process.env.NODE_ENV !== "production";
 }
 
-/**
- * Handles sanitize uid.
- */
 function sanitizeUid(value: string | null): string {
   const fallback = "e2e-user";
   if (!value) {
@@ -22,9 +16,6 @@ function sanitizeUid(value: string | null): string {
   return sanitized.length > 0 ? sanitized : fallback;
 }
 
-/**
- * Handles to email.
- */
 function toEmail(uid: string, rawEmail: string | null): string {
   if (!rawEmail) {
     return `${uid}@e2e.local`;
@@ -38,9 +29,6 @@ function toEmail(uid: string, rawEmail: string | null): string {
   return normalized;
 }
 
-/**
- * Handles get.
- */
 export async function GET(request: NextRequest) {
   if (!isE2eRouteEnabled()) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });

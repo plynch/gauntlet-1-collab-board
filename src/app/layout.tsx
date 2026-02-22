@@ -11,9 +11,6 @@ type RootLayoutProps = Readonly<{
   children: React.ReactNode;
 }>;
 
-/**
- * Handles root layout.
- */
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en" suppressHydrationWarning>

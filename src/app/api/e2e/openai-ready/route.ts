@@ -5,23 +5,14 @@ import {
   getOpenAiPlannerConfig,
 } from "@/features/ai/openai/openai-client";
 
-/**
- * Returns whether e2e route enabled is true.
- */
 function isE2eRouteEnabled(): boolean {
   return process.env.NODE_ENV !== "production";
 }
 
-/**
- * Returns whether openai readiness should validate live api is true.
- */
 function shouldValidateOpenAiReadiness(): boolean {
   return process.env.OPENAI_READY_VALIDATE === "true";
 }
 
-/**
- * Gets openai error reason.
- */
 function getOpenAiErrorReason(error: unknown): string {
   if (error instanceof Error) {
     const message = error.message?.trim();
@@ -37,9 +28,6 @@ function getOpenAiErrorReason(error: unknown): string {
   return "Unknown OpenAI readiness validation failure.";
 }
 
-/**
- * Handles get.
- */
 export async function GET() {
   if (!isE2eRouteEnabled()) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });

@@ -31,9 +31,6 @@ type SelectionHudLayoutOptions = {
   preferSidePlacement: boolean;
 };
 
-/**
- * Handles calculate selection hud position.
- */
 export function calculateSelectionHudPosition(
   options: SelectionHudLayoutOptions,
 ): CanvasPoint | null {
@@ -59,17 +56,11 @@ export function calculateSelectionHudPosition(
     edgePadding,
     options.stageSize.height - hudHeight - edgePadding,
   );
-  /**
-   * Handles clamp point.
-   */
-  const clampPoint = (point: CanvasPoint) => ({
+    const clampPoint = (point: CanvasPoint) => ({
     x: Math.max(edgePadding, Math.min(maxX, point.x)),
     y: Math.max(edgePadding, Math.min(maxY, point.y)),
   });
-  /**
-   * Returns whether fully visible is true.
-   */
-  const isFullyVisible = (point: CanvasPoint) =>
+    const isFullyVisible = (point: CanvasPoint) =>
     point.x >= edgePadding &&
     point.y >= edgePadding &&
     point.x + hudWidth <= options.stageSize.width - edgePadding &&

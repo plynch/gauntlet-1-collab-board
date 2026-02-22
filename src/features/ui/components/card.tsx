@@ -2,9 +2,6 @@ import type { HTMLAttributes } from "react";
 
 import { cn } from "@/features/ui/lib/cn";
 
-/**
- * Handles card.
- */
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
@@ -17,9 +14,6 @@ export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   );
 }
 
-/**
- * Handles card title.
- */
 export function CardTitle({
   className,
   ...props
@@ -32,9 +26,6 @@ export function CardTitle({
   );
 }
 
-/**
- * Handles card description.
- */
 export function CardDescription({
   className,
   ...props

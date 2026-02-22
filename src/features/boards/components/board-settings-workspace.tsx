@@ -30,9 +30,6 @@ type BoardSettingsWorkspaceProps = {
   boardId: string;
 };
 
-/**
- * Gets error message.
- */
 function getErrorMessage(payload: unknown, fallback: string): string {
   if (typeof payload === "object" && payload !== null) {
     const candidate = payload as { error?: unknown; debug?: unknown };
@@ -49,16 +46,10 @@ function getErrorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
-/**
- * Gets profile label.
- */
 function getProfileLabel(profile: BoardEditorProfile): string {
   return profile.email ?? profile.displayName ?? profile.uid;
 }
 
-/**
- * Handles board settings workspace.
- */
 export default function BoardSettingsWorkspace({
   boardId,
 }: BoardSettingsWorkspaceProps) {
@@ -111,10 +102,7 @@ export default function BoardSettingsWorkspace({
 
     let isCancelled = false;
 
-    /**
-     * Handles load profiles.
-     */
-    const loadProfiles = async () => {
+        const loadProfiles = async () => {
       setProfilesLoading(true);
       setProfileErrorMessage(null);
 

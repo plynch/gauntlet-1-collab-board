@@ -6,9 +6,6 @@ import {
   CardTitle,
 } from "@/features/ui/components/card";
 
-/**
- * Handles card preview.
- */
 function CardPreview() {
   return (
     <Card className="w-[360px] space-y-2">

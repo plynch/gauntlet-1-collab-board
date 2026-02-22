@@ -22,9 +22,6 @@ type BoardDoc = {
   updatedAt?: unknown;
 };
 
-/**
- * Handles to iso date.
- */
 function toIsoDate(value: unknown): string | null {
   if (value instanceof Timestamp) {
     return value.toDate().toISOString();
@@ -33,9 +30,6 @@ function toIsoDate(value: unknown): string | null {
   return null;
 }
 
-/**
- * Handles to board summary.
- */
 function toBoardSummary(id: string, boardDoc: BoardDoc): BoardSummary {
   return {
     id,
@@ -49,17 +43,11 @@ function toBoardSummary(id: string, boardDoc: BoardDoc): BoardSummary {
   };
 }
 
-/**
- * Handles board sort value.
- */
 function boardSortValue(board: BoardSummary): number {
   const rawValue = board.updatedAt ?? board.createdAt;
   return rawValue ? Date.parse(rawValue) : 0;
 }
 
-/**
- * Handles get.
- */
 export async function GET(request: NextRequest) {
   try {
     const user = await requireUser(request);
@@ -84,9 +72,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/**
- * Handles post.
- */
 export async function POST(request: NextRequest) {
   try {
     assertFirestoreWritesAllowedInDev();

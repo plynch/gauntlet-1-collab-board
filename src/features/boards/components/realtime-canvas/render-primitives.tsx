@@ -13,9 +13,6 @@ type RemoteCursorLayerProps = {
   viewport: Viewport;
 };
 
-/**
- * Handles remote cursor layer.
- */
 export function RemoteCursorLayer({
   remoteCursors,
   viewport,
@@ -75,9 +72,6 @@ type OnlineUsersListProps = {
   onlineUsers: PresenceUser[];
 };
 
-/**
- * Handles online users list.
- */
 export function OnlineUsersList({ onlineUsers }: OnlineUsersListProps) {
   if (onlineUsers.length === 0) {
     return <span style={{ color: "var(--text-muted)" }}>No active users yet.</span>;

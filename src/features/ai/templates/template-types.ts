@@ -13,16 +13,10 @@ export type TemplateDefinition = {
   instantiate: (input: TemplateInstantiateInput) => TemplatePlan;
 };
 
-/**
- * Handles clamp to finite.
- */
 export function clampToFinite(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
 }
 
-/**
- * Handles normalize bounds.
- */
 export function normalizeBounds(
   bounds: BoardBounds | null,
 ): BoardBounds | null {

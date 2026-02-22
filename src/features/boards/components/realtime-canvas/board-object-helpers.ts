@@ -8,16 +8,10 @@ const CONNECTOR_TYPES: readonly BoardObjectKind[] = [
 
 export const LINE_MIN_LENGTH = 40;
 
-/**
- * Returns whether the provided kind is one of the connector variants.
- */
 export function isConnectorKind(value: BoardObjectKind): boolean {
   return CONNECTOR_TYPES.includes(value);
 }
 
-/**
- * Returns whether the object kind can be connected by connector endpoints.
- */
 export function isConnectableShapeKind(
   value: BoardObjectKind,
 ): value is Exclude<
@@ -27,9 +21,6 @@ export function isConnectableShapeKind(
   return value !== "line" && !isConnectorKind(value);
 }
 
-/**
- * Returns the default width and height for newly created objects.
- */
 export function getDefaultObjectSize(kind: BoardObjectKind): {
   width: number;
   height: number;
@@ -69,9 +60,6 @@ export function getDefaultObjectSize(kind: BoardObjectKind): {
   return { width: 240, height: 64 };
 }
 
-/**
- * Returns the minimum width and height used by resize logic.
- */
 export function getMinimumObjectSize(kind: BoardObjectKind): {
   width: number;
   height: number;
@@ -107,9 +95,6 @@ export function getMinimumObjectSize(kind: BoardObjectKind): {
   return { width: LINE_MIN_LENGTH, height: 32 };
 }
 
-/**
- * Returns the default color assigned at object creation time.
- */
 export function getDefaultObjectColor(kind: BoardObjectKind): string {
   if (kind === "sticky") {
     return "#fde68a";
@@ -154,16 +139,10 @@ export function getDefaultObjectColor(kind: BoardObjectKind): string {
   return "#1f2937";
 }
 
-/**
- * Clamps a channel value into the valid 8-bit RGB range.
- */
 function clampRgbChannel(value: number): number {
   return Math.min(255, Math.max(0, Math.round(value)));
 }
 
-/**
- * Parses 3- or 6-digit hex colors into RGB channels.
- */
 function parseHexColor(color: string): {
   red: number;
   green: number;
@@ -192,9 +171,6 @@ function parseHexColor(color: string): {
   };
 }
 
-/**
- * Converts RGB channels to a normalized 6-digit hex color.
- */
 function rgbToHexColor(red: number, green: number, blue: number): string {
   return `#${clampRgbChannel(red).toString(16).padStart(2, "0")}${clampRgbChannel(
     green,
@@ -203,9 +179,6 @@ function rgbToHexColor(red: number, green: number, blue: number): string {
     .padStart(2, "0")}${clampRgbChannel(blue).toString(16).padStart(2, "0")}`;
 }
 
-/**
- * Mixes two hex colors by the provided blend ratio.
- */
 function mixHexColors(baseColor: string, targetColor: string, ratio: number): string {
   const base = parseHexColor(baseColor);
   const target = parseHexColor(targetColor);
@@ -223,9 +196,6 @@ function mixHexColors(baseColor: string, targetColor: string, ratio: number): st
   );
 }
 
-/**
- * Picks high-contrast text color against an object background color.
- */
 export function getReadableTextColor(backgroundColor: string): string {
   const parsed = parseHexColor(backgroundColor);
   if (!parsed) {
@@ -237,9 +207,6 @@ export function getReadableTextColor(backgroundColor: string): string {
   return luminance > 0.6 ? "#0f172a" : "#f8fafc";
 }
 
-/**
- * Returns theme-adjusted object fill/stroke color for rendering.
- */
 export function getRenderedObjectColor(
   color: string,
   type: BoardObjectKind,
@@ -264,9 +231,6 @@ export function getRenderedObjectColor(
   return mixHexColors(color, "#0b1020", 0.34);
 }
 
-/**
- * Returns human-readable label for toolbar and HUD text.
- */
 export function getObjectLabel(kind: BoardObjectKind): string {
   if (kind === "sticky") {
     return "Sticky";
@@ -311,30 +275,18 @@ export function getObjectLabel(kind: BoardObjectKind): string {
   return "Line";
 }
 
-/**
- * Returns whether an object should render in the background layer.
- */
 export function isBackgroundContainerType(type: BoardObjectKind): boolean {
   return type === "gridContainer";
 }
 
-/**
- * Returns rendering sort rank used for layer ordering.
- */
 export function getRenderLayerRank(type: BoardObjectKind): number {
   return isBackgroundContainerType(type) ? 0 : 1;
 }
 
-/**
- * Returns whether selection HUD color actions are supported.
- */
 export function canUseSelectionHudColor(objectItem: BoardObject): boolean {
   return objectItem.type !== "line";
 }
 
-/**
- * Returns whether an object type supports an editable in-canvas label.
- */
 export function isLabelEditableObjectType(type: BoardObjectKind): boolean {
   return (
     type === "rect" ||

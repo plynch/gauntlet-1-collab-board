@@ -144,23 +144,14 @@ type Bounds = {
   bottom: number;
 };
 
-/**
- * Escapes text for regex usage.
- */
 function escapeRegex(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/**
- * Handles normalize message.
- */
 function normalizeMessage(message: string): string {
   return message.trim().toLowerCase();
 }
 
-/**
- * Gets selected objects.
- */
 function getSelectedObjects(
   boardState: BoardObjectSnapshot[],
   selectedIds: string[],
@@ -175,9 +166,6 @@ function getSelectedObjects(
     );
 }
 
-/**
- * Returns whether object is eligible for layout operations.
- */
 function isLayoutEligibleObject(objectItem: BoardObjectSnapshot): boolean {
   return (
     objectItem.type !== "gridContainer" &&
@@ -187,9 +175,6 @@ function isLayoutEligibleObject(objectItem: BoardObjectSnapshot): boolean {
   );
 }
 
-/**
- * Resolves layout targets from selection or natural-language context.
- */
 function resolveLayoutTargets(
   input: PlannerInput,
   minimumCount: number,
@@ -274,9 +259,6 @@ function resolveLayoutTargets(
   };
 }
 
-/**
- * Returns whether object intersects viewport bounds.
- */
 function getIntersectionBounds(
   objectItem: BoardObjectSnapshot,
   viewportBounds: NonNullable<PlannerInput["viewportBounds"]>,
@@ -294,23 +276,14 @@ function getIntersectionBounds(
   );
 }
 
-/**
- * Returns whether object has usable text is true.
- */
 function hasUsableText(objectItem: BoardObjectSnapshot): boolean {
   return objectItem.text.trim().length > 0;
 }
 
-/**
- * Gets text-capable objects.
- */
 function getTextObjects(boardState: BoardObjectSnapshot[]): BoardObjectSnapshot[] {
   return boardState.filter(hasUsableText);
 }
 
-/**
- * Handles to text snippet.
- */
 function toTextSnippet(text: string, maxLength: number): string {
   const compact = text.replace(/\s+/g, " ").trim();
   if (compact.length <= maxLength) {
@@ -319,9 +292,6 @@ function toTextSnippet(text: string, maxLength: number): string {
   return `${compact.slice(0, maxLength).trimEnd()}...`;
 }
 
-/**
- * Gets analysis source objects.
- */
 function getAnalysisSource(input: PlannerInput): {
   sourceObjects: BoardObjectSnapshot[];
   scope: "selected" | "board" | "none";
@@ -352,9 +322,6 @@ function getAnalysisSource(input: PlannerInput): {
   };
 }
 
-/**
- * Parses action-item candidates.
- */
 function parseActionItemCandidates(
   sourceObjects: BoardObjectSnapshot[],
 ): string[] {
@@ -388,9 +355,6 @@ function parseActionItemCandidates(
   return candidates;
 }
 
-/**
- * Handles find color.
- */
 function findColor(message: string): string | null {
   const lower = normalizeMessage(message);
   const key = Object.keys(COLOR_KEYWORDS).find((colorName) =>
@@ -399,9 +363,6 @@ function findColor(message: string): string | null {
   return key ? COLOR_KEYWORDS[key] : null;
 }
 
-/**
- * Parses coordinate point.
- */
 function parseCoordinatePoint(message: string): Point | null {
   const xyMatch = message.match(
     /\bx\s*=?\s*(-?\d+(?:\.\d+)?)\s*y\s*=?\s*(-?\d+(?:\.\d+)?)/i,
@@ -426,9 +387,6 @@ function parseCoordinatePoint(message: string): Point | null {
   };
 }
 
-/**
- * Parses size.
- */
 function parseSize(message: string): Size | null {
   const sizeMatch = message.match(
     /\b(?:size|to)\s*(\d+(?:\.\d+)?)\s*(?:x|by)\s*(\d+(?:\.\d+)?)/i,
@@ -443,9 +401,6 @@ function parseSize(message: string): Size | null {
   };
 }
 
-/**
- * Parses padding value.
- */
 function parsePadding(message: string): number | null {
   const paddingMatch = message.match(/\bpadding\s*(-?\d+(?:\.\d+)?)\b/i);
   if (!paddingMatch) {
@@ -455,16 +410,10 @@ function parsePadding(message: string): number | null {
   return Math.max(0, Number(paddingMatch[1]));
 }
 
-/**
- * Handles to positive integer.
- */
 function toPositiveInteger(value: string): number {
   return Math.max(1, Math.floor(Number(value)));
 }
 
-/**
- * Parses grid dimensions.
- */
 function parseGridDimensions(message: string): {
   rows: number;
   columns: number;
@@ -482,9 +431,6 @@ function parseGridDimensions(message: string): {
   };
 }
 
-/**
- * Parses grid columns.
- */
 function parseGridColumns(message: string): number | null {
   const dimensions = parseGridDimensions(message);
   if (dimensions) {
@@ -499,9 +445,6 @@ function parseGridColumns(message: string): number | null {
   return toPositiveInteger(columnsMatch[1]);
 }
 
-/**
- * Parses journey map stage count.
- */
 function parseJourneyStageCount(message: string): number | null {
   const stageMatch = message.match(/\b(\d+)\s*(?:-|\s)?stages?\b/i);
   if (!stageMatch) {
@@ -511,9 +454,6 @@ function parseJourneyStageCount(message: string): number | null {
   return toPositiveInteger(stageMatch[1]);
 }
 
-/**
- * Parses grid gap.
- */
 function parseGridGap(message: string): {
   gapX?: number;
   gapY?: number;
@@ -549,9 +489,6 @@ function parseGridGap(message: string): {
   };
 }
 
-/**
- * Parses alignment mode.
- */
 function parseAlignmentMode(message: string):
   | "left"
   | "center"
@@ -583,9 +520,6 @@ function parseAlignmentMode(message: string):
   return null;
 }
 
-/**
- * Returns true if user asked to add objects to a frame/container target.
- */
 function isAddToContainerCommand(message: string): boolean {
   const lower = normalizeMessage(message);
   if (!/\b(add|create|make|generate)\b/.test(lower)) {
@@ -602,9 +536,6 @@ function isAddToContainerCommand(message: string): boolean {
   );
 }
 
-/**
- * Returns true when object should be treated as frame/container target.
- */
 function isContainerObject(objectItem: BoardObjectSnapshot): boolean {
   if (objectItem.type === "gridContainer") {
     return true;
@@ -621,18 +552,12 @@ function isContainerObject(objectItem: BoardObjectSnapshot): boolean {
   );
 }
 
-/**
- * Gets all container-like objects from board state.
- */
 function getContainerObjects(
   boardState: BoardObjectSnapshot[],
 ): BoardObjectSnapshot[] {
   return boardState.filter(isContainerObject);
 }
 
-/**
- * Gets selected objects that are container-like targets.
- */
 function getSelectedContainerObjects(
   boardState: BoardObjectSnapshot[],
   selectedObjectIds: string[],
@@ -646,9 +571,6 @@ type FrameTarget = {
   reason: "selected" | "visible" | "single-frame";
 };
 
-/**
- * Resolves a likely target frame/container for sticky-in-frame commands.
- */
 function resolveContainerTarget(input: PlannerInput): FrameTarget | null {
   const selectedFrames = getSelectedContainerObjects(
     input.boardState,
@@ -691,9 +613,6 @@ function resolveContainerTarget(input: PlannerInput): FrameTarget | null {
   return null;
 }
 
-/**
- * Returns frame-relative origin for container-bound sticky placement.
- */
 function resolveContainerStickyOrigin(
   container: BoardObjectSnapshot,
   message: string,
@@ -772,9 +691,6 @@ function resolveContainerStickyOrigin(
   };
 }
 
-/**
- * Clamps sticky origin to frame inner bounds.
- */
 function clampPointToFrameBounds(
   point: Point,
   frame: BoardObjectSnapshot,
@@ -791,9 +707,6 @@ function clampPointToFrameBounds(
   };
 }
 
-/**
- * Parses distribution axis.
- */
 function parseDistributionAxis(message: string): "horizontal" | "vertical" {
   const lower = normalizeMessage(message);
   if (/\bvertical\b|\bvertically\b|\by-axis\b|\bup\b|\bdown\b/.test(lower)) {
@@ -803,9 +716,6 @@ function parseDistributionAxis(message: string): "horizontal" | "vertical" {
   return "horizontal";
 }
 
-/**
- * Returns whether distribution should use viewport span.
- */
 function isViewportDistributionRequested(message: string): boolean {
   const lower = normalizeMessage(message);
   return (
@@ -815,9 +725,6 @@ function isViewportDistributionRequested(message: string): boolean {
   );
 }
 
-/**
- * Gets board bounds.
- */
 function getBoardBounds(boardState: BoardObjectSnapshot[]): {
   left: number;
   right: number;
@@ -849,9 +756,6 @@ function getBoardBounds(boardState: BoardObjectSnapshot[]): {
   };
 }
 
-/**
- * Gets auto spawn point.
- */
 function getAutoSpawnPoint(boardState: BoardObjectSnapshot[]): Point {
   const bounds = getBoardBounds(boardState);
   if (!bounds) {
@@ -864,9 +768,6 @@ function getAutoSpawnPoint(boardState: BoardObjectSnapshot[]): Point {
   };
 }
 
-/**
- * Parses direction delta.
- */
 function parseDirectionDelta(message: string): Point | null {
   const match = message.match(
     /\b(right|left|up|down)\b(?:\s+by\s+(-?\d+(?:\.\d+)?))?/i,
@@ -893,9 +794,6 @@ function parseDirectionDelta(message: string): Point | null {
   return { x: 0, y: amount };
 }
 
-/**
- * Parses side target.
- */
 function parseSideTarget(message: string): "left" | "right" | "top" | "bottom" | null {
   const lower = normalizeMessage(message);
   const sideMatch = lower.match(
@@ -918,9 +816,6 @@ function parseSideTarget(message: string): "left" | "right" | "top" | "bottom" |
   return direction;
 }
 
-/**
- * Normalizes known frame title typos and preserves user intent.
- */
 function normalizeFrameTitle(rawTitle: string): string {
   const corrected: Record<string, string> = {
     sprit: "sprint",
@@ -969,9 +864,6 @@ function normalizeFrameTitle(rawTitle: string): string {
     .join(" ");
 }
 
-/**
- * Parses sticky text.
- */
 function parseStickyText(message: string): string {
   const textMatch = message.match(
     /\b(?:that says|saying|with text|text)\b\s+["“']?(.+?)["”']?$/i,
@@ -984,9 +876,6 @@ function parseStickyText(message: string): string {
   return value.length > 0 ? value.slice(0, 1_000) : "New sticky note";
 }
 
-/**
- * Parses sticky grid text seed.
- */
 function parseStickyGridTextSeed(message: string): string | null {
   const suffixMatch = message.match(/\bfor\b\s+["“']?(.+?)["”']?$/i);
   if (!suffixMatch) {
@@ -997,9 +886,6 @@ function parseStickyGridTextSeed(message: string): string | null {
   return value.length > 0 ? value.slice(0, 960) : null;
 }
 
-/**
- * Parses sticky batch count.
- */
 function parseStickyBatchCount(message: string): number | null {
   const lower = normalizeMessage(message);
   if (
@@ -1043,9 +929,6 @@ type ParsedStickyBatchClause = {
   clusterHeight: number;
 };
 
-/**
- * Splits a sticky batch message into create/add/create-like clauses.
- */
 function splitStickyCreationClauses(message: string): string[] {
   const commandStartPattern = /\b(?:create|add|make)\b/gi;
   const matches = Array.from(message.matchAll(commandStartPattern), (entry) =>
@@ -1063,9 +946,6 @@ function splitStickyCreationClauses(message: string): string[] {
   return clauses.filter((clause) => clause.length > 0);
 }
 
-/**
- * Parses sticky batch intent from one clause.
- */
 function parseStickyBatchClause(
   clause: string,
 ): ParsedStickyBatchClause | null {
@@ -1105,9 +985,6 @@ function parseStickyBatchClause(
   };
 }
 
-/**
- * Gets viewport-anchored origin for sticky creation.
- */
 function getViewportAnchoredStickyOrigin(options: {
   message: string;
   viewportBounds?: PlannerInput["viewportBounds"];
@@ -1170,9 +1047,6 @@ function getViewportAnchoredStickyOrigin(options: {
   };
 }
 
-/**
- * Parses SWOT section target from message.
- */
 function parseSwotSectionTarget(message: string): SwotSectionKey | null {
   const lower = normalizeMessage(message);
 
@@ -1188,9 +1062,6 @@ function parseSwotSectionTarget(message: string): SwotSectionKey | null {
   return null;
 }
 
-/**
- * Parses SWOT item text from message.
- */
 function parseSwotItemText(
   message: string,
   section: SwotSectionKey,
@@ -1221,9 +1092,6 @@ function parseSwotItemText(
   return value.slice(0, 1_000);
 }
 
-/**
- * Gets bounds for SWOT section body area below header chrome.
- */
 function getSwotSectionContentBounds(sectionBounds: Bounds): Bounds {
   const left = sectionBounds.left + SWOT_SECTION_CONTENT_PADDING_X;
   const right = sectionBounds.right - SWOT_SECTION_CONTENT_PADDING_X;
@@ -1238,9 +1106,6 @@ function getSwotSectionContentBounds(sectionBounds: Bounds): Bounds {
   };
 }
 
-/**
- * Returns whether point falls within bounds.
- */
 function isPointWithinBounds(point: Point, bounds: Bounds): boolean {
   return (
     point.x >= bounds.left &&
@@ -1250,9 +1115,6 @@ function isPointWithinBounds(point: Point, bounds: Bounds): boolean {
   );
 }
 
-/**
- * Gets object center point.
- */
 function getObjectCenterPoint(objectItem: BoardObjectSnapshot): Point {
   return {
     x: objectItem.x + objectItem.width / 2,
@@ -1260,9 +1122,6 @@ function getObjectCenterPoint(objectItem: BoardObjectSnapshot): Point {
   };
 }
 
-/**
- * Gets top-left spawn point for next SWOT sticky in section.
- */
 function getNextSwotStickyTopLeft(options: {
   boardState: BoardObjectSnapshot[];
   sectionBounds: Bounds;
@@ -1303,9 +1162,6 @@ function getNextSwotStickyTopLeft(options: {
   );
 }
 
-/**
- * Finds SWOT section placement bounds for targeted section.
- */
 function findSwotSectionPlacement(options: {
   boardState: BoardObjectSnapshot[];
   section: SwotSectionKey;
@@ -1384,9 +1240,6 @@ function findSwotSectionPlacement(options: {
   return null;
 }
 
-/**
- * Parses shape type.
- */
 function parseShapeType(message: string): BoardObjectToolKind | null {
   const lower = normalizeMessage(message);
   if (/\bsticky(?:\s+note)?s?\b/.test(lower)) {
@@ -1411,9 +1264,6 @@ function parseShapeType(message: string): BoardObjectToolKind | null {
   return null;
 }
 
-/**
- * Handles to plan.
- */
 function toPlan(options: {
   id: string;
   name: string;
@@ -1426,9 +1276,6 @@ function toPlan(options: {
   };
 }
 
-/**
- * Returns whether clear board command is true.
- */
 function isClearBoardCommand(message: string): boolean {
   const lower = normalizeMessage(message);
   return (
@@ -1441,9 +1288,6 @@ function isClearBoardCommand(message: string): boolean {
   );
 }
 
-/**
- * Returns whether unselect command is true.
- */
 function isUnselectCommand(message: string): boolean {
   const lower = normalizeMessage(message);
   return (
@@ -1455,9 +1299,6 @@ function isUnselectCommand(message: string): boolean {
   );
 }
 
-/**
- * Plans unselect command.
- */
 function planUnselectObjects(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -1481,25 +1322,16 @@ function planUnselectObjects(
   };
 }
 
-/**
- * Returns whether select-all command is true.
- */
 function isSelectAllCommand(message: string): boolean {
   const lower = normalizeMessage(message);
   return /\bselect\s+(all|everything)\b/.test(lower);
 }
 
-/**
- * Returns whether select-visible command is true.
- */
 function isSelectVisibleCommand(message: string): boolean {
   const lower = normalizeMessage(message);
   return /\bselect\s+visible\b/.test(lower);
 }
 
-/**
- * Plans select-all command.
- */
 function planSelectAllObjects(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -1540,9 +1372,6 @@ function planSelectAllObjects(
   };
 }
 
-/**
- * Plans select-visible command.
- */
 function planSelectVisibleObjects(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -1605,9 +1434,6 @@ function planSelectVisibleObjects(
   };
 }
 
-/**
- * Handles plan clear board.
- */
 function planClearBoard(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -1642,9 +1468,6 @@ function planClearBoard(
   };
 }
 
-/**
- * Returns whether delete selected command is true.
- */
 function isDeleteSelectedCommand(message: string): boolean {
   const lower = normalizeMessage(message);
   return (
@@ -1654,9 +1477,6 @@ function isDeleteSelectedCommand(message: string): boolean {
   );
 }
 
-/**
- * Handles plan delete selected.
- */
 function planDeleteSelected(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -1696,9 +1516,6 @@ function planDeleteSelected(
   };
 }
 
-/**
- * Returns whether arrange-grid command is true.
- */
 function isArrangeGridCommand(message: string): boolean {
   const lower = normalizeMessage(message);
   const hasArrangeVerb = /\b(arrange|organize|organise|layout|lay\s*out)\b/.test(
@@ -1708,9 +1525,6 @@ function isArrangeGridCommand(message: string): boolean {
   return hasArrangeVerb && hasGridLanguage;
 }
 
-/**
- * Returns whether arrange-grid should be centered in viewport.
- */
 function isArrangeGridCenterRequested(message: string): boolean {
   const lower = normalizeMessage(message);
   return (
@@ -1719,9 +1533,6 @@ function isArrangeGridCenterRequested(message: string): boolean {
   );
 }
 
-/**
- * Handles plan arrange grid.
- */
 function planArrangeGrid(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -1784,16 +1595,10 @@ function planArrangeGrid(
   };
 }
 
-/**
- * Returns whether align command is true.
- */
 function isAlignCommand(message: string): boolean {
   return /\balign\b/.test(normalizeMessage(message));
 }
 
-/**
- * Handles plan align selected.
- */
 function planAlignSelected(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -1844,9 +1649,6 @@ function planAlignSelected(
   };
 }
 
-/**
- * Returns whether distribute command is true.
- */
 function isDistributeCommand(message: string): boolean {
   const lower = normalizeMessage(message);
   return (
@@ -1856,9 +1658,6 @@ function isDistributeCommand(message: string): boolean {
   );
 }
 
-/**
- * Handles plan distribute selected.
- */
 function planDistributeSelected(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -1935,9 +1734,6 @@ function planDistributeSelected(
   };
 }
 
-/**
- * Returns whether summarize command is true.
- */
 function isSummarizeCommand(message: string): boolean {
   const lower = normalizeMessage(message);
   return (
@@ -1946,9 +1742,6 @@ function isSummarizeCommand(message: string): boolean {
   );
 }
 
-/**
- * Handles plan summarize source.
- */
 function planSummarizeSource(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -1982,9 +1775,6 @@ function planSummarizeSource(
   };
 }
 
-/**
- * Returns whether action-item extraction command is true.
- */
 function isActionItemExtractionCommand(message: string): boolean {
   const lower = normalizeMessage(message);
   const hasActionLanguage =
@@ -1995,9 +1785,6 @@ function isActionItemExtractionCommand(message: string): boolean {
   return hasActionLanguage && hasExtractionLanguage;
 }
 
-/**
- * Handles plan extract action items.
- */
 function planExtractActionItems(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -2053,9 +1840,6 @@ function planExtractActionItems(
   };
 }
 
-/**
- * Returns whether create sticky-grid command is true.
- */
 function isCreateStickyGridCommand(message: string): boolean {
   const lower = normalizeMessage(message);
   return (
@@ -2065,9 +1849,6 @@ function isCreateStickyGridCommand(message: string): boolean {
   );
 }
 
-/**
- * Handles plan create sticky-grid.
- */
 function planCreateStickyGrid(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -2124,9 +1905,6 @@ function planCreateStickyGrid(
   };
 }
 
-/**
- * Returns whether create SWOT template command is true.
- */
 function isCreateSwotTemplateCommand(message: string): boolean {
   const lower = normalizeMessage(message);
   const hasCreateVerb = /\b(add|create|build|set up|setup)\b/.test(lower);
@@ -2138,9 +1916,6 @@ function isCreateSwotTemplateCommand(message: string): boolean {
   return hasCreateVerb && hasSwotLanguage && hasTemplateLanguage;
 }
 
-/**
- * Handles plan create SWOT template.
- */
 function planCreateSwotTemplate(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -2162,9 +1937,6 @@ function planCreateSwotTemplate(
   };
 }
 
-/**
- * Returns whether create journey-map command is true.
- */
 function isCreateJourneyMapCommand(message: string): boolean {
   const lower = normalizeMessage(message);
   const hasCreateVerb = /\b(add|create|build|set up|setup)\b/.test(lower);
@@ -2173,9 +1945,6 @@ function isCreateJourneyMapCommand(message: string): boolean {
   return hasCreateVerb && hasJourneyLanguage;
 }
 
-/**
- * Handles plan create journey-map.
- */
 function planCreateJourneyMap(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -2243,9 +2012,6 @@ function planCreateJourneyMap(
   };
 }
 
-/**
- * Returns whether create retrospective-board command is true.
- */
 function isCreateRetrospectiveCommand(message: string): boolean {
   const lower = normalizeMessage(message);
   const hasCreateVerb = /\b(add|create|build|set up|setup)\b/.test(lower);
@@ -2253,9 +2019,6 @@ function isCreateRetrospectiveCommand(message: string): boolean {
   return hasCreateVerb && hasRetroLanguage;
 }
 
-/**
- * Handles plan create retrospective-board.
- */
 function planCreateRetrospectiveBoard(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -2309,9 +2072,6 @@ function planCreateRetrospectiveBoard(
   };
 }
 
-/**
- * Handles plan create sticky.
- */
 function planCreateSticky(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -2357,9 +2117,6 @@ function planCreateSticky(
   };
 }
 
-/**
- * Handles plan create sticky batch.
- */
 function planCreateStickyBatch(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -2486,9 +2243,6 @@ function planCreateStickyBatch(
   };
 }
 
-/**
- * Handles plan add SWOT section item.
- */
 function planAddSwotSectionItem(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -2556,9 +2310,6 @@ function planAddSwotSectionItem(
   };
 }
 
-/**
- * Handles plan create frame.
- */
 function planCreateFrame(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -2600,9 +2351,6 @@ function planCreateFrame(
   };
 }
 
-/**
- * Handles plan create shape.
- */
 function planCreateShape(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -2645,9 +2393,6 @@ function planCreateShape(
   };
 }
 
-/**
- * Handles plan move selected.
- */
 function planMoveSelected(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -2761,9 +2506,6 @@ function planMoveSelected(
   };
 }
 
-/**
- * Parses move all type.
- */
 function parseMoveAllType(message: string): BoardObjectToolKind | null {
   const match = message.match(
     /\b(?:(?:all|every|each|the)\b(?:\s+\w+){0,3}|\w+\s+){0,1}(sticky\s+notes|stickies|rectangles|circles|lines|triangles|stars|connectors)\b/i,
@@ -2804,9 +2546,6 @@ function parseMoveAllType(message: string): BoardObjectToolKind | null {
   return null;
 }
 
-/**
- * Handles plan move all.
- */
 function planMoveAll(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -2934,9 +2673,6 @@ function planMoveAll(
   };
 }
 
-/**
- * Returns whether fit-frame command is true.
- */
 function isFitFrameToContentsCommand(message: string): boolean {
   const lower = normalizeMessage(message);
   return (
@@ -2947,9 +2683,6 @@ function isFitFrameToContentsCommand(message: string): boolean {
   );
 }
 
-/**
- * Finds frame candidate id.
- */
 function findFrameCandidateId(input: PlannerInput): string | null {
   const selectedObjects = getSelectedObjects(
     input.boardState,
@@ -2974,9 +2707,6 @@ function findFrameCandidateId(input: PlannerInput): string | null {
   return null;
 }
 
-/**
- * Handles plan fit frame to contents.
- */
 function planFitFrameToContents(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -3014,9 +2744,6 @@ function planFitFrameToContents(
   };
 }
 
-/**
- * Handles plan resize selected.
- */
 function planResizeSelected(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -3066,9 +2793,6 @@ function planResizeSelected(
   };
 }
 
-/**
- * Handles plan change color selected.
- */
 function planChangeColorSelected(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -3118,9 +2842,6 @@ function planChangeColorSelected(
   };
 }
 
-/**
- * Handles plan update selected text.
- */
 function planUpdateSelectedText(
   input: PlannerInput,
 ): DeterministicCommandPlanResult | null {
@@ -3173,9 +2894,6 @@ function planUpdateSelectedText(
   };
 }
 
-/**
- * Handles plan deterministic command.
- */
 export function planDeterministicCommand(
   input: PlannerInput,
 ): DeterministicCommandPlanResult {

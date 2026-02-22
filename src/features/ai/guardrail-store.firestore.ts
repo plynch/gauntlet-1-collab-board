@@ -11,9 +11,6 @@ import { getFirebaseAdminDb } from "@/lib/firebase/admin";
 const RATE_LIMIT_COLLECTION = "aiGuardrailRateLimits";
 const LOCK_COLLECTION = "aiGuardrailLocks";
 
-/**
- * Handles to number array.
- */
 function toNumberArray(value: unknown): number[] {
   if (!Array.isArray(value)) {
     return [];
@@ -29,18 +26,12 @@ type FirestoreGuardrailStoreOptions = {
   db?: Firestore;
 };
 
-/**
- * Creates firestore guardrail store.
- */
 export function createFirestoreGuardrailStore(
   options?: FirestoreGuardrailStoreOptions,
 ): GuardrailStore {
   const db = options?.db ?? getFirebaseAdminDb();
 
-  /**
-   * Handles check user rate limit.
-   */
-  async function checkUserRateLimit(
+    async function checkUserRateLimit(
     input: GuardrailRateLimitOptions,
   ): Promise<GuardrailResult> {
     const rateDoc = db.collection(RATE_LIMIT_COLLECTION).doc(input.userId);
@@ -82,10 +73,7 @@ export function createFirestoreGuardrailStore(
     });
   }
 
-  /**
-   * Handles acquire board command lock.
-   */
-  async function acquireBoardCommandLock(
+    async function acquireBoardCommandLock(
     input: GuardrailLockOptions,
   ): Promise<GuardrailResult> {
     const lockDoc = db.collection(LOCK_COLLECTION).doc(input.boardId);
@@ -119,10 +107,7 @@ export function createFirestoreGuardrailStore(
     });
   }
 
-  /**
-   * Handles release board command lock.
-   */
-  async function releaseBoardCommandLock(boardId: string): Promise<void> {
+    async function releaseBoardCommandLock(boardId: string): Promise<void> {
     await db.collection(LOCK_COLLECTION).doc(boardId).delete();
   }
 

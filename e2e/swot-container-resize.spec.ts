@@ -16,9 +16,6 @@ type StickySnapshot = {
   centerY: number;
 };
 
-/**
- * Gets section bounds.
- */
 async function getSectionBounds(
   page: Page,
   sectionIndex: number,
@@ -31,9 +28,6 @@ async function getSectionBounds(
   return { left, right, top, bottom };
 }
 
-/**
- * Gets stickies.
- */
 async function getStickies(page: Page): Promise<StickySnapshot[]> {
   return page.locator('[data-testid^="swot-sticky-"]').evaluateAll((elements) =>
     elements.map((element) => ({

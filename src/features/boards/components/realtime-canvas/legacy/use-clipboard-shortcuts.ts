@@ -3,12 +3,14 @@ import { useEffect } from "react";
 import { isEditableKeyboardTarget } from "@/features/boards/components/realtime-canvas/legacy/legacy-canvas-geometry";
 
 type ClipboardShortcutOptions = {
+  selectAllShapes: () => void;
   copySelectedObjects: () => void;
   duplicateSelectedObjects: () => Promise<void>;
   pasteCopiedObjects: () => Promise<void>;
 };
 
 export function useClipboardShortcuts({
+  selectAllShapes,
   copySelectedObjects,
   duplicateSelectedObjects,
   pasteCopiedObjects,
@@ -28,6 +30,12 @@ export function useClipboardShortcuts({
       }
 
       const normalizedKey = event.key.toLowerCase();
+      if (normalizedKey === "a" && !event.shiftKey) {
+        event.preventDefault();
+        selectAllShapes();
+        return;
+      }
+
       if (normalizedKey === "d" && !event.shiftKey) {
         event.preventDefault();
         void duplicateSelectedObjects();
@@ -50,5 +58,10 @@ export function useClipboardShortcuts({
     return () => {
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
-  }, [copySelectedObjects, duplicateSelectedObjects, pasteCopiedObjects]);
+  }, [
+    copySelectedObjects,
+    duplicateSelectedObjects,
+    pasteCopiedObjects,
+    selectAllShapes,
+  ]);
 }

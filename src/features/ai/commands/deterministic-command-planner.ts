@@ -10,18 +10,63 @@ import {
   getGridSectionBoundsFromGeometry,
 } from "@/features/boards/components/realtime-canvas/container-membership-geometry";
 import { buildSwotTemplatePlan } from "@/features/ai/templates/swot-template";
-
-type PlannerInput = {
-  message: string;
-  boardState: BoardObjectSnapshot[];
-  selectedObjectIds: string[];
-  viewportBounds?: {
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-  } | null;
-};
+import {
+  escapeRegex,
+  findColor,
+  getAnalysisSource,
+  getIntersectionBounds,
+  getSelectedObjects,
+  normalizeMessage,
+  parseActionItemCandidates,
+  parseCoordinatePoint,
+  parseGridColumns,
+  parseGridDimensions,
+  parseJourneyStageCount,
+  parsePadding,
+  parseSize,
+  resolveLayoutTargets,
+  toPositiveInteger,
+  toTextSnippet,
+} from "@/features/ai/commands/deterministic-command-planner-base-utils";
+import {
+  ACTION_ITEM_COLOR,
+  ACTION_ITEM_GRID_COLUMNS,
+  ACTION_ITEM_SPACING_X,
+  ACTION_ITEM_SPACING_Y,
+  COLOR_KEYWORDS,
+  DEFAULT_FRAME_FIT_PADDING,
+  DEFAULT_SIZES,
+  GRID_DEFAULT_COLUMNS,
+  JOURNEY_DEFAULT_STAGES,
+  JOURNEY_MAX_STAGES,
+  JOURNEY_MIN_STAGES,
+  JOURNEY_STAGE_SPACING_X,
+  MAX_IMPLICIT_LAYOUT_OBJECTS,
+  MAX_MOVE_OBJECTS,
+  MAX_STICKY_BATCH_COUNT,
+  MAX_SUMMARY_BULLETS,
+  RETRO_COLUMN_SPACING_X,
+  STICKY_BATCH_DEFAULT_COLUMNS,
+  STICKY_BATCH_TOOL_SIZE,
+  STICKY_FRAME_PADDING,
+  STICKY_GRID_SPACING_X,
+  STICKY_GRID_SPACING_Y,
+  STICKY_VIEWPORT_PADDING,
+  SWOT_SECTION_ALIASES,
+  SWOT_SECTION_CONTENT_PADDING_BOTTOM,
+  SWOT_SECTION_CONTENT_PADDING_X,
+  SWOT_SECTION_CONTENT_TOP_PADDING,
+  SWOT_SECTION_DEFAULT_INDEX,
+  SWOT_SECTION_ITEM_GAP_X,
+  SWOT_SECTION_ITEM_GAP_Y,
+  SWOT_SECTION_KEYS,
+  SWOT_SECTION_STICKY_COLORS,
+  type Bounds,
+  type Point,
+  type Size,
+  type SwotSectionKey,
+} from "@/features/ai/commands/deterministic-command-planner-constants";
+import type { PlannerInput } from "@/features/ai/commands/deterministic-command-planner-types";
 
 export type DeterministicCommandPlanResult =
   | {
@@ -37,422 +82,6 @@ export type DeterministicCommandPlanResult =
       assistantMessage: string;
       selectionUpdate?: BoardSelectionUpdate;
     };
-
-type Point = {
-  x: number;
-  y: number;
-};
-
-type Size = {
-  width: number;
-  height: number;
-};
-
-type SwotSectionKey =
-  | "strengths"
-  | "weaknesses"
-  | "opportunities"
-  | "threats";
-
-const COLOR_KEYWORDS: Record<string, string> = {
-  yellow: "#fde68a",
-  orange: "#fdba74",
-  red: "#fca5a5",
-  pink: "#f9a8d4",
-  purple: "#c4b5fd",
-  blue: "#93c5fd",
-  teal: "#99f6e4",
-  green: "#86efac",
-  gray: "#d1d5db",
-  grey: "#d1d5db",
-  tan: "#d2b48c",
-  black: "#1f2937",
-};
-
-const DEFAULT_SIZES: Record<BoardObjectToolKind, Size> = {
-  sticky: { width: 220, height: 170 },
-  rect: { width: 240, height: 150 },
-  circle: { width: 170, height: 170 },
-  gridContainer: { width: 708, height: 468 },
-  line: { width: 240, height: 64 },
-  connectorUndirected: { width: 220, height: 120 },
-  connectorArrow: { width: 220, height: 120 },
-  connectorBidirectional: { width: 220, height: 120 },
-  triangle: { width: 180, height: 170 },
-  star: { width: 180, height: 180 },
-};
-
-const GRID_DEFAULT_COLUMNS = 3;
-const STICKY_GRID_SPACING_X = 240;
-const STICKY_GRID_SPACING_Y = 190;
-const STICKY_BATCH_DEFAULT_COLUMNS = 5;
-const MAX_STICKY_BATCH_COUNT = 50;
-const MAX_SUMMARY_BULLETS = 5;
-const MAX_ACTION_ITEM_CANDIDATES = 8;
-const ACTION_ITEM_GRID_COLUMNS = 4;
-const MAX_IMPLICIT_LAYOUT_OBJECTS = 50;
-const ACTION_ITEM_SPACING_X = 240;
-const ACTION_ITEM_SPACING_Y = 190;
-const ACTION_ITEM_COLOR = COLOR_KEYWORDS.green;
-const JOURNEY_DEFAULT_STAGES = 5;
-const JOURNEY_MIN_STAGES = 3;
-const JOURNEY_MAX_STAGES = 8;
-const JOURNEY_STAGE_SPACING_X = 230;
-const RETRO_COLUMN_SPACING_X = 320;
-const MAX_MOVE_OBJECTS = 500;
-const DEFAULT_FRAME_FIT_PADDING = 40;
-const STICKY_FRAME_PADDING = 24;
-const STICKY_BATCH_TOOL_SIZE = {
-  width: 180,
-  height: 140,
-};
-const STICKY_VIEWPORT_PADDING = 32;
-const SWOT_SECTION_KEYS: SwotSectionKey[] = [
-  "strengths",
-  "weaknesses",
-  "opportunities",
-  "threats",
-];
-const SWOT_SECTION_ALIASES: Record<SwotSectionKey, string[]> = {
-  strengths: ["strength", "strengths"],
-  weaknesses: ["weakness", "weaknesses"],
-  opportunities: ["opportunity", "opportunities"],
-  threats: ["threat", "threats"],
-};
-const SWOT_SECTION_DEFAULT_INDEX: Record<SwotSectionKey, number> = {
-  strengths: 0,
-  weaknesses: 1,
-  opportunities: 2,
-  threats: 3,
-};
-const SWOT_SECTION_STICKY_COLORS: Record<SwotSectionKey, string> = {
-  strengths: COLOR_KEYWORDS.green,
-  weaknesses: COLOR_KEYWORDS.red,
-  opportunities: COLOR_KEYWORDS.teal,
-  threats: COLOR_KEYWORDS.orange,
-};
-const SWOT_SECTION_CONTENT_PADDING_X = 16;
-const SWOT_SECTION_CONTENT_PADDING_BOTTOM = 16;
-const SWOT_SECTION_CONTENT_TOP_PADDING = 44;
-const SWOT_SECTION_ITEM_GAP_X = 16;
-const SWOT_SECTION_ITEM_GAP_Y = 16;
-
-type Bounds = {
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
-};
-
-function escapeRegex(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function normalizeMessage(message: string): string {
-  return message.trim().toLowerCase();
-}
-
-function getSelectedObjects(
-  boardState: BoardObjectSnapshot[],
-  selectedIds: string[],
-): BoardObjectSnapshot[] {
-  const byId = new Map(
-    boardState.map((objectItem) => [objectItem.id, objectItem]),
-  );
-  return selectedIds
-    .map((objectId) => byId.get(objectId))
-    .filter((objectItem): objectItem is BoardObjectSnapshot =>
-      Boolean(objectItem),
-    );
-}
-
-function isLayoutEligibleObject(objectItem: BoardObjectSnapshot): boolean {
-  return (
-    objectItem.type !== "gridContainer" &&
-    objectItem.type !== "connectorUndirected" &&
-    objectItem.type !== "connectorArrow" &&
-    objectItem.type !== "connectorBidirectional"
-  );
-}
-
-function resolveLayoutTargets(
-  input: PlannerInput,
-  minimumCount: number,
-): {
-  objects: BoardObjectSnapshot[];
-  source: "selected" | "implicit" | "none";
-  tooMany: boolean;
-} {
-  const selectedObjects = getSelectedObjects(
-    input.boardState,
-    input.selectedObjectIds,
-  ).filter(isLayoutEligibleObject);
-  if (selectedObjects.length > 0) {
-    return {
-      objects: selectedObjects,
-      source: "selected",
-      tooMany: false,
-    };
-  }
-
-  const lower = normalizeMessage(input.message);
-  if (/\bselected\b/.test(lower)) {
-    return {
-      objects: [],
-      source: "none",
-      tooMany: false,
-    };
-  }
-
-  const hasImplicitReference =
-    /\b(these|them|those|elements?|objects?|notes?|stick(?:y|ies)|shapes?)\b/.test(
-      lower,
-    ) ||
-    /\b(arrange|organize|organise|layout|lay\s*out|distribute|space)\b/.test(
-      lower,
-    );
-  if (!hasImplicitReference) {
-    return {
-      objects: [],
-      source: "none",
-      tooMany: false,
-    };
-  }
-
-  let candidates = input.boardState.filter(isLayoutEligibleObject);
-  if (/\b(notes?|stick(?:y|ies))\b/.test(lower)) {
-    candidates = candidates.filter((objectItem) => objectItem.type === "sticky");
-  } else if (
-    /\b(shapes?|rectangles?|rects?|circles?|lines?|triangles?|stars?)\b/.test(
-      lower,
-    )
-  ) {
-    candidates = candidates.filter((objectItem) =>
-      objectItem.type === "rect" ||
-      objectItem.type === "circle" ||
-      objectItem.type === "triangle" ||
-      objectItem.type === "star" ||
-      objectItem.type === "line",
-    );
-  }
-
-  if (candidates.length > MAX_IMPLICIT_LAYOUT_OBJECTS) {
-    return {
-      objects: [],
-      source: "implicit",
-      tooMany: true,
-    };
-  }
-
-  if (candidates.length < minimumCount) {
-    return {
-      objects: [],
-      source: "implicit",
-      tooMany: false,
-    };
-  }
-
-  return {
-    objects: candidates,
-    source: "implicit",
-    tooMany: false,
-  };
-}
-
-function getIntersectionBounds(
-  objectItem: BoardObjectSnapshot,
-  viewportBounds: NonNullable<PlannerInput["viewportBounds"]>,
-): boolean {
-  const objectRight = objectItem.x + objectItem.width;
-  const objectBottom = objectItem.y + objectItem.height;
-  const viewportRight = viewportBounds.left + viewportBounds.width;
-  const viewportBottom = viewportBounds.top + viewportBounds.height;
-
-  return (
-    objectItem.x < viewportRight &&
-    objectRight > viewportBounds.left &&
-    objectItem.y < viewportBottom &&
-    objectBottom > viewportBounds.top
-  );
-}
-
-function hasUsableText(objectItem: BoardObjectSnapshot): boolean {
-  return objectItem.text.trim().length > 0;
-}
-
-function getTextObjects(boardState: BoardObjectSnapshot[]): BoardObjectSnapshot[] {
-  return boardState.filter(hasUsableText);
-}
-
-function toTextSnippet(text: string, maxLength: number): string {
-  const compact = text.replace(/\s+/g, " ").trim();
-  if (compact.length <= maxLength) {
-    return compact;
-  }
-  return `${compact.slice(0, maxLength).trimEnd()}...`;
-}
-
-function getAnalysisSource(input: PlannerInput): {
-  sourceObjects: BoardObjectSnapshot[];
-  scope: "selected" | "board" | "none";
-} {
-  const selectedObjects = getSelectedObjects(
-    input.boardState,
-    input.selectedObjectIds,
-  ).filter(hasUsableText);
-  if (selectedObjects.length > 0) {
-    return {
-      sourceObjects: selectedObjects,
-      scope: "selected",
-    };
-  }
-
-  const normalized = normalizeMessage(input.message);
-  if (/\b(board|all)\b/.test(normalized)) {
-    const boardObjects = getTextObjects(input.boardState);
-    return {
-      sourceObjects: boardObjects,
-      scope: boardObjects.length > 0 ? "board" : "none",
-    };
-  }
-
-  return {
-    sourceObjects: [],
-    scope: "none",
-  };
-}
-
-function parseActionItemCandidates(
-  sourceObjects: BoardObjectSnapshot[],
-): string[] {
-  const seen = new Set<string>();
-  const candidates: string[] = [];
-
-  sourceObjects.forEach((objectItem) => {
-    objectItem.text
-      .split(/[\n.;]+/)
-      .map((segment) =>
-        segment
-          .replace(/^[-*\d)\].\s]+/, "")
-          .replace(/\s+/g, " ")
-          .trim(),
-      )
-      .filter((segment) => segment.length >= 4)
-      .forEach((segment) => {
-        if (candidates.length >= MAX_ACTION_ITEM_CANDIDATES) {
-          return;
-        }
-        const key = segment.toLowerCase();
-        if (seen.has(key)) {
-          return;
-        }
-
-        seen.add(key);
-        candidates.push(segment);
-      });
-  });
-
-  return candidates;
-}
-
-function findColor(message: string): string | null {
-  const lower = normalizeMessage(message);
-  const key = Object.keys(COLOR_KEYWORDS).find((colorName) =>
-    new RegExp(`\\b${colorName}\\b`, "i").test(lower),
-  );
-  return key ? COLOR_KEYWORDS[key] : null;
-}
-
-function parseCoordinatePoint(message: string): Point | null {
-  const xyMatch = message.match(
-    /\bx\s*=?\s*(-?\d+(?:\.\d+)?)\s*y\s*=?\s*(-?\d+(?:\.\d+)?)/i,
-  );
-  if (xyMatch) {
-    return {
-      x: Number(xyMatch[1]),
-      y: Number(xyMatch[2]),
-    };
-  }
-
-  const atMatch = message.match(
-    /\b(?:at|to)\s*(?:position\s*)?(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/i,
-  );
-  if (!atMatch) {
-    return null;
-  }
-
-  return {
-    x: Number(atMatch[1]),
-    y: Number(atMatch[2]),
-  };
-}
-
-function parseSize(message: string): Size | null {
-  const sizeMatch = message.match(
-    /\b(?:size|to)\s*(\d+(?:\.\d+)?)\s*(?:x|by)\s*(\d+(?:\.\d+)?)/i,
-  );
-  if (!sizeMatch) {
-    return null;
-  }
-
-  return {
-    width: Math.max(1, Number(sizeMatch[1])),
-    height: Math.max(1, Number(sizeMatch[2])),
-  };
-}
-
-function parsePadding(message: string): number | null {
-  const paddingMatch = message.match(/\bpadding\s*(-?\d+(?:\.\d+)?)\b/i);
-  if (!paddingMatch) {
-    return null;
-  }
-
-  return Math.max(0, Number(paddingMatch[1]));
-}
-
-function toPositiveInteger(value: string): number {
-  return Math.max(1, Math.floor(Number(value)));
-}
-
-function parseGridDimensions(message: string): {
-  rows: number;
-  columns: number;
-} | null {
-  const dimsMatch = message.match(
-    /\b(\d+)\s*(?:x|by)\s*(\d+)\b/i,
-  );
-  if (!dimsMatch) {
-    return null;
-  }
-
-  return {
-    rows: toPositiveInteger(dimsMatch[1]),
-    columns: toPositiveInteger(dimsMatch[2]),
-  };
-}
-
-function parseGridColumns(message: string): number | null {
-  const dimensions = parseGridDimensions(message);
-  if (dimensions) {
-    return dimensions.columns;
-  }
-
-  const columnsMatch = message.match(/\b(\d+)\s+columns?\b/i);
-  if (!columnsMatch) {
-    return null;
-  }
-
-  return toPositiveInteger(columnsMatch[1]);
-}
-
-function parseJourneyStageCount(message: string): number | null {
-  const stageMatch = message.match(/\b(\d+)\s*(?:-|\s)?stages?\b/i);
-  if (!stageMatch) {
-    return null;
-  }
-
-  return toPositiveInteger(stageMatch[1]);
-}
 
 function parseGridGap(message: string): {
   gapX?: number;

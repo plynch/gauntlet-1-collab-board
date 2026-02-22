@@ -172,6 +172,7 @@ import { useBoardSelectionAndConnectors } from "@/features/boards/components/rea
 import { useClipboardShortcuts } from "@/features/boards/components/realtime-canvas/legacy/use-clipboard-shortcuts";
 import { useFpsMeter } from "@/features/boards/components/realtime-canvas/legacy/use-fps-meter";
 import { useObjectTemplateActions } from "@/features/boards/components/realtime-canvas/legacy/use-object-template-actions";
+import { StageAxisOverlay } from "@/features/boards/components/realtime-canvas/legacy/stage-axis-overlay";
 import {
   DEFAULT_SWOT_SECTION_TITLES,
   getDefaultSectionTitles,
@@ -258,6 +259,7 @@ export default function RealtimeBoardCanvas({
   );
   const lastStickyWriteByIdRef = useRef<Map<string, string>>(new Map());
   const writeMetricsRef = useRef(createRealtimeWriteMetrics());
+  const boardStatusTimerRef = useRef<number | null>(null);
 
   const [viewport, setViewport] = useState<ViewportState>(INITIAL_VIEWPORT);
   const [objects, setObjects] = useState<BoardObject[]>([]);
@@ -276,6 +278,9 @@ export default function RealtimeBoardCanvas({
   const [marqueeSelectionState, setMarqueeSelectionState] =
     useState<MarqueeSelectionState | null>(null);
   const [boardError, setBoardError] = useState<string | null>(null);
+  const [boardStatusMessage, setBoardStatusMessage] = useState<string | null>(
+    null,
+  );
   const presenceClock = usePresenceClock(5_000);
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
@@ -583,6 +588,15 @@ export default function RealtimeBoardCanvas({
         window.clearTimeout(timerId);
       });
       gridSyncTimers.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (boardStatusTimerRef.current !== null) {
+        window.clearTimeout(boardStatusTimerRef.current);
+        boardStatusTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -2478,6 +2492,17 @@ export default function RealtimeBoardCanvas({
     [canEdit, objectsCollectionRef, user.uid],
   );
 
+  const showBoardStatus = useCallback((message: string) => {
+    setBoardStatusMessage(message);
+    if (boardStatusTimerRef.current !== null) {
+      window.clearTimeout(boardStatusTimerRef.current);
+    }
+    boardStatusTimerRef.current = window.setTimeout(() => {
+      setBoardStatusMessage(null);
+      boardStatusTimerRef.current = null;
+    }, 2400);
+  }, []);
+
   const {
     copySelectedObjects,
     duplicateSelectedObjects,
@@ -3206,10 +3231,67 @@ export default function RealtimeBoardCanvas({
     handleDeleteSelectedObjects();
   }, [handleDeleteSelectedObjects]);
 
+  const selectAllShapes = useCallback(() => {
+    const shapeIds = objects
+      .filter(
+        (objectItem) =>
+          objectItem.type === "rect" ||
+          objectItem.type === "circle" ||
+          objectItem.type === "triangle" ||
+          objectItem.type === "star" ||
+          objectItem.type === "line",
+      )
+      .map((objectItem) => objectItem.id);
+
+    if (shapeIds.length === 0) {
+      showBoardStatus("No shapes found to select.");
+      return;
+    }
+
+    setSelectedObjectIds(shapeIds);
+    showBoardStatus(
+      `Selected ${shapeIds.length} shape${shapeIds.length === 1 ? "" : "s"}.`,
+    );
+  }, [objects, showBoardStatus]);
+
+  const handleCopyShortcut = useCallback(() => {
+    const count = selectedObjectIdsRef.current.size;
+    if (count === 0) {
+      showBoardStatus("Nothing selected to copy.");
+      return;
+    }
+
+    copySelectedObjects();
+    showBoardStatus(`Copied ${count} object${count === 1 ? "" : "s"}.`);
+  }, [copySelectedObjects, showBoardStatus]);
+
+  const handleDuplicateShortcut = useCallback(async () => {
+    const count = selectedObjectIdsRef.current.size;
+    if (count === 0) {
+      showBoardStatus("Nothing selected to duplicate.");
+      return;
+    }
+
+    await duplicateSelectedObjects();
+    showBoardStatus(`Duplicated ${count} object${count === 1 ? "" : "s"}.`);
+  }, [duplicateSelectedObjects, showBoardStatus]);
+
+  const handlePasteShortcut = useCallback(async () => {
+    const count = copiedObjectsRef.current.length;
+    if (count === 0) {
+      showBoardStatus("Clipboard is empty.");
+      return;
+    }
+
+    await pasteCopiedObjects();
+    showBoardStatus(`Pasted ${count} object${count === 1 ? "" : "s"}.`);
+  }, [pasteCopiedObjects, showBoardStatus]);
+
   useClipboardShortcuts({
-    copySelectedObjects,
-    duplicateSelectedObjects,
-    pasteCopiedObjects,
+    selectAllShapes,
+    copySelectedObjects: handleCopyShortcut,
+    duplicateSelectedObjects: handleDuplicateShortcut,
+    pasteCopiedObjects: handlePasteShortcut,
   });
 
   const handleAiFooterResizeStart = useCallback(
@@ -4548,6 +4630,21 @@ export default function RealtimeBoardCanvas({
                     {boardError}
                   </p>
                 ) : null}
+                {boardStatusMessage ? (
+                  <p
+                    style={{
+                      color: "var(--text)",
+                      margin: 0,
+                      fontSize: 12,
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      padding: "0.4rem 0.5rem",
+                      background: "var(--surface-muted)",
+                    }}
+                  >
+                    {boardStatusMessage}
+                  </p>
+                ) : null}
               </div>
             </>
           )}
@@ -4588,97 +4685,14 @@ export default function RealtimeBoardCanvas({
               overscrollBehavior: "contain",
             }}
           >
-            <div
-              aria-hidden
-              style={{
-                position: "absolute",
-                inset: 0,
-                pointerEvents: "none",
-                zIndex: 0,
-                overflow: "hidden",
-              }}
-            >
-              {viewport.x >= -1 && viewport.x <= stageSize.width + 1 ? (
-                <span
-                  aria-hidden
-                  style={{
-                    position: "absolute",
-                    left: Math.round(viewport.x),
-                    top: 0,
-                    bottom: 0,
-                    width: 1,
-                    background: "rgba(244, 114, 182, 0.55)",
-                  }}
-                />
-              ) : null}
-              {viewport.y >= -1 && viewport.y <= stageSize.height + 1 ? (
-                <span
-                  aria-hidden
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    right: 0,
-                    top: Math.round(viewport.y),
-                    height: 1,
-                    background: "rgba(244, 114, 182, 0.55)",
-                  }}
-                />
-              ) : null}
-            </div>
-
-            <div
-              aria-hidden
-              style={{
-                position: "absolute",
-                inset: 0,
-                pointerEvents: "none",
-                zIndex: 6,
-                overflow: "hidden",
-              }}
-            >
-              {gridAxisLabels.xLabels.map((label) => (
-                <span
-                  key={`x-${label.value}`}
-                  style={{
-                    position: "absolute",
-                    left: Math.round(label.screen) + 3,
-                    top: 4,
-                    padding: "0 3px",
-                    borderRadius: 4,
-                    background: "var(--canvas-axis-label-bg)",
-                    color: "var(--canvas-axis-label-text)",
-                    fontSize: 10,
-                    lineHeight: 1.35,
-                    fontWeight: 600,
-                    fontVariantNumeric: "tabular-nums",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {label.value}
-                </span>
-              ))}
-              {gridAxisLabels.yLabels.map((label) => (
-                <span
-                  key={`y-${label.value}`}
-                  style={{
-                    position: "absolute",
-                    left: 4,
-                    top: Math.round(label.screen) + 3,
-                    padding: "0 3px",
-                    borderRadius: 4,
-                    background: "var(--canvas-axis-label-bg)",
-                    color: "var(--canvas-axis-label-text)",
-                    fontSize: 10,
-                    lineHeight: 1.35,
-                    fontWeight: 600,
-                    fontVariantNumeric: "tabular-nums",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {label.value}
-                </span>
-              ))}
-            </div>
+            <StageAxisOverlay
+              stageWidth={stageSize.width}
+              stageHeight={stageSize.height}
+              viewportX={viewport.x}
+              viewportY={viewport.y}
+              xLabels={gridAxisLabels.xLabels}
+              yLabels={gridAxisLabels.yLabels}
+            />
 
             {canShowSelectionHud && selectionHudPosition ? (
               <div

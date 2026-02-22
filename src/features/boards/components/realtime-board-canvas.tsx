@@ -6983,13 +6983,25 @@ export default function RealtimeBoardCanvas({
                     alignItems: "center",
                     justifyContent: "center",
                     gap: "0.45rem",
-                    border: "1px solid #c7d2fe",
+                    border:
+                      !canEdit || isAiSubmitting || isSwotTemplateCreating
+                        ? "1px solid var(--border)"
+                        : resolvedTheme === "dark"
+                          ? "1px solid rgba(129, 140, 248, 0.56)"
+                          : "1px solid #c7d2fe",
                     borderRadius: 8,
                     background:
                       !canEdit || isAiSubmitting || isSwotTemplateCreating
-                        ? "#eef2ff"
-                        : "#e0e7ff",
-                    color: "#312e81",
+                        ? "var(--surface-muted)"
+                        : resolvedTheme === "dark"
+                          ? "rgba(79, 70, 229, 0.24)"
+                          : "#e0e7ff",
+                    color:
+                      !canEdit || isAiSubmitting || isSwotTemplateCreating
+                        ? "var(--text-muted)"
+                        : resolvedTheme === "dark"
+                          ? "#c7d2fe"
+                          : "#312e81",
                     height: 34,
                     fontSize: 12,
                     fontWeight: 600,
@@ -6997,6 +7009,8 @@ export default function RealtimeBoardCanvas({
                       !canEdit || isAiSubmitting || isSwotTemplateCreating
                         ? "not-allowed"
                         : "pointer",
+                    transition:
+                      "background-color 180ms ease, border-color 180ms ease, color 180ms ease",
                   }}
                 >
                   <BriefcaseIcon />

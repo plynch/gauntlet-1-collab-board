@@ -38,8 +38,8 @@ This document summarizes the AI conversation used to:
 
 ## Artifacts Produced
 
-- Completed checklist: `/Users/patrick/Code/gauntlet/1-collab-board/presearch-checklist-answers.md`
-- This reference document: `/Users/patrick/Code/gauntlet/1-collab-board/presearch-ai-conversation-reference.md`
+- Completed checklist: `presearch-checklist-answers.md`
+- This reference document: `presearch-ai-conversation-reference.md`
 
 ## Notes
 

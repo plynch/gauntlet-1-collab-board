@@ -19,7 +19,7 @@ These standards apply to production code, tests, scripts, and API route handlers
 1. Do not add JSDoc boilerplate.
 2. Use short inline comments only when code intent is not obvious.
 3. Prefer clear naming, small functions, and focused modules over heavy comments.
-4. Keep architecture and behavior docs in `/Users/patrick/Code/gauntlet/1-collab-board/docs`, not inside large comment blocks.
+4. Keep architecture and behavior docs in `docs/`, not inside large comment blocks.
 
 ## 3. TypeScript and Linting
 
@@ -57,4 +57,4 @@ These standards apply to production code, tests, scripts, and API route handlers
 
 1. Any npm script that can spend paid model tokens must end with the exact suffix `:PAID`.
 2. Paid scripts must fail fast with an actionable setup error when required credentials are missing.
-3. New paid scripts must document expected spend behavior in `/Users/patrick/Code/gauntlet/1-collab-board/README.md`.
+3. New paid scripts must document expected spend behavior in `README.md`.

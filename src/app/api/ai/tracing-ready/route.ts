@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -7,9 +7,9 @@ import {
 import {
   flushLangfuseClient,
   getLangfuseClient,
-  getLangfusePublicKeyPreview,
   isLangfuseConfigured,
 } from "@/features/ai/observability/langfuse-client";
+import { AuthError, requireUser } from "@/server/auth/require-user";
 
 const TRACE_READY_SCHEMA_VERSION = "2026-02-24-a";
 
@@ -37,13 +37,24 @@ function parseRequiredFlag(value: string | undefined, fallback: boolean): boolea
 /**
  * Handles get.
  */
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  try {
+    await requireUser(request);
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    return NextResponse.json(
+      { error: "Authentication failed." },
+      { status: 401 },
+    );
+  }
+
   const searchParams = new URL(request.url).searchParams;
   const runProbe = searchParams.get("probe") === "1";
   const langfuseBaseUrl = process.env.LANGFUSE_BASE_URL?.trim() || null;
   const langfuseEnvironment =
     process.env.LANGFUSE_TRACING_ENVIRONMENT?.trim() || "default";
-  const langfusePublicKeyPreview = getLangfusePublicKeyPreview();
   const requireTracing = parseRequiredFlag(
     process.env.AI_REQUIRE_TRACING,
     process.env.NODE_ENV === "production",
@@ -60,14 +71,10 @@ export async function GET(request: Request) {
 
   const reasons: string[] = [];
   if (requireTracing && !langfuseConfigured) {
-    reasons.push(
-      "LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY missing while AI tracing is required.",
-    );
+    reasons.push("Langfuse tracing is not fully configured.");
   }
   if (requireTracing && !langfuseBaseUrl) {
-    reasons.push(
-      "LANGFUSE_BASE_URL missing while AI tracing is required (set https://us.cloud.langfuse.com for US project).",
-    );
+    reasons.push("Langfuse base URL is missing.");
   }
   if (
     requireOpenAiTracing &&
@@ -75,9 +82,7 @@ export async function GET(request: Request) {
     openAiConfig.runtime === "agents-sdk" &&
     !openAiConfig.agentsTracing
   ) {
-    reasons.push(
-      "OPENAI_AGENTS_TRACING must be true when OpenAI tracing is required.",
-    );
+    reasons.push("OpenAI tracing is disabled while required.");
   }
 
   if (langfuseConfigured) {
@@ -113,19 +118,14 @@ export async function GET(request: Request) {
             try {
               await publicApi.traceGet(probeTraceId);
             } catch (error) {
-              reasons.push(
-                error instanceof Error && error.message.trim().length > 0
-                  ? `Langfuse trace readback failed: ${error.message}`
-                  : "Langfuse trace readback failed.",
-              );
+              void error;
+              reasons.push("Langfuse trace readback failed.");
             }
           }
         } catch (error) {
           langfuseValidated = false;
-          langfuseValidationError =
-            error instanceof Error && error.message.trim().length > 0
-              ? `Langfuse probe trace failed: ${error.message}`
-              : "Langfuse probe trace failed.";
+          void error;
+          langfuseValidationError = "Langfuse probe trace failed.";
           reasons.push(langfuseValidationError);
         }
       }
@@ -139,22 +139,15 @@ export async function GET(request: Request) {
     ready,
     requireTracing,
     requireOpenAiTracing,
-    langfuseConfigured,
-    langfuseBaseUrl,
-    langfuseEnvironment,
-    langfusePublicKeyPreview,
-    langfuseValidated,
-    ...(langfuseValidationError ? { langfuseValidationError } : {}),
-    ...(probeTraceId ? { probeTraceId } : {}),
-    source: "api/ai/tracing-ready",
+    langfuse: {
+      configured: langfuseConfigured,
+      validated: langfuseValidated,
+      environment: langfuseEnvironment,
+      ...(langfuseValidationError ? { validationError: langfuseValidationError } : {}),
+    },
     openAi: {
       enabled: openAiConfig.enabled,
-      plannerMode: openAiConfig.plannerMode,
-      runtime: openAiConfig.runtime,
-      model: openAiConfig.model,
-      agentsTracing: openAiConfig.agentsTracing,
-      hasAgentsTracingApiKey: Boolean(openAiConfig.agentsTracingApiKey),
-      hasApiKey: Boolean(openAiConfig.apiKey),
+      tracingEnabled: openAiConfig.agentsTracing,
     },
     reasons,
   });

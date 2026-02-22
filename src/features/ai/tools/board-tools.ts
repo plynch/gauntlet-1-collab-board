@@ -1262,6 +1262,8 @@ export class BoardToolExecutor {
     gapY?: number;
     originX?: number;
     originY?: number;
+    viewportBounds?: ViewportBounds;
+    centerInViewport?: boolean;
   }): Promise<ExecuteToolResult> {
     const selectedObjects = await this.resolveSelectedObjects(args.objectIds);
 
@@ -1297,8 +1299,35 @@ export class BoardToolExecutor {
     );
     const defaultOriginX = Math.min(...sortedObjects.map((item) => item.x));
     const defaultOriginY = Math.min(...sortedObjects.map((item) => item.y));
-    const originX = toNumber(args.originX, defaultOriginX);
-    const originY = toNumber(args.originY, defaultOriginY);
+    const hasViewportBounds =
+      Boolean(args.viewportBounds) &&
+      Number.isFinite(args.viewportBounds?.left) &&
+      Number.isFinite(args.viewportBounds?.top) &&
+      Number.isFinite(args.viewportBounds?.width) &&
+      Number.isFinite(args.viewportBounds?.height) &&
+      (args.viewportBounds?.width ?? 0) > 0 &&
+      (args.viewportBounds?.height ?? 0) > 0;
+    const shouldCenterInViewport = Boolean(args.centerInViewport && hasViewportBounds);
+
+    let originX = toNumber(args.originX, defaultOriginX);
+    let originY = toNumber(args.originY, defaultOriginY);
+    if (shouldCenterInViewport) {
+      const columnsUsed = Math.max(1, Math.min(columns, sortedObjects.length));
+      const rowsUsed = Math.max(1, Math.ceil(sortedObjects.length / columns));
+      const gridWidth = columnsUsed * cellWidth + (columnsUsed - 1) * gapX;
+      const gridHeight = rowsUsed * cellHeight + (rowsUsed - 1) * gapY;
+
+      if (!Number.isFinite(args.originX)) {
+        originX =
+          (args.viewportBounds?.left ?? 0) +
+          ((args.viewportBounds?.width ?? 0) - gridWidth) / 2;
+      }
+      if (!Number.isFinite(args.originY)) {
+        originY =
+          (args.viewportBounds?.top ?? 0) +
+          ((args.viewportBounds?.height ?? 0) - gridHeight) / 2;
+      }
+    }
 
     const updates = sortedObjects.map((objectItem, index) => {
       const row = Math.floor(index / columns);
@@ -1402,6 +1431,7 @@ export class BoardToolExecutor {
   async distributeObjects(args: {
     objectIds: string[];
     axis: "horizontal" | "vertical";
+    viewportBounds?: ViewportBounds;
   }): Promise<ExecuteToolResult> {
     const selectedObjects = await this.resolveSelectedObjects(args.objectIds);
     if (selectedObjects.length < 3) {
@@ -1431,11 +1461,35 @@ export class BoardToolExecutor {
 
     const firstCenter = toObjectCenter(first);
     const lastCenter = toObjectCenter(last);
-    const span =
-      args.axis === "horizontal"
-        ? lastCenter.x - firstCenter.x
-        : lastCenter.y - firstCenter.y;
+    const hasViewportBounds =
+      Boolean(args.viewportBounds) &&
+      Number.isFinite(args.viewportBounds?.width) &&
+      Number.isFinite(args.viewportBounds?.height) &&
+      (args.viewportBounds?.width ?? 0) > 0 &&
+      (args.viewportBounds?.height ?? 0) > 0;
+    const spanStart =
+      hasViewportBounds && args.axis === "horizontal"
+        ? (args.viewportBounds?.left ?? 0) + first.width / 2
+        : hasViewportBounds && args.axis === "vertical"
+          ? (args.viewportBounds?.top ?? 0) + first.height / 2
+          : args.axis === "horizontal"
+            ? firstCenter.x
+            : firstCenter.y;
+    const spanEnd =
+      hasViewportBounds && args.axis === "horizontal"
+        ? (args.viewportBounds?.left ?? 0) +
+          (args.viewportBounds?.width ?? 0) -
+          last.width / 2
+        : hasViewportBounds && args.axis === "vertical"
+          ? (args.viewportBounds?.top ?? 0) +
+            (args.viewportBounds?.height ?? 0) -
+            last.height / 2
+          : args.axis === "horizontal"
+            ? lastCenter.x
+            : lastCenter.y;
+    const span = spanEnd - spanStart;
     const step = span / (sortedObjects.length - 1);
+    const shouldMoveEndpoints = hasViewportBounds && spanEnd > spanStart;
 
     const updates: Array<{
       objectId: string;
@@ -1443,11 +1497,14 @@ export class BoardToolExecutor {
         Pick<BoardObjectDoc, "x" | "y" | "width" | "height" | "color" | "text">
       >;
     }> = [];
-    for (let index = 1; index < sortedObjects.length - 1; index += 1) {
+    const startIndex = shouldMoveEndpoints ? 0 : 1;
+    const endIndex = shouldMoveEndpoints
+      ? sortedObjects.length
+      : sortedObjects.length - 1;
+    for (let index = startIndex; index < endIndex; index += 1) {
       const objectItem = sortedObjects[index];
       const nextCenter =
-        (args.axis === "horizontal" ? firstCenter.x : firstCenter.y) +
-        step * index;
+        spanStart + step * index;
 
       updates.push(
         args.axis === "horizontal"

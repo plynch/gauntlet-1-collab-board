@@ -17,6 +17,8 @@ export type OpenAiMessageIntentHints = {
   shapeRequestedCount: number | null;
   createLimitExceeded: boolean;
   stickyLayoutHints: StickyLayoutHints;
+  viewportLayoutRequested: boolean;
+  centerLayoutRequested?: boolean;
 };
 
 const MAX_COUNT_HINT = 20_000;
@@ -177,6 +179,27 @@ function parseStickyLayoutHints(normalized: string): StickyLayoutHints {
 }
 
 /**
+ * Returns whether command asks for viewport/screen-spanning layout.
+ */
+function isViewportLayoutRequested(normalized: string): boolean {
+  return (
+    /\bacross\b[\w\s]{0,24}\b(screen|viewport|canvas|view)\b/i.test(normalized) ||
+    /\bto\s+the\s+edges?\b/i.test(normalized) ||
+    /\bfull\s+(width|height)\b/i.test(normalized)
+  );
+}
+
+/**
+ * Returns whether command asks for centered/middle placement.
+ */
+function isCenterLayoutRequested(normalized: string): boolean {
+  return (
+    /\b(in|at)\s+the\s+(middle|center|centre)\b/i.test(normalized) ||
+    /\b(center|centre)(?:ed)?\b/i.test(normalized)
+  );
+}
+
+/**
  * Parses message intent hints.
  */
 export function parseMessageIntentHints(message: string): OpenAiMessageIntentHints {
@@ -215,5 +238,7 @@ export function parseMessageIntentHints(message: string): OpenAiMessageIntentHin
     shapeRequestedCount,
     createLimitExceeded,
     stickyLayoutHints: parseStickyLayoutHints(normalized),
+    viewportLayoutRequested: isViewportLayoutRequested(normalized),
+    centerLayoutRequested: isCenterLayoutRequested(normalized),
   };
 }

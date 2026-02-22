@@ -593,6 +593,21 @@ function buildOutcomeAssistantMessageFromExecution(input: {
       : `Deleted ${deletedCount} objects.`;
   }
 
+  const distributeOperation = input.operations.find(
+    (operation) => operation.tool === "distributeObjects",
+  );
+  if (distributeOperation?.tool === "distributeObjects") {
+    const objectCount = distributeOperation.args.objectIds.length;
+    const direction =
+      distributeOperation.args.axis === "horizontal"
+        ? "left to right"
+        : "top to bottom";
+    if (distributeOperation.args.viewportBounds) {
+      return `Spaced ${objectCount} selected object${objectCount === 1 ? "" : "s"} evenly across the screen ${direction}.`;
+    }
+    return `Spaced ${objectCount} selected object${objectCount === 1 ? "" : "s"} evenly ${direction}.`;
+  }
+
   const message = input.fallbackAssistantMessage.trim();
   return message.length > 0 ? message : "Completed your board command.";
 }

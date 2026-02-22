@@ -704,6 +704,18 @@ function parseDistributionAxis(message: string): "horizontal" | "vertical" {
 }
 
 /**
+ * Returns whether distribution should use viewport span.
+ */
+function isViewportDistributionRequested(message: string): boolean {
+  const lower = normalizeMessage(message);
+  return (
+    /\bacross\b[\w\s]{0,24}\b(screen|viewport|canvas|view)\b/.test(lower) ||
+    /\bto\s+the\s+edges?\b/.test(lower) ||
+    /\bfull\s+(width|height)\b/.test(lower)
+  );
+}
+
+/**
  * Gets board bounds.
  */
 function getBoardBounds(boardState: BoardObjectSnapshot[]): {
@@ -1597,6 +1609,17 @@ function isArrangeGridCommand(message: string): boolean {
 }
 
 /**
+ * Returns whether arrange-grid should be centered in viewport.
+ */
+function isArrangeGridCenterRequested(message: string): boolean {
+  const lower = normalizeMessage(message);
+  return (
+    /\b(in|at)\s+the\s+(middle|center|centre)\b/.test(lower) ||
+    /\b(center|centre)(?:ed)?\b/.test(lower)
+  );
+}
+
+/**
  * Handles plan arrange grid.
  */
 function planArrangeGrid(
@@ -1620,6 +1643,7 @@ function planArrangeGrid(
 
   const columns = parseGridColumns(input.message) ?? GRID_DEFAULT_COLUMNS;
   const gap = parseGridGap(input.message);
+  const centerInViewport = isArrangeGridCenterRequested(input.message);
 
   return {
     planned: true,
@@ -1636,6 +1660,10 @@ function planArrangeGrid(
             columns,
             ...(gap?.gapX !== undefined ? { gapX: gap.gapX } : {}),
             ...(gap?.gapY !== undefined ? { gapY: gap.gapY } : {}),
+            ...(centerInViewport ? { centerInViewport: true } : {}),
+            ...(centerInViewport && input.viewportBounds
+              ? { viewportBounds: input.viewportBounds }
+              : {}),
           },
         },
       ],
@@ -1739,22 +1767,46 @@ function planDistributeSelected(
   }
 
   const axis = parseDistributionAxis(input.message);
+  const viewportDistributionRequested = isViewportDistributionRequested(
+    input.message,
+  );
+  const shouldUseViewportBounds =
+    viewportDistributionRequested && Boolean(input.viewportBounds);
+  const operations: BoardToolCall[] = [];
+
+  if (shouldUseViewportBounds) {
+    operations.push({
+      tool: "alignObjects",
+      args: {
+        objectIds: selectedObjects.map((objectItem) => objectItem.id),
+        alignment: axis === "horizontal" ? "middle" : "center",
+      },
+    });
+  }
+
+  operations.push({
+    tool: "distributeObjects",
+    args: {
+      objectIds: selectedObjects.map((objectItem) => objectItem.id),
+      axis,
+      ...(shouldUseViewportBounds && input.viewportBounds
+        ? { viewportBounds: input.viewportBounds }
+        : {}),
+    },
+  });
+
+  const assistantMessage = shouldUseViewportBounds
+    ? `Spaced ${selectedObjects.length} selected object${selectedObjects.length === 1 ? "" : "s"} evenly across the screen ${axis === "horizontal" ? "left to right" : "top to bottom"}.`
+    : `Spaced ${selectedObjects.length} selected object${selectedObjects.length === 1 ? "" : "s"} evenly ${axis === "horizontal" ? "left to right" : "top to bottom"}.`;
+
   return {
     planned: true,
     intent: "distribute-objects",
-    assistantMessage: `Distributed ${selectedObjects.length} selected object${selectedObjects.length === 1 ? "" : "s"} on ${axis} axis.`,
+    assistantMessage,
     plan: toPlan({
       id: "command.distribute-selected",
       name: "Distribute Selected Objects",
-      operations: [
-        {
-          tool: "distributeObjects",
-          args: {
-            objectIds: selectedObjects.map((objectItem) => objectItem.id),
-            axis,
-          },
-        },
-      ],
+      operations,
     }),
   };
 }

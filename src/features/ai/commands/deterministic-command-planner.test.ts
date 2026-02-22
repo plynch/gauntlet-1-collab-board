@@ -530,6 +530,51 @@ describe("planDeterministicCommand", () => {
     }
   });
 
+  it("plans viewport-aware spacing when message requests across screen", () => {
+    const boardState = [
+      ...BOARD_STATE,
+      {
+        id: "obj-3",
+        type: "sticky" as const,
+        zIndex: 3,
+        x: 720,
+        y: 120,
+        width: 220,
+        height: 170,
+        rotationDeg: 0,
+        color: "#fde68a",
+        text: "Third",
+        updatedAt: null,
+      },
+    ];
+    const viewportBounds = {
+      left: 0,
+      top: 0,
+      width: 1_600,
+      height: 900,
+    };
+    const result = planDeterministicCommand({
+      message: "Space these evenly across the screen",
+      boardState,
+      selectedObjectIds: ["obj-1", "obj-2", "obj-3"],
+      viewportBounds,
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("distribute-objects");
+      expect(result.plan.operations).toHaveLength(2);
+      expect(result.plan.operations[0]?.tool).toBe("alignObjects");
+      expect(result.plan.operations[1]?.tool).toBe("distributeObjects");
+      if (result.plan.operations[1]?.tool === "distributeObjects") {
+        expect(result.plan.operations[1].args.viewportBounds).toEqual(
+          viewportBounds,
+        );
+      }
+      expect(result.assistantMessage).toContain("across the screen");
+    }
+  });
+
   it("returns actionable message when distribute has too few selected objects", () => {
     const result = planDeterministicCommand({
       message: "Distribute selected objects horizontally",

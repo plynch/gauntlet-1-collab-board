@@ -197,6 +197,7 @@ describe("createBoardAgentTools", () => {
           rowRequested: false,
           stackRequested: false,
         },
+        viewportLayoutRequested: false,
       },
     });
 
@@ -268,6 +269,7 @@ describe("createBoardAgentTools", () => {
           rowRequested: false,
           stackRequested: false,
         },
+        viewportLayoutRequested: false,
       },
     });
 

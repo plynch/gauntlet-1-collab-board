@@ -707,6 +707,16 @@ export function createBoardAgentTools(
         gapY: z.number().min(0).max(400).nullable(),
         originX: z.number().nullable(),
         originY: z.number().nullable(),
+        viewportBounds: z
+          .object({
+            left: z.number(),
+            top: z.number(),
+            width: z.number(),
+            height: z.number(),
+          })
+          .nullable()
+          .optional(),
+        centerInViewport: z.boolean().nullable().optional(),
       }),
       execute: async (args) =>
         executeToolCallWithGuardrails({
@@ -722,6 +732,17 @@ export function createBoardAgentTools(
             gapY: args.gapY ?? undefined,
             originX: args.originX ?? undefined,
             originY: args.originY ?? undefined,
+            viewportBounds:
+              args.viewportBounds ??
+              ((args.centerInViewport ??
+                options.messageIntentHints?.centerLayoutRequested) &&
+              options.viewportBounds
+                ? options.viewportBounds
+                : undefined),
+            centerInViewport:
+              args.centerInViewport ??
+              options.messageIntentHints?.centerLayoutRequested ??
+              undefined,
           },
         }),
     }),
@@ -754,6 +775,14 @@ export function createBoardAgentTools(
       parameters: z.object({
         objectIds: z.array(z.string()).nullable(),
         axis: z.enum(["horizontal", "vertical"]),
+        viewportBounds: z
+          .object({
+            left: z.number(),
+            top: z.number(),
+            width: z.number(),
+            height: z.number(),
+          })
+          .nullable(),
       }),
       execute: async (args) =>
         executeToolCallWithGuardrails({
@@ -765,6 +794,11 @@ export function createBoardAgentTools(
               "distributeObjects",
             ),
             axis: args.axis,
+            viewportBounds:
+              args.viewportBounds ??
+              (options.messageIntentHints?.viewportLayoutRequested
+                ? options.viewportBounds ?? undefined
+                : undefined),
           },
         }),
     }),

@@ -5342,6 +5342,14 @@ export default function RealtimeBoardCanvas({
     });
   }, []);
 
+  /**
+   * Returns whether selection should be preserved for group drag.
+   */
+  const shouldPreserveGroupSelection = useCallback((objectId: string) => {
+    const currentSelectedIds = selectedObjectIdsRef.current;
+    return currentSelectedIds.size > 1 && currentSelectedIds.has(objectId);
+  }, []);
+
   const handleDeleteSelectedObjects = useCallback(() => {
     if (!canEdit || selectedObjectIds.length === 0) {
       return;
@@ -5981,7 +5989,9 @@ export default function RealtimeBoardCanvas({
         startClientY: event.clientY,
         lastSentAt: 0,
         hasMoved: false,
-        collapseToObjectIdOnClick: shouldPrepareGroupDrag ? objectId : null,
+        // Preserve multi-selection when user grabs an already-selected object.
+        // Collapsing here causes accidental deselect when drag slop is not crossed.
+        collapseToObjectIdOnClick: shouldPrepareGroupDrag ? null : objectId,
       };
     },
     [
@@ -7628,6 +7638,9 @@ export default function RealtimeBoardCanvas({
                           return;
                         }
 
+                        if (shouldPreserveGroupSelection(objectItem.id)) {
+                          return;
+                        }
                         selectSingleObject(objectItem.id);
                       }}
                       style={{
@@ -7651,6 +7664,9 @@ export default function RealtimeBoardCanvas({
                             return;
                           }
 
+                          if (shouldPreserveGroupSelection(objectItem.id)) {
+                            return;
+                          }
                           selectSingleObject(objectItem.id);
                         }}
                         viewBox={`0 0 ${connectorFrame.width} ${connectorFrame.height}`}
@@ -7870,6 +7886,9 @@ export default function RealtimeBoardCanvas({
                           return;
                         }
 
+                        if (shouldPreserveGroupSelection(objectItem.id)) {
+                          return;
+                        }
                         selectSingleObject(objectItem.id);
                       }}
                       style={{
@@ -7936,7 +7955,9 @@ export default function RealtimeBoardCanvas({
                               return;
                             }
 
-                            selectSingleObject(objectItem.id);
+                            if (!shouldPreserveGroupSelection(objectItem.id)) {
+                              selectSingleObject(objectItem.id);
+                            }
 
                             if (!canEdit || event.button !== 0) {
                               clearStickyTextHoldDrag();
@@ -8031,7 +8052,11 @@ export default function RealtimeBoardCanvas({
                           onPointerCancel={() => {
                             clearStickyTextHoldDrag();
                           }}
-                          onFocus={() => selectSingleObject(objectItem.id)}
+                          onFocus={() => {
+                            if (!shouldPreserveGroupSelection(objectItem.id)) {
+                              selectSingleObject(objectItem.id);
+                            }
+                          }}
                           onChange={(event) => {
                             const nextText = event.target.value.slice(0, 1_000);
                             setTextDrafts((previous) => ({
@@ -8149,6 +8174,9 @@ export default function RealtimeBoardCanvas({
                         return;
                       }
 
+                      if (shouldPreserveGroupSelection(objectItem.id)) {
+                        return;
+                      }
                       selectSingleObject(objectItem.id);
                     }}
                     style={{

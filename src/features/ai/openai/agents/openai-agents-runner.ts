@@ -147,6 +147,10 @@ const OPENAI_AGENTS_SYSTEM_PROMPT = [
   "For simple single-object create commands, call the create tool directly without getBoardState.",
   "Use high-level tools when possible: createStickyBatch, moveObjects, fitFrameToContents, arrangeObjectsInGrid, alignObjects, distributeObjects.",
   "For line creation, use createShape with type='line'.",
+  "When user says across screen/viewport/canvas, include viewportBounds in layout tools that support it.",
+  "When user says middle/center for grid layout, set centerInViewport=true and include viewportBounds in arrangeObjectsInGrid.",
+  "For spacing across screen: alignObjects first (middle for horizontal, center for vertical), then distributeObjects with viewportBounds.",
+  "Layout math hint: step=(end-start)/(count-1); use object centers for distribution.",
   "When user asks to create/add sticky notes, you must create new stickies via createStickyNote or createStickyBatch.",
   "Do not satisfy create-sticky requests by mutating existing selected objects.",
   "Never create more than 50 objects from one command.",
@@ -210,6 +214,9 @@ export async function runBoardCommandWithOpenAiAgents(
     selectedObjectIds: input.selectedObjectIds,
     selectedObjects,
     viewportBounds: input.viewportBounds,
+    viewportHint: messageIntentHints.viewportLayoutRequested
+      ? "User requested screen/viewport-spanning layout."
+      : null,
     boardObjectCount: input.boardState.length,
     boardObjects: contextObjects,
   };

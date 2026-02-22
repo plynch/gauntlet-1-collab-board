@@ -167,6 +167,8 @@ export type BoardToolCall =
         gapY?: number;
         originX?: number;
         originY?: number;
+        viewportBounds?: ViewportBounds;
+        centerInViewport?: boolean;
       };
     }
   | {
@@ -187,6 +189,7 @@ export type BoardToolCall =
       args: {
         objectIds: string[];
         axis: "horizontal" | "vertical";
+        viewportBounds?: ViewportBounds;
       };
     }
   | {

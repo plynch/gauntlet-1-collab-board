@@ -411,6 +411,20 @@ function normalizeOperationArgs(
         args.columns = colCandidate;
       }
     }
+
+    if (!asRecord(args.viewportBounds)) {
+      const viewportCandidate = asRecord(args.viewport) ?? asRecord(args.bounds);
+      if (viewportCandidate) {
+        args.viewportBounds = viewportCandidate;
+      }
+    }
+
+    if (typeof args.centerInViewport !== "boolean") {
+      const centerCandidate = args.center ?? args.centered ?? args.inMiddle;
+      if (typeof centerCandidate === "boolean") {
+        args.centerInViewport = centerCandidate;
+      }
+    }
   }
 
   if (tool === "alignObjects") {
@@ -441,6 +455,13 @@ function normalizeOperationArgs(
       const axisCandidate = args.direction ?? args.distribution;
       if (typeof axisCandidate === "string") {
         args.axis = axisCandidate.toLowerCase();
+      }
+    }
+
+    if (!asRecord(args.viewportBounds)) {
+      const viewportCandidate = asRecord(args.viewport) ?? asRecord(args.bounds);
+      if (viewportCandidate) {
+        args.viewportBounds = viewportCandidate;
       }
     }
   }
@@ -646,6 +667,15 @@ const boardToolCallSchema: z.ZodType<BoardToolCall> = z.discriminatedUnion(
         gapY: z.number().optional(),
         originX: z.number().optional(),
         originY: z.number().optional(),
+        viewportBounds: z
+          .object({
+            left: z.number(),
+            top: z.number(),
+            width: z.number(),
+            height: z.number(),
+          })
+          .optional(),
+        centerInViewport: z.boolean().optional(),
       }),
     }),
     z.object({
@@ -667,6 +697,14 @@ const boardToolCallSchema: z.ZodType<BoardToolCall> = z.discriminatedUnion(
       args: z.object({
         objectIds: z.array(z.string()),
         axis: z.enum(["horizontal", "vertical"]),
+        viewportBounds: z
+          .object({
+            left: z.number(),
+            top: z.number(),
+            width: z.number(),
+            height: z.number(),
+          })
+          .optional(),
       }),
     }),
     z.object({

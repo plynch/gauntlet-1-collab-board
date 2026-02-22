@@ -416,6 +416,37 @@ describe("BoardToolExecutor distributeObjects", () => {
     expect(byId.get("obj-2")?.x).toBe(300);
     expect(byId.get("obj-3")?.x).toBe(500);
   });
+
+  it("distributes selected objects across viewport bounds when provided", async () => {
+    const fakeDb = new FakeFirestore([
+      createObject("obj-1", 1, { x: 100, y: 80, width: 100, height: 80 }),
+      createObject("obj-2", 2, { x: 220, y: 140, width: 100, height: 80 }),
+      createObject("obj-3", 3, { x: 360, y: 200, width: 100, height: 80 }),
+    ]);
+    const executor = new BoardToolExecutor({
+      boardId: "board-1",
+      userId: "user-1",
+      db: fakeDb as unknown as Firestore,
+    });
+
+    await executor.distributeObjects({
+      objectIds: ["obj-1", "obj-2", "obj-3"],
+      axis: "horizontal",
+      viewportBounds: {
+        left: 0,
+        top: 0,
+        width: 1_000,
+        height: 700,
+      },
+    });
+
+    const state = await executor.getBoardState();
+    const byId = new Map(state.map((objectItem) => [objectItem.id, objectItem]));
+
+    expect(byId.get("obj-1")?.x).toBe(0);
+    expect(byId.get("obj-2")?.x).toBe(450);
+    expect(byId.get("obj-3")?.x).toBe(900);
+  });
 });
 
 describe("BoardToolExecutor createShape", () => {

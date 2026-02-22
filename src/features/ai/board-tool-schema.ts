@@ -166,6 +166,18 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
         gapY: { type: "number" },
         originX: { type: "number" },
         originY: { type: "number" },
+        viewportBounds: {
+          type: "object",
+          properties: {
+            left: { type: "number" },
+            top: { type: "number" },
+            width: { type: "number" },
+            height: { type: "number" },
+          },
+          required: ["left", "top", "width", "height"],
+          additionalProperties: false,
+        },
+        centerInViewport: { type: "boolean" },
       },
       required: ["objectIds", "columns"],
       additionalProperties: false,
@@ -204,6 +216,17 @@ export const BOARD_AI_TOOLS: BoardAiTool[] = [
         axis: {
           type: "string",
           enum: ["horizontal", "vertical"],
+        },
+        viewportBounds: {
+          type: "object",
+          properties: {
+            left: { type: "number" },
+            top: { type: "number" },
+            width: { type: "number" },
+            height: { type: "number" },
+          },
+          required: ["left", "top", "width", "height"],
+          additionalProperties: false,
         },
       },
       required: ["objectIds", "axis"],

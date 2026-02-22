@@ -86,13 +86,13 @@ import {
   getCornerCursor,
   getCornerPositionStyle,
   getDistance,
+  doBoundsOverlap,
   getLineEndpointOffsets,
   getLineEndpoints,
   getObjectVisualBounds,
   getSpawnOffset,
   GRID_CELL_SIZE,
   hasMeaningfulRotation,
-  isEditableKeyboardTarget,
   isSnapEligibleObjectType,
   mergeBounds,
   POSITION_WRITE_STEP,
@@ -111,6 +111,7 @@ import {
   inflateObjectBounds,
   type ConnectorRouteGeometry,
   type ConnectorRoutingObstacle,
+  type ObjectBounds,
   type ResolvedConnectorEndpoint,
 } from "@/features/boards/components/realtime-canvas/legacy/legacy-canvas-geometry";
 import {
@@ -122,7 +123,9 @@ import {
   CONNECTOR_DISCONNECTED_HANDLE_SIZE,
   CONNECTOR_HANDLE_SIZE,
   CONNECTOR_HIT_PADDING,
+  CONNECTOR_OBSTACLE_CULL_PADDING_PX,
   CONNECTOR_SNAP_DISTANCE_PX,
+  CONNECTOR_VIEWPORT_CULL_PADDING_PX,
   CONTAINER_DRAG_THROTTLE_MS,
   CURSOR_MIN_MOVE_DISTANCE,
   CURSOR_THROTTLE_MS,
@@ -178,6 +181,7 @@ import type {
   StickyTextSyncState,
   ViewportState,
 } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-types";
+import { useClipboardShortcuts } from "@/features/boards/components/realtime-canvas/legacy/use-clipboard-shortcuts";
 import {
   DEFAULT_SWOT_SECTION_TITLES,
   getDefaultSectionTitles,
@@ -3379,44 +3383,11 @@ export default function RealtimeBoardCanvas({
     handleDeleteSelectedObjects();
   }, [handleDeleteSelectedObjects]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-        const handleGlobalKeyDown = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.altKey) {
-        return;
-      }
-
-      if (isEditableKeyboardTarget(event.target)) {
-        return;
-      }
-
-      const normalizedKey = event.key.toLowerCase();
-      if (normalizedKey === "d" && !event.shiftKey) {
-        event.preventDefault();
-        void duplicateSelectedObjects();
-        return;
-      }
-
-      if (normalizedKey === "c" && !event.shiftKey) {
-        event.preventDefault();
-        copySelectedObjects();
-        return;
-      }
-
-      if (normalizedKey === "v" && !event.shiftKey) {
-        event.preventDefault();
-        void pasteCopiedObjects();
-      }
-    };
-
-    window.addEventListener("keydown", handleGlobalKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleGlobalKeyDown);
-    };
-  }, [copySelectedObjects, duplicateSelectedObjects, pasteCopiedObjects]);
+  useClipboardShortcuts({
+    copySelectedObjects,
+    duplicateSelectedObjects,
+    pasteCopiedObjects,
+  });
 
   const handleAiFooterResizeStart = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -4183,6 +4154,40 @@ export default function RealtimeBoardCanvas({
         .filter((item): item is ConnectorRoutingObstacle => item !== null),
     [connectableGeometryById, connectableTypeById],
   );
+  const connectorViewportBounds = useMemo<ObjectBounds | null>(() => {
+    if (
+      stageSize.width <= 0 ||
+      stageSize.height <= 0 ||
+      viewport.scale <= 0 ||
+      !Number.isFinite(viewport.scale)
+    ) {
+      return null;
+    }
+
+    const worldPadding =
+      CONNECTOR_VIEWPORT_CULL_PADDING_PX / Math.max(viewport.scale, 0.1);
+    const left = (-viewport.x) / viewport.scale - worldPadding;
+    const right = (stageSize.width - viewport.x) / viewport.scale + worldPadding;
+    const top = (-viewport.y) / viewport.scale - worldPadding;
+    const bottom =
+      (stageSize.height - viewport.y) / viewport.scale + worldPadding;
+
+    return {
+      left: Math.min(left, right),
+      right: Math.max(left, right),
+      top: Math.min(top, bottom),
+      bottom: Math.max(top, bottom),
+    };
+  }, [stageSize.height, stageSize.width, viewport.scale, viewport.x, viewport.y]);
+  const selectedConnectorIds = useMemo(() => {
+    const ids = new Set<string>();
+    selectedObjects.forEach((selectedObject) => {
+      if (isConnectorKind(selectedObject.object.type)) {
+        ids.add(selectedObject.object.id);
+      }
+    });
+    return ids;
+  }, [selectedObjects]);
   const connectorRoutesById = useMemo(() => {
     const routes = new Map<
       string,
@@ -4240,6 +4245,21 @@ export default function RealtimeBoardCanvas({
         toY: defaultToY,
       };
       const activeEndpointDrag = connectorEndpointDragStateRef.current;
+      const isConnectorSelected = selectedConnectorIds.has(objectItem.id);
+      const connectorScreenBounds = getConnectorHitBounds(
+        { x: connectorDraft.fromX, y: connectorDraft.fromY },
+        { x: connectorDraft.toX, y: connectorDraft.toY },
+        CONNECTOR_HIT_PADDING + CONNECTOR_OBSTACLE_CULL_PADDING_PX,
+      );
+      const shouldCullConnector =
+        connectorViewportBounds !== null &&
+        !isConnectorSelected &&
+        !localDraft &&
+        activeEndpointDrag?.objectId !== objectItem.id &&
+        !doBoundsOverlap(connectorScreenBounds, connectorViewportBounds);
+      if (shouldCullConnector) {
+        return;
+      }
 
             const buildEndpointCandidates = (
         endpoint: "from" | "to",
@@ -4337,10 +4357,20 @@ export default function RealtimeBoardCanvas({
             continue;
           }
 
+          const routeSolveBounds = inflateObjectBounds(
+            {
+              left: Math.min(fromCandidate.x, toCandidate.x),
+              right: Math.max(fromCandidate.x, toCandidate.x),
+              top: Math.min(fromCandidate.y, toCandidate.y),
+              bottom: Math.max(fromCandidate.y, toCandidate.y),
+            },
+            CONNECTOR_HIT_PADDING + CONNECTOR_OBSTACLE_CULL_PADDING_PX,
+          );
           const obstacles = connectorRoutingObstacles.filter(
             (obstacle) =>
               obstacle.objectId !== fromCandidate.objectId &&
-              obstacle.objectId !== toCandidate.objectId,
+              obstacle.objectId !== toCandidate.objectId &&
+              doBoundsOverlap(obstacle.bounds, routeSolveBounds),
           );
           const geometry = buildConnectorRouteGeometry({
             from: fromCandidate,
@@ -4412,6 +4442,8 @@ export default function RealtimeBoardCanvas({
     draftConnectorById,
     draftGeometryById,
     objects,
+    connectorViewportBounds,
+    selectedConnectorIds,
   ]);
   const selectedObjectBounds = useMemo(
     () =>

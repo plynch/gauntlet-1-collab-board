@@ -597,6 +597,18 @@ export function inflateObjectBounds(
   };
 }
 
+export function doBoundsOverlap(
+  left: ObjectBounds,
+  right: ObjectBounds,
+): boolean {
+  return !(
+    left.right < right.left ||
+    left.left > right.right ||
+    left.bottom < right.top ||
+    left.top > right.bottom
+  );
+}
+
 export function scoreEndpointDirectionAlignment(
   fromPoint: BoardPoint,
   toPoint: BoardPoint,

@@ -44,6 +44,8 @@ export const CONNECTOR_HIT_PADDING = 16;
 export const CONNECTOR_HANDLE_SIZE = 12;
 export const CONNECTOR_DISCONNECTED_HANDLE_SIZE = 20;
 export const CONNECTOR_SNAP_DISTANCE_PX = 20;
+export const CONNECTOR_VIEWPORT_CULL_PADDING_PX = 240;
+export const CONNECTOR_OBSTACLE_CULL_PADDING_PX = 96;
 
 export const BOARD_TOOLS: BoardObjectKind[] = [
   "sticky",

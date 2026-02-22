@@ -12,7 +12,7 @@ type RealtimeBoardCanvasProps = {
 };
 
 const isLegacyRendererEnabled =
-  process.env.NEXT_PUBLIC_ENABLE_CANVAS_RENDERER !== "1";
+  process.env.NEXT_PUBLIC_ENABLE_CANVAS_RENDERER === "legacy";
 
 export default function RealtimeBoardCanvas({
   boardId,

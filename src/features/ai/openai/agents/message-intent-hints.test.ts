@@ -34,4 +34,13 @@ describe("parseMessageIntentHints", () => {
     expect(hints.stickyLayoutHints.gapX).toBe(24);
     expect(hints.stickyLayoutHints.gapY).toBe(32);
   });
+
+  it("captures requests for various sticky colors", () => {
+    const hints = parseMessageIntentHints(
+      "create 20 sticky notes in various colors",
+    );
+
+    expect(hints.stickyCreateRequest).toBe(true);
+    expect(hints.variousColorsRequested).toBe(true);
+  });
 });

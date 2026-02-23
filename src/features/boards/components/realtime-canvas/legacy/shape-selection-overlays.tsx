@@ -21,6 +21,7 @@ type ShapeSelectionOverlaysProps = {
   objectWidth: number;
   renderedObjectColor: string;
   resolvedTheme: "light" | "dark";
+  isFrame: boolean;
   isSingleSelected: boolean;
   canEdit: boolean;
   lineEndpointOffsets: LineEndpointOffsets | null;
@@ -43,6 +44,7 @@ export function ShapeSelectionOverlays({
   objectWidth,
   renderedObjectColor,
   resolvedTheme,
+  isFrame,
   isSingleSelected,
   canEdit,
   lineEndpointOffsets,
@@ -57,20 +59,27 @@ export function ShapeSelectionOverlays({
           style={{
             position: "absolute",
             left: "50%",
-            top: objectItem.type === "triangle" ? "66%" : "50%",
-            transform: "translate(-50%, -50%)",
+            top: isFrame ? 0 : objectItem.type === "triangle" ? "66%" : "50%",
+            transform: isFrame ? "translate(-50%, -140%)" : "translate(-50%, -50%)",
             maxWidth:
-              objectItem.type === "line"
+              isFrame
+                ? Math.max(120, objectWidth - 18)
+                : objectItem.type === "line"
                 ? Math.max(120, objectWidth - 24)
                 : objectItem.type === "triangle"
                   ? Math.max(96, objectWidth * 0.74)
                   : Math.max(76, objectWidth - 18),
-            padding: objectItem.type === "line" ? "0.2rem 0.45rem" : "0.1rem 0.2rem",
-            borderRadius: objectItem.type === "line" ? 8 : 6,
-            border: objectItem.type === "line" ? "1px solid var(--border)" : "none",
-            background: objectItem.type === "line" ? "var(--surface)" : "transparent",
+            padding: isFrame || objectItem.type === "line" ? "0.2rem 0.45rem" : "0.1rem 0.2rem",
+            borderRadius: isFrame || objectItem.type === "line" ? 8 : 6,
+            border:
+              isFrame || objectItem.type === "line"
+                ? "1px solid var(--border)"
+                : "none",
+            background: isFrame || objectItem.type === "line" ? "var(--surface)" : "transparent",
             color:
-              objectItem.type === "line"
+              isFrame
+                ? "var(--text)"
+                : objectItem.type === "line"
                 ? "var(--text)"
                 : getReadableTextColor(renderedObjectColor),
             fontSize: 12,
@@ -78,7 +87,7 @@ export function ShapeSelectionOverlays({
             lineHeight: 1.25,
             textAlign: "center",
             textShadow:
-              objectItem.type === "line"
+              isFrame || objectItem.type === "line"
                 ? "none"
                 : resolvedTheme === "dark"
                   ? "0 1px 2px rgba(2,6,23,0.55)"

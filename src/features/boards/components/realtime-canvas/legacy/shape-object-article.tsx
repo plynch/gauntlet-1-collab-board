@@ -112,21 +112,28 @@ export function ShapeObjectArticle({
   queueGridContentSync,
   saveGridContainerCellColors,
 }: ShapeObjectArticleProps) {
+  const isFreeFrame =
+    objectItem.type === "rect" && objectItem.containerTitle === "__frame__";
+
   return (
     <article
       data-board-object="true"
-      onPointerDown={(event) => {
-        event.stopPropagation();
-        if (event.shiftKey) {
-          toggleObjectSelection(objectItem.id);
-          return;
-        }
+      onPointerDown={
+        isFreeFrame
+          ? undefined
+          : (event) => {
+              event.stopPropagation();
+              if (event.shiftKey) {
+                toggleObjectSelection(objectItem.id);
+                return;
+              }
 
-        if (shouldPreserveGroupSelection(objectItem.id)) {
-          return;
-        }
-        selectSingleObject(objectItem.id);
-      }}
+              if (shouldPreserveGroupSelection(objectItem.id)) {
+                return;
+              }
+              selectSingleObject(objectItem.id);
+            }
+      }
       style={{
         position: "absolute",
         left: objectX,
@@ -152,13 +159,16 @@ export function ShapeObjectArticle({
             ? "none"
             : `rotate(${objectRotationDeg}deg)`,
         transformOrigin: "center center",
+        pointerEvents: isFreeFrame ? "none" : "auto",
         transition: hasDraftGeometry
           ? "none"
           : "left 55ms linear, top 55ms linear, width 55ms linear, height 55ms linear, transform 55ms linear",
       }}
     >
       <div
-        onPointerDown={(event) => startObjectDrag(objectItem.id, event)}
+        onPointerDown={
+          isFreeFrame ? undefined : (event) => startObjectDrag(objectItem.id, event)
+        }
         style={{
           width: "100%",
           height: "100%",
@@ -184,9 +194,37 @@ export function ShapeObjectArticle({
             objectItem.type === "line" || isPolygonShape || isGridContainer
               ? "none"
               : "0 3px 10px rgba(0,0,0,0.08)",
+          pointerEvents: isFreeFrame ? "none" : "auto",
         }}
       >
-        {objectItem.type === "line" ? (
+        {isFreeFrame ? (
+          <svg
+            viewBox="0 0 100 100"
+            width="100%"
+            height="100%"
+            aria-hidden="true"
+            style={{ display: "block", overflow: "visible", pointerEvents: "auto" }}
+          >
+            <rect
+              x="1"
+              y="1"
+              width="98"
+              height="98"
+              fill="transparent"
+              stroke={renderedObjectColor}
+              strokeWidth="2"
+              vectorEffect="non-scaling-stroke"
+              pointerEvents="stroke"
+              style={{ cursor: canEdit ? (isObjectDragging ? "grabbing" : "grab") : "default" }}
+              onPointerDown={(event) =>
+                startObjectDrag(
+                  objectItem.id,
+                  event as unknown as ReactPointerEvent<HTMLElement>,
+                )
+              }
+            />
+          </svg>
+        ) : objectItem.type === "line" ? (
           <div
             style={{
               width: "100%",
@@ -245,6 +283,7 @@ export function ShapeObjectArticle({
         objectWidth={objectWidth}
         renderedObjectColor={renderedObjectColor}
         resolvedTheme={resolvedTheme}
+        isFrame={isFreeFrame}
         isSingleSelected={isSingleSelected}
         canEdit={canEdit}
         lineEndpointOffsets={lineEndpointOffsets}

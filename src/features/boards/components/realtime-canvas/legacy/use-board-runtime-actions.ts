@@ -167,6 +167,8 @@ export function useBoardRuntimeActions({
         height: 320,
         color: "transparent",
         text: "",
+        background: true,
+        containerTitle: "__frame__",
       },
       canEdit,
       userId,

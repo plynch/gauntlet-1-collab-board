@@ -36,6 +36,8 @@ type CreateBoardObjectActionParams = {
     height?: number;
     color?: string;
     text?: string;
+    background?: boolean;
+    containerTitle?: string;
   };
   canEdit: boolean;
   userId: string;
@@ -112,7 +114,9 @@ export async function createBoardObjectAction({
     (minValue, objectItem) => Math.min(minValue, objectItem.zIndex),
     0,
   );
-  const nextZIndex = isBackgroundContainerType(objectKind)
+  const shouldPlaceInBackground =
+    options?.background ?? isBackgroundContainerType(objectKind);
+  const nextZIndex = shouldPlaceInBackground
     ? lowestZIndex - 1
     : highestZIndex + 1;
   const isConnector = isConnectorKind(objectKind);
@@ -163,6 +167,12 @@ export async function createBoardObjectAction({
         { length: defaultSectionTitles.length },
         () => "",
       );
+    }
+    if (
+      typeof options?.containerTitle === "string" &&
+      options.containerTitle.trim().length > 0
+    ) {
+      payload.containerTitle = options.containerTitle.trim().slice(0, 120);
     }
 
     if (connectorFrom && connectorTo) {

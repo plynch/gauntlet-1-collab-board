@@ -129,6 +129,7 @@ export async function createFrameTool(
     height: Math.max(120, args.height),
     color: "transparent",
     text: normalizedTitle,
+    containerTitle: "__frame__",
   });
 
   return { tool: "createFrame", objectId: created.id };

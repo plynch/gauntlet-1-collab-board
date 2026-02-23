@@ -185,6 +185,7 @@ describe("createBoardAgentTools", () => {
       messageIntentHints: {
         stickyCreateRequest: true,
         stickyColorHint: null,
+        variousColorsRequested: false,
         createRequest: true,
         requestedCreateCount: 30,
         stickyRequestedCount: 30,
@@ -254,6 +255,7 @@ describe("createBoardAgentTools", () => {
       messageIntentHints: {
         stickyCreateRequest: true,
         stickyColorHint: "#f9a8d4",
+        variousColorsRequested: false,
         createRequest: true,
         requestedCreateCount: 20,
         stickyRequestedCount: 20,

@@ -11,6 +11,7 @@ export type StickyLayoutHints = {
 export type OpenAiMessageIntentHints = {
   stickyCreateRequest: boolean;
   stickyColorHint: string | null;
+  variousColorsRequested: boolean;
   createRequest: boolean;
   requestedCreateCount: number | null;
   stickyRequestedCount: number | null;
@@ -47,6 +48,8 @@ const CREATE_COUNT_NOUN_PATTERN =
 const STICKY_NOUN_PATTERN = "stick(?:y|ies)|notes?";
 const SHAPE_NOUN_PATTERN =
   "rectangles?|rects?|circles?|lines?|triangles?|stars?|shapes?";
+const VARIOUS_COLORS_REGEX =
+  /\b(?:various|different|assorted|mixed|multiple)\s+colou?rs?\b|\brainbow\b|\bmulticolou?red\b/i;
 
 function toPositiveInteger(value: string): number | null {
   const parsed = Number.parseInt(value, 10);
@@ -198,6 +201,7 @@ export function parseMessageIntentHints(message: string): OpenAiMessageIntentHin
   const createLimitExceeded =
     typeof requestedCreateCount === "number" &&
     requestedCreateCount > MAX_AI_CREATED_OBJECTS_PER_COMMAND;
+  const variousColorsRequested = VARIOUS_COLORS_REGEX.test(normalized);
 
   return {
     stickyCreateRequest:
@@ -205,6 +209,7 @@ export function parseMessageIntentHints(message: string): OpenAiMessageIntentHin
       createVerbMentioned &&
       !destructiveOrEditVerbMentioned,
     stickyColorHint,
+    variousColorsRequested,
     createRequest,
     requestedCreateCount,
     stickyRequestedCount,

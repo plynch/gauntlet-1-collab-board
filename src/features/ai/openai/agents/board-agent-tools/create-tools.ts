@@ -1,10 +1,8 @@
 import { tool, type Tool } from "@openai/agents";
 import { z } from "zod";
 
-import { resolveStickyBatchLayout } from "@/features/ai/openai/agents/board-agent-tools/sticky-layout";
+import { executeCreateStickyBatchTool } from "@/features/ai/openai/agents/board-agent-tools/create-sticky-batch-executor";
 import {
-  DEFAULT_BATCH_GAP_X,
-  DEFAULT_BATCH_GAP_Y,
   DEFAULT_FRAME_HEIGHT,
   DEFAULT_FRAME_TITLE,
   DEFAULT_FRAME_WIDTH,
@@ -19,7 +17,6 @@ import {
   type BoardAgentToolBuildContext,
   ensureObjectIds,
   getToolDescription,
-  toBoundedInt,
 } from "@/features/ai/openai/agents/board-agent-tools/shared";
 
 export function buildCreateTools(context: BoardAgentToolBuildContext): Tool[] {
@@ -123,47 +120,7 @@ export function buildCreateTools(context: BoardAgentToolBuildContext): Tool[] {
         gapY: z.number().min(0).max(400).nullable(),
         textPrefix: z.string().max(1_000).nullable(),
       }),
-      execute: async (args) => {
-        const count = toBoundedInt(args.count, 1, 1, 50);
-        const resolvedLayout = resolveStickyBatchLayout({
-          count,
-          args: {
-            originX: args.originX,
-            originY: args.originY,
-            columns: args.columns,
-            gapX: args.gapX,
-            gapY: args.gapY,
-          },
-          viewportBounds: context.options.viewportBounds,
-          defaultPoint: context.defaultPoint,
-          explicitCoordinateHints: context.explicitCoordinateHints,
-          messageIntentHints: context.options.messageIntentHints,
-        });
-        return context.executeToolCallWithGuardrails(
-          {
-            tool: "createStickyBatch",
-            args: {
-              count,
-              color:
-                context.options.messageIntentHints?.stickyColorHint ??
-                args.color ??
-                DEFAULT_STICKY_COLOR,
-              originX: resolvedLayout.originX,
-              originY: resolvedLayout.originY,
-              columns: resolvedLayout.columns,
-              gapX: resolvedLayout.gapX ?? DEFAULT_BATCH_GAP_X,
-              gapY: resolvedLayout.gapY ?? DEFAULT_BATCH_GAP_Y,
-              textPrefix: args.textPrefix ?? undefined,
-            },
-          },
-          {
-            layoutMode: resolvedLayout.layoutMode,
-            resolvedColumns: resolvedLayout.columns,
-            resolvedGapX: resolvedLayout.gapX,
-            resolvedGapY: resolvedLayout.gapY,
-          },
-        );
-      },
+      execute: async (args) => executeCreateStickyBatchTool(context, args),
     }),
     tool({
       name: "createShape",

@@ -92,6 +92,7 @@ const OPENAI_AGENTS_SYSTEM_PROMPT = [
   "When user asks to create/add sticky notes, you must create new stickies via createStickyNote or createStickyBatch.",
   "Do not satisfy create-sticky requests by mutating existing selected objects.",
   "For multi-clause create requests (e.g. create 5 pink ... create 5 blue ...), execute each clause as its own batch with its own color/count.",
+  "For sticky requests that explicitly ask for various/mixed/assorted colors, generate a multi-color result instead of a single-color batch.",
   "Never create more than 50 objects from one command.",
   "If user asks to create more than 50 objects, return planned=false and explain the 50-object limit.",
   "When user provides explicit coordinates, preserve them in tool arguments.",

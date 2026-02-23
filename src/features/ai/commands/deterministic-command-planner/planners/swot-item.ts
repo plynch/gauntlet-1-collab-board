@@ -14,6 +14,8 @@ import {
   SWOT_SECTION_CONTENT_PADDING_X,
   SWOT_SECTION_CONTENT_TOP_PADDING,
   SWOT_SECTION_DEFAULT_INDEX,
+  SWOT_SECTION_INITIAL_OFFSET_X,
+  SWOT_SECTION_INITIAL_OFFSET_Y,
   SWOT_SECTION_ITEM_GAP_X,
   SWOT_SECTION_ITEM_GAP_Y,
   SWOT_SECTION_KEYS,
@@ -119,14 +121,11 @@ function getNextSwotStickyTopLeft(options: {
     ),
   );
   const slotIndex = existingStickiesInSection.length;
+  const baseX = contentBounds.left + SWOT_SECTION_INITIAL_OFFSET_X;
+  const baseY = contentBounds.top + SWOT_SECTION_INITIAL_OFFSET_Y;
   const preferredTopLeft = {
-    x:
-      contentBounds.left +
-      (slotIndex % columns) * (options.stickySize.width + SWOT_SECTION_ITEM_GAP_X),
-    y:
-      contentBounds.top +
-      Math.floor(slotIndex / columns) *
-        (options.stickySize.height + SWOT_SECTION_ITEM_GAP_Y),
+    x: baseX + (slotIndex % columns) * (options.stickySize.width + SWOT_SECTION_ITEM_GAP_X),
+    y: baseY + Math.floor(slotIndex / columns) * (options.stickySize.height + SWOT_SECTION_ITEM_GAP_Y),
   };
   return clampObjectTopLeftToSection(contentBounds, options.stickySize, preferredTopLeft);
 }

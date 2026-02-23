@@ -1,5 +1,4 @@
 import { URL } from "node:url";
-
 import {
   buildClearBoardAssistantMessage,
   buildDeterministicBoardCommandResponse,
@@ -13,6 +12,7 @@ import { getOpenAiPlannerConfig } from "@/features/ai/openai/openai-client";
 import { getOpenAiRequiredErrorResponse } from "@/features/ai/openai/openai-required-response";
 import { shouldExecuteDeterministicPlan } from "@/features/ai/server/board-command-deterministic-policy";
 import { attemptOpenAiPlanner } from "@/features/ai/server/board-command-openai-attempt";
+import { applyViewportBoundsToSideMoveOperations } from "@/features/ai/server/board-command-plan-normalize";
 import { buildOpenAiExecutionSummary, isOpenAiRequiredForStubCommands } from "@/features/ai/server/board-command-openai-types";
 import { buildOutcomeAssistantMessageFromExecution } from "@/features/ai/server/board-command-plan-trace";
 import { deleteBoardObjectsById, executePlanWithTracing, listAllBoardObjectIds, writeAiAuditLogIfEnabled } from "@/features/ai/server/board-command-plan-executor";
@@ -20,7 +20,6 @@ import { createHttpError, getErrorReason, getInternalMcpToken } from "@/features
 import { BoardToolExecutor } from "@/features/ai/tools/board-tools";
 import type { BoardToolCall, TemplatePlan, ViewportBounds } from "@/features/ai/types";
 import type { createAiTraceRun } from "@/features/ai/observability/trace-run";
-
 type PlannerResult = {
   planned: boolean;
   intent: string;
@@ -31,7 +30,6 @@ type PlannerResult = {
     objectIds: string[];
   };
 };
-
 type EditableFlowParams = {
   boardId: string;
   message: string;
@@ -42,7 +40,6 @@ type EditableFlowParams = {
   traceId: string;
   trace: ReturnType<typeof createAiTraceRun>;
 };
-
 export async function runEditableBoardCommandFlow(
   params: EditableFlowParams,
 ) {
@@ -227,17 +224,21 @@ export async function runEditableBoardCommandFlow(
     if (!executionPlan) {
       throw createHttpError(500, "Planner returned no execution plan.");
     }
-    const validation = validateTemplatePlan(executionPlan);
+    const normalizedExecutionPlan = applyViewportBoundsToSideMoveOperations(
+      executionPlan,
+      params.viewportBounds ?? null,
+    );
+    const validation = validateTemplatePlan(normalizedExecutionPlan);
     if (!validation.ok) {
       throw createHttpError(validation.status, validation.error);
     }
     executionResult = await executePlanWithTracing({
       executor,
       trace: params.trace,
-      operations: executionPlan.operations,
+      operations: normalizedExecutionPlan.operations,
     });
-    executedOperations = executionPlan.operations;
-    executedOperationCount = executionPlan.operations.length;
+    executedOperations = normalizedExecutionPlan.operations;
+    executedOperationCount = normalizedExecutionPlan.operations.length;
   }
 
   const commitSpan = params.trace.startSpan("board.write.commit", { operationCount: executedOperationCount });

@@ -175,15 +175,16 @@ export function StageSurface(props: StageSurfaceProps) {
   return (
     <div
       ref={stageRef}
-        onPointerDown={handleStagePointerDown}
-        onPointerMove={handleStagePointerMove}
-        onPointerLeave={handleStagePointerLeave}
-        onWheelCapture={(event) => {
-          onWheelCapture?.(event);
-        }}
-        onWheel={handleWheel}
-        onContextMenu={(event) => event.preventDefault()}
-        style={{
+      data-board-stage-surface="1"
+      onPointerDown={handleStagePointerDown}
+      onPointerMove={handleStagePointerMove}
+      onPointerLeave={handleStagePointerLeave}
+      onWheelCapture={(event) => {
+        onWheelCapture?.(event);
+      }}
+      onWheel={handleWheel}
+      onContextMenu={(event) => event.preventDefault()}
+      style={{
         position: "relative",
         width: "100%",
         height: "100%",

@@ -103,7 +103,9 @@ export function useAiCommandSubmit({
       try {
         const idToken = idTokenRef.current ?? (await user.getIdToken());
         idTokenRef.current = idToken;
-        const stageElement = stageRef.current;
+        const stageElement =
+          stageRef.current ??
+          (document.querySelector('[data-board-stage-surface="1"]') as HTMLDivElement | null);
         const viewportBounds = stageElement
           ? {
               left: -viewportRef.current.x / viewportRef.current.scale,

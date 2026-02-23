@@ -103,5 +103,7 @@ export const SWOT_SECTION_STICKY_COLORS: Record<SwotSectionKey, string> = {
 export const SWOT_SECTION_CONTENT_PADDING_X = 16;
 export const SWOT_SECTION_CONTENT_PADDING_BOTTOM = 16;
 export const SWOT_SECTION_CONTENT_TOP_PADDING = 44;
+export const SWOT_SECTION_INITIAL_OFFSET_X = 20;
+export const SWOT_SECTION_INITIAL_OFFSET_Y = 8;
 export const SWOT_SECTION_ITEM_GAP_X = 16;
 export const SWOT_SECTION_ITEM_GAP_Y = 16;

@@ -122,18 +122,13 @@ export async function createFrameTool(
 ): Promise<ExecuteToolResultLike> {
   const normalizedTitle = args.title.trim().slice(0, 200) || "Frame";
   const created = await context.createObject({
-    type: "gridContainer",
+    type: "rect",
     x: args.x,
     y: args.y,
     width: Math.max(180, args.width),
     height: Math.max(120, args.height),
     color: "#e2e8f0",
-    gridRows: 1,
-    gridCols: 1,
-    gridGap: GRID_DEFAULT_GAP,
-    containerTitle: normalizedTitle,
-    gridSectionTitles: ["Items"],
-    gridSectionNotes: [""],
+    text: normalizedTitle,
   });
 
   return { tool: "createFrame", objectId: created.id };

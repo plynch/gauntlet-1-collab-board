@@ -127,22 +127,6 @@ export function TextObjectArticle({
           : "left 55ms linear, top 55ms linear, width 55ms linear, height 55ms linear, transform 55ms linear",
       }}
     >
-      <div
-        onPointerDown={(event) => startObjectDrag(objectItem.id, event)}
-        style={{
-          height: 20,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          cursor: canEdit ? (isObjectDragging ? "grabbing" : "grab") : "default",
-          color: "var(--text-muted)",
-          fontSize: 11,
-          letterSpacing: "0.03em",
-          userSelect: "none",
-        }}
-      >
-        TEXT
-      </div>
       <textarea
         value={objectText}
         onPointerDown={(event) => {
@@ -202,10 +186,10 @@ export function TextObjectArticle({
         readOnly={!canEdit}
         style={{
           width: "100%",
-          height: objectHeight - 20,
+          height: objectHeight,
           border: "none",
           resize: "none",
-          padding: "0.2rem 0.35rem",
+          padding: "0.35rem 0.45rem",
           background: "transparent",
           color: renderedObjectColor,
           fontSize: 18,

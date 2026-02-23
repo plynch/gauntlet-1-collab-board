@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable react-hooks/refs */
 
 import {
   useCallback,
@@ -12,7 +13,6 @@ import {
   doc,
   serverTimestamp,
   setDoc,
-  writeBatch,
 } from "firebase/firestore";
 
 import type {
@@ -24,7 +24,6 @@ import {
   AI_WELCOME_MESSAGE,
 } from "@/features/boards/components/realtime-canvas/ai-chat-content";
 import {
-  canUseSelectionHudColor,
   isConnectorKind,
 } from "@/features/boards/components/realtime-canvas/board-object-helpers";
 import { hashToColor } from "@/features/boards/components/realtime-canvas/board-doc-parsers";
@@ -32,10 +31,8 @@ import {
   AI_FOOTER_DEFAULT_HEIGHT,
   clampAiFooterHeight,
 } from "@/features/boards/components/realtime-canvas/ai-footer-config";
-import { toBoardErrorMessage } from "@/features/boards/components/realtime-canvas/board-error";
 import {
   getDistance,
-  hasMeaningfulRotation,
   roundToStep,
   toNormalizedRect,
   toWritePoint,
@@ -111,6 +108,7 @@ import { useStickyTextSync } from "@/features/boards/components/realtime-canvas/
 import { createSwotTemplateAction } from "@/features/boards/components/realtime-canvas/legacy/swot-template-action";
 import { useDraftGeometryAndConnectors } from "@/features/boards/components/realtime-canvas/legacy/use-draft-geometry-and-connectors";
 import { useResizeGeometry } from "@/features/boards/components/realtime-canvas/legacy/use-resize-geometry";
+import { useSelectionStyleActions } from "@/features/boards/components/realtime-canvas/legacy/use-selection-style-actions";
 
 export default function RealtimeBoardCanvas({
   boardId,
@@ -572,140 +570,25 @@ export default function RealtimeBoardCanvas({
     setBoardError,
   });
 
-  const saveSelectedObjectsColor = useCallback(
-    async (color: string) => {
-      if (!canEditRef.current) {
-        return;
-      }
-
-      const objectIdsToUpdate = Array.from(selectedObjectIdsRef.current).filter(
-        (objectId) => {
-          const objectItem = objectsByIdRef.current.get(objectId);
-          return objectItem ? canUseSelectionHudColor(objectItem) : false;
-        },
-      );
-      if (objectIdsToUpdate.length === 0) {
-        return;
-      }
-
-      try {
-        const batch = writeBatch(db);
-        const updatedAt = serverTimestamp();
-
-        objectIdsToUpdate.forEach((objectId) => {
-          batch.update(doc(db, `boards/${boardId}/objects/${objectId}`), {
-            color,
-            updatedAt,
-          });
-        });
-
-        await batch.commit();
-      } catch (error) {
-        console.error("Failed to update selected object colors", error);
-        setBoardError(
-          toBoardErrorMessage(
-            error,
-            "Failed to update selected object colors.",
-          ),
-        );
-      }
-    },
-    [boardId, db],
-  );
-
-  const resetSelectedObjectsRotation = useCallback(async () => {
-    if (!canEditRef.current) {
-      return;
-    }
-
-    const targets = Array.from(selectedObjectIdsRef.current)
-      .map((objectId) => {
-        const geometry = getCurrentObjectGeometry(objectId);
-        if (!geometry) {
-          return null;
-        }
-
-        return { objectId, geometry };
-      })
-      .filter(
-        (
-          item,
-        ): item is {
-          objectId: string;
-          geometry: ObjectGeometry;
-        } => item !== null,
-      )
-      .filter((item) => hasMeaningfulRotation(item.geometry.rotationDeg));
-
-    if (targets.length === 0) {
-      return;
-    }
-
-    rotateStateRef.current = null;
-
-    targets.forEach((target) => {
-      setDraftGeometry(target.objectId, {
-        ...target.geometry,
-        rotationDeg: 0,
-      });
-    });
-
-    try {
-      const batch = writeBatch(db);
-      const updatedAt = serverTimestamp();
-
-      targets.forEach((target) => {
-        batch.update(doc(db, `boards/${boardId}/objects/${target.objectId}`), {
-          x: target.geometry.x,
-          y: target.geometry.y,
-          width: target.geometry.width,
-          height: target.geometry.height,
-          rotationDeg: 0,
-          updatedAt,
-        });
-      });
-
-      await batch.commit();
-    } catch (error) {
-      console.error("Failed to reset selected object rotation", error);
-      setBoardError(
-        toBoardErrorMessage(error, "Failed to reset selected object rotation."),
-      );
-    } finally {
-      targets.forEach((target) => {
-        window.setTimeout(() => {
-          clearDraftGeometry(target.objectId);
-        }, 180);
-      });
-    }
-  }, [
+  const {
+    saveSelectedObjectsColor,
+    resetSelectedObjectsRotation,
+    selectSingleObject,
+    toggleObjectSelection,
+    shouldPreserveGroupSelection,
+  } = useSelectionStyleActions({
     boardId,
-    clearDraftGeometry,
     db,
+    canEditRef,
+    selectedObjectIdsRef,
+    objectsByIdRef,
+    rotateStateRef,
     getCurrentObjectGeometry,
     setDraftGeometry,
-  ]);
-
-  const selectSingleObject = useCallback((objectId: string) => {
-    setSelectedObjectIds((previous) =>
-      previous.length === 1 && previous[0] === objectId ? previous : [objectId],
-    );
-  }, []);
-
-  const toggleObjectSelection = useCallback((objectId: string) => {
-    setSelectedObjectIds((previous) => {
-      if (previous.includes(objectId)) {
-        return previous.filter((id) => id !== objectId);
-      }
-
-      return [...previous, objectId];
-    });
-  }, []);
-
-  const shouldPreserveGroupSelection = useCallback((objectId: string) => {
-    const currentSelectedIds = selectedObjectIdsRef.current;
-    return currentSelectedIds.size > 1 && currentSelectedIds.has(objectId);
-  }, []);
+    clearDraftGeometry,
+    setSelectedObjectIds,
+    setBoardError,
+  });
 
   const {
     handleDeleteButtonClick,

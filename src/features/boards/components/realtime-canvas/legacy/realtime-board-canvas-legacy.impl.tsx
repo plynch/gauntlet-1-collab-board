@@ -2,7 +2,6 @@
 
 import {
   useCallback,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -36,7 +35,6 @@ import {
   isBackgroundContainerType,
   isConnectableShapeKind,
   isConnectorKind,
-  isLabelEditableObjectType,
   LINE_MIN_LENGTH,
 } from "@/features/boards/components/realtime-canvas/board-object-helpers";
 import { hashToColor } from "@/features/boards/components/realtime-canvas/board-doc-parsers";
@@ -115,7 +113,6 @@ import type {
   StickyTextSyncState,
   ViewportState,
 } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-types";
-import { useBoardSelectionAndConnectors } from "@/features/boards/components/realtime-canvas/legacy/use-board-selection-and-connectors";
 import { useFpsMeter } from "@/features/boards/components/realtime-canvas/legacy/use-fps-meter";
 import { useObjectTemplateActions } from "@/features/boards/components/realtime-canvas/legacy/use-object-template-actions";
 import { useBoardSelectionActions } from "@/features/boards/components/realtime-canvas/legacy/use-board-selection-actions";
@@ -133,7 +130,6 @@ import {
   normalizeSectionValues,
 } from "@/features/boards/components/realtime-canvas/grid-section-utils";
 import { useBoardAssistantActions } from "@/features/boards/components/realtime-canvas/legacy/use-board-assistant-actions";
-import { calculateSelectionHudPosition } from "@/features/boards/components/realtime-canvas/selection-hud-layout";
 import {
   areContainerMembershipPatchesEqual,
   getMembershipPatchFromObject,
@@ -160,7 +156,8 @@ import { useTheme } from "@/features/theme/use-theme";
 import { getFirebaseClientDb } from "@/lib/firebase/client";
 import { useRealtimeBoardCanvasRuntimeSync } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-runtime-sync";
 import { useGridAxisLabels } from "@/features/boards/components/realtime-canvas/legacy/use-grid-axis-labels";
-import { useSelectionHudSizeSync } from "@/features/boards/components/realtime-canvas/legacy/use-selection-hud-size-sync";
+import { useSelectionUiState } from "@/features/boards/components/realtime-canvas/legacy/use-selection-ui-state";
+import { useStickyTextSync } from "@/features/boards/components/realtime-canvas/legacy/use-sticky-text-sync";
 
 export default function RealtimeBoardCanvas({
   boardId,
@@ -1510,161 +1507,16 @@ export default function RealtimeBoardCanvas({
     [boardId, canEdit, clearDraftConnector, db],
   );
 
-  const saveStickyText = useCallback(
-    async (objectId: string, nextText: string) => {
-      const writeMetrics = writeMetricsRef.current;
-      writeMetrics.markAttempted("sticky-text");
-
-      if (!canEditRef.current) {
-        writeMetrics.markSkipped("sticky-text");
-        return;
-      }
-
-      try {
-        const normalizedText = nextText.slice(0, 1_000);
-        const lastWrittenText = lastStickyWriteByIdRef.current.get(objectId);
-        if (lastWrittenText === normalizedText) {
-          writeMetrics.markSkipped("sticky-text");
-          return;
-        }
-
-        const objectItem = objectsByIdRef.current.get(objectId);
-        if (objectItem && objectItem.text === normalizedText) {
-          lastStickyWriteByIdRef.current.set(objectId, normalizedText);
-          writeMetrics.markSkipped("sticky-text");
-          return;
-        }
-
-        await updateDoc(doc(db, `boards/${boardId}/objects/${objectId}`), {
-          text: normalizedText,
-          updatedAt: serverTimestamp(),
-        });
-        lastStickyWriteByIdRef.current.set(objectId, normalizedText);
-        const syncState = stickyTextSyncStateRef.current.get(objectId);
-        if (syncState) {
-          syncState.lastSentText = normalizedText;
-        }
-        writeMetrics.markCommitted("sticky-text");
-      } catch (error) {
-        console.error("Failed to update sticky text", error);
-        setBoardError(
-          toBoardErrorMessage(error, "Failed to update sticky text."),
-        );
-      }
-    },
-    [boardId, db],
-  );
-
-  const flushStickyTextSync = useCallback(
-    (objectId: string) => {
-      const syncState = stickyTextSyncStateRef.current.get(objectId);
-      if (!syncState) {
-        return;
-      }
-
-      if (syncState.timerId !== null) {
-        window.clearTimeout(syncState.timerId);
-        syncState.timerId = null;
-      }
-
-      const pendingText = syncState.pendingText;
-      if (pendingText === null) {
-        return;
-      }
-
-      syncState.pendingText = null;
-      syncState.lastSentAt = Date.now();
-      void saveStickyText(objectId, pendingText);
-    },
-    [saveStickyText],
-  );
-
-  const queueStickyTextSync = useCallback(
-    (objectId: string, nextText: string) => {
-      if (!canEditRef.current) {
-        return;
-      }
-
-      const normalizedText = nextText.slice(0, 1_000);
-      const syncStates = stickyTextSyncStateRef.current;
-      let syncState = syncStates.get(objectId);
-
-      if (!syncState) {
-        const objectItem = objectsByIdRef.current.get(objectId);
-        syncState = {
-          pendingText: null,
-          lastSentAt: 0,
-          lastSentText:
-            lastStickyWriteByIdRef.current.get(objectId) ??
-            objectItem?.text ??
-            null,
-          timerId: null,
-        };
-        syncStates.set(objectId, syncState);
-      }
-
-      const objectItem = objectsByIdRef.current.get(objectId);
-      const lastSavedText =
-        syncState.lastSentText ??
-        lastStickyWriteByIdRef.current.get(objectId) ??
-        null;
-      if (
-        normalizedText === lastSavedText ||
-        (objectItem && objectItem.text === normalizedText)
-      ) {
-        syncState.pendingText = null;
-        if (syncState.timerId !== null) {
-          window.clearTimeout(syncState.timerId);
-          syncState.timerId = null;
-        }
-        return;
-      }
-
-      syncState.pendingText = normalizedText;
-
-      const now = Date.now();
-      const elapsed = now - syncState.lastSentAt;
-
-      if (elapsed >= STICKY_TEXT_SYNC_THROTTLE_MS) {
-        if (syncState.timerId !== null) {
-          window.clearTimeout(syncState.timerId);
-          syncState.timerId = null;
-        }
-
-        syncState.lastSentAt = now;
-        const pendingText = syncState.pendingText;
-        syncState.pendingText = null;
-
-        if (pendingText !== null) {
-          void saveStickyText(objectId, pendingText);
-        }
-        return;
-      }
-
-      const delay = STICKY_TEXT_SYNC_THROTTLE_MS - elapsed;
-      if (syncState.timerId !== null) {
-        window.clearTimeout(syncState.timerId);
-      }
-
-      syncState.timerId = window.setTimeout(() => {
-        const latestSyncState = stickyTextSyncStateRef.current.get(objectId);
-        if (!latestSyncState) {
-          return;
-        }
-
-        latestSyncState.timerId = null;
-        const pendingText = latestSyncState.pendingText;
-        if (pendingText === null) {
-          return;
-        }
-
-        latestSyncState.pendingText = null;
-        latestSyncState.lastSentAt = Date.now();
-        void saveStickyText(objectId, pendingText);
-      }, delay);
-    },
-    [saveStickyText],
-  );
+  const { flushStickyTextSync, queueStickyTextSync } = useStickyTextSync({
+    boardId,
+    db,
+    canEditRef,
+    objectsByIdRef,
+    lastStickyWriteByIdRef,
+    stickyTextSyncStateRef,
+    writeMetricsRef,
+    setBoardError,
+  });
 
   const buildGridDraft = useCallback(
     (objectItem: BoardObject): GridContainerContentDraft => {
@@ -2209,110 +2061,39 @@ export default function RealtimeBoardCanvas({
     () => getRemoteCursors(onlineUsers, user.uid),
     [onlineUsers, user.uid],
   );
+  const activeEndpointDrag = connectorEndpointDragStateRef.current;
+  const isConnectorEndpointDragging = activeEndpointDrag !== null;
 
-  const selectedObjectCount = selectedObjectIds.length;
   const {
+    selectedObjectCount,
     connectorRoutesById,
-    selectedObjects,
-    selectedObjectBounds,
-    selectedConnectorMidpoint,
-    selectedColorableObjects,
     selectedColor,
-  } = useBoardSelectionAndConnectors({
+    canColorSelection,
+    canResetSelectionRotation,
+    singleSelectedObject,
+    canEditSelectedLabel,
+    canShowSelectionHud,
+    commitSelectionLabelDraft,
+    selectionHudPosition,
+    hasDeletableSelection,
+    shouldShowConnectorAnchors,
+    connectorAnchorPoints,
+  } = useSelectionUiState({
+    canEdit,
     objects,
     draftGeometryById,
     draftConnectorById,
     selectedObjectIds,
     stageSize,
     viewport,
-    activeEndpointDrag: connectorEndpointDragStateRef.current,
-  });
-  const canColorSelection = canEdit && selectedColorableObjects.length > 0;
-  const canResetSelectionRotation =
-    canEdit &&
-    selectedObjects.some((selectedObject) =>
-      hasMeaningfulRotation(selectedObject.geometry.rotationDeg),
-    );
-  const singleSelectedObject =
-    selectedObjects.length === 1 ? (selectedObjects[0]?.object ?? null) : null;
-  const canEditSelectedLabel =
-    canEdit &&
-    singleSelectedObject !== null &&
-    isLabelEditableObjectType(singleSelectedObject.type);
-  const canShowSelectionHud = canColorSelection || canEditSelectedLabel;
-  const commitSelectionLabelDraft = useCallback(async () => {
-    if (!canEditSelectedLabel || !singleSelectedObject) {
-      return;
-    }
-
-    const trimmed = selectionLabelDraft.trim();
-    const nextText =
-      trimmed.length === 0 ? "" : trimmed.slice(0, OBJECT_LABEL_MAX_LENGTH);
-    setSelectionLabelDraft(nextText);
-    await persistObjectLabelText(singleSelectedObject.id, nextText);
-  }, [
-    canEditSelectedLabel,
-    persistObjectLabelText,
+    activeEndpointDrag,
+    isConnectorEndpointDragging,
+    getConnectableAnchorPoints,
     selectionLabelDraft,
-    singleSelectedObject,
-  ]);
-  const preferSidePlacement =
-    singleSelectedObject !== null &&
-    singleSelectedObject.type !== "line" &&
-    !isConnectorKind(singleSelectedObject.type);
-  const selectionHudPosition = useMemo(() => {
-    return calculateSelectionHudPosition({
-      canShowHud: canShowSelectionHud,
-      selectedObjectBounds,
-      stageSize,
-      viewport,
-      selectionHudSize,
-      selectedConnectorMidpoint,
-      preferSidePlacement,
-    });
-  }, [
-    canShowSelectionHud,
-    preferSidePlacement,
-    selectedConnectorMidpoint,
-    selectedObjectBounds,
+    setSelectionLabelDraft,
+    persistObjectLabelText,
+    objectLabelMaxLength: OBJECT_LABEL_MAX_LENGTH,
     selectionHudSize,
-    stageSize,
-    viewport,
-  ]);
-  useEffect(() => {
-    if (!canEditSelectedLabel || !singleSelectedObject) {
-      setSelectionLabelDraft("");
-      return;
-    }
-
-    setSelectionLabelDraft(singleSelectedObject.text ?? "");
-  }, [canEditSelectedLabel, singleSelectedObject]);
-
-  const hasDeletableSelection = useMemo(
-    () =>
-      canEdit &&
-      selectedObjectIds.length > 0 &&
-      objects.some((item) => selectedObjectIds.includes(item.id)),
-    [canEdit, objects, selectedObjectIds],
-  );
-  const hasSelectedConnector = useMemo(
-    () =>
-      selectedObjectIds.some((objectId) => {
-        const item = objects.find((candidate) => candidate.id === objectId);
-        return item ? isConnectorKind(item.type) : false;
-      }),
-    [objects, selectedObjectIds],
-  );
-  const isConnectorEndpointDragging =
-    connectorEndpointDragStateRef.current !== null;
-  const shouldShowConnectorAnchors =
-    canEdit && (hasSelectedConnector || isConnectorEndpointDragging);
-  const connectorAnchorPoints = shouldShowConnectorAnchors
-    ? getConnectableAnchorPoints()
-    : [];
-
-  useSelectionHudSizeSync({
-    canShowSelectionHud,
     selectionHudRef,
     setSelectionHudSize,
   });

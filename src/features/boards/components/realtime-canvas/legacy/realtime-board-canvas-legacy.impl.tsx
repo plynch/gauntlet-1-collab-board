@@ -1,5 +1,4 @@
 "use client";
-/* eslint-disable react-hooks/refs */
 
 import {
   useCallback,
@@ -41,7 +40,6 @@ import {
   GRID_CONTAINER_MAX_ROWS,
   INITIAL_VIEWPORT,
   OBJECT_LABEL_MAX_LENGTH,
-  PRESENCE_TTL_MS,
 } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-config";
 import type {
   AiFooterResizeState,
@@ -73,9 +71,6 @@ import {
   useContainerMembership,
 } from "@/features/boards/components/realtime-canvas/use-container-membership";
 import {
-  getActivePresenceUsers,
-  getPresenceLabel,
-  getRemoteCursors,
   usePresenceClock,
 } from "@/features/boards/components/realtime-canvas/use-presence-sync";
 import {
@@ -94,7 +89,6 @@ import { useRealtimeBoardCanvasRuntimeSync } from "@/features/boards/components/
 import { useGridAxisLabels } from "@/features/boards/components/realtime-canvas/legacy/use-grid-axis-labels";
 import { useGridDimensionUpdates } from "@/features/boards/components/realtime-canvas/legacy/use-grid-dimension-updates";
 import { useSelectionGeometryActions } from "@/features/boards/components/realtime-canvas/legacy/use-selection-geometry-actions";
-import { useSelectionUiState } from "@/features/boards/components/realtime-canvas/legacy/use-selection-ui-state";
 import { useGridContentSync } from "@/features/boards/components/realtime-canvas/legacy/use-grid-content-sync";
 import { useObjectWriteActions } from "@/features/boards/components/realtime-canvas/legacy/use-object-write-actions";
 import { useStickyTextSync } from "@/features/boards/components/realtime-canvas/legacy/use-sticky-text-sync";
@@ -102,6 +96,7 @@ import { useDraftGeometryAndConnectors } from "@/features/boards/components/real
 import { useResizeGeometry } from "@/features/boards/components/realtime-canvas/legacy/use-resize-geometry";
 import { useSelectionStyleActions } from "@/features/boards/components/realtime-canvas/legacy/use-selection-style-actions";
 import { useBoardRuntimeActions } from "@/features/boards/components/realtime-canvas/legacy/use-board-runtime-actions";
+import { useCanvasSelectionViewState } from "@/features/boards/components/realtime-canvas/legacy/use-canvas-selection-view-state";
 
 export default function RealtimeBoardCanvas({
   boardId,
@@ -624,26 +619,10 @@ export default function RealtimeBoardCanvas({
     sendCursorAtRef,
   });
 
-  const onlineUsers = useMemo(
-    () =>
-      getActivePresenceUsers(
-        presenceUsers,
-        presenceClock,
-        PRESENCE_TTL_MS,
-      ).sort((left, right) =>
-        getPresenceLabel(left).localeCompare(getPresenceLabel(right)),
-      ),
-    [presenceClock, presenceUsers],
-  );
-
-  const remoteCursors = useMemo(
-    () => getRemoteCursors(onlineUsers, user.uid),
-    [onlineUsers, user.uid],
-  );
-  const activeEndpointDrag = connectorEndpointDragStateRef.current;
-  const isConnectorEndpointDragging = activeEndpointDrag !== null;
-
   const {
+    onlineUsers,
+    remoteCursors,
+    connectorEndpointDragObjectId,
     selectedObjectCount,
     connectorRoutesById,
     selectedColor,
@@ -657,7 +636,7 @@ export default function RealtimeBoardCanvas({
     hasDeletableSelection,
     shouldShowConnectorAnchors,
     connectorAnchorPoints,
-  } = useSelectionUiState({
+  } = useCanvasSelectionViewState({
     canEdit,
     objects,
     draftGeometryById,
@@ -665,16 +644,18 @@ export default function RealtimeBoardCanvas({
     selectedObjectIds,
     stageSize,
     viewport,
-    activeEndpointDrag,
-    isConnectorEndpointDragging,
+    connectorEndpointDragStateRef,
     getConnectableAnchorPoints,
     selectionLabelDraft,
     setSelectionLabelDraft,
     persistObjectLabelText,
-    objectLabelMaxLength: OBJECT_LABEL_MAX_LENGTH,
     selectionHudSize,
     selectionHudRef,
     setSelectionHudSize,
+    presenceUsers,
+    presenceClock,
+    userId: user.uid,
+    objectLabelMaxLength: OBJECT_LABEL_MAX_LENGTH,
   });
 
   const zoomPercent = Math.round(viewport.scale * 100);
@@ -741,8 +722,7 @@ export default function RealtimeBoardCanvas({
         selectedObjectIds,
         connectorRoutesById,
         resolvedTheme,
-        connectorEndpointDragObjectId:
-          connectorEndpointDragStateRef.current?.objectId ?? null,
+        connectorEndpointDragObjectId,
         shouldShowConnectorAnchors,
         connectorAnchorPoints,
         marqueeRect,

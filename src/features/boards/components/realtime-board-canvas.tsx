@@ -67,13 +67,10 @@ import {
   clampScale,
   CONNECTOR_ANCHORS,
   CONNECTOR_MIN_SEGMENT_SIZE,
-  CORNER_HANDLES,
   getAcceleratedWheelZoomDelta,
   getAnchorDirectionForGeometry,
   getAnchorPointForGeometry,
   getConnectorHitBounds,
-  getCornerCursor,
-  getCornerPositionStyle,
   getDistance,
   getLineEndpointOffsets,
   getLineEndpoints,
@@ -124,13 +121,11 @@ import {
   POSITION_WRITE_EPSILON,
   PRESENCE_HEARTBEAT_MS,
   PRESENCE_TTL_MS,
-  RESIZE_HANDLE_SIZE,
   RESIZE_THROTTLE_MS,
   RIGHT_PANEL_WIDTH,
   ROTATE_THROTTLE_MS,
   SELECTED_OBJECT_HALO,
   SNAP_TO_GRID_STORAGE_KEY,
-  STICKY_TEXT_HOLD_DRAG_DELAY_MS,
   STICKY_TEXT_SYNC_THROTTLE_MS,
   SWOT_SECTION_COLORS,
   SWOT_TEMPLATE_TITLE,
@@ -167,8 +162,10 @@ import { LeftToolsPanel } from "@/features/boards/components/realtime-canvas/leg
 import { RightPresencePanel } from "@/features/boards/components/realtime-canvas/legacy/right-presence-panel";
 import { SelectionHudPanel } from "@/features/boards/components/realtime-canvas/legacy/selection-hud-panel";
 import { ShapeSelectionOverlays } from "@/features/boards/components/realtime-canvas/legacy/shape-selection-overlays";
+import { StickyObjectArticle } from "@/features/boards/components/realtime-canvas/legacy/sticky-object-article";
 import { StageOverlays } from "@/features/boards/components/realtime-canvas/legacy/stage-overlays";
 import { StageAxisOverlay } from "@/features/boards/components/realtime-canvas/legacy/stage-axis-overlay";
+import { TextObjectArticle } from "@/features/boards/components/realtime-canvas/legacy/text-object-article";
 import {
   DEFAULT_SWOT_SECTION_TITLES,
   getDefaultSectionTitles,
@@ -4910,570 +4907,66 @@ export default function RealtimeBoardCanvas({
 
                 if (objectItem.type === "sticky") {
                   return (
-                    <article
+                    <StickyObjectArticle
                       key={objectItem.id}
-                      data-board-object="true"
-                      onPointerDown={(event) => {
-                        event.stopPropagation();
-                        if (event.shiftKey) {
-                          toggleObjectSelection(objectItem.id);
-                          return;
-                        }
-
-                        if (shouldPreserveGroupSelection(objectItem.id)) {
-                          return;
-                        }
-                        selectSingleObject(objectItem.id);
-                      }}
-                      style={{
-                        position: "absolute",
-                        left: objectX,
-                        top: objectY,
-                        width: objectWidth,
-                        height: objectHeight,
-                        zIndex: 0,
-                        isolation: "isolate",
-                        borderRadius: 10,
-                        border: isSelected
-                          ? "2px solid #2563eb"
-                          : resolvedTheme === "dark"
-                            ? "1px solid rgba(148, 163, 184, 0.45)"
-                            : "1px solid rgba(15, 23, 42, 0.28)",
-                        background: renderedObjectColor,
-                        boxShadow: isSelected
-                          ? SELECTED_OBJECT_HALO
-                          : "0 4px 12px rgba(0,0,0,0.08)",
-                        overflow: "visible",
-                        transform: `rotate(${objectRotationDeg}deg)`,
-                        transformOrigin: "center center",
-                        transition: hasDraftGeometry
-                          ? "none"
-                          : "left 55ms linear, top 55ms linear, width 55ms linear, height 55ms linear, transform 55ms linear",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          borderRadius: 8,
-                          overflow: "hidden",
-                        }}
-                      >
-                        <header
-                          onPointerDown={(event) =>
-                            startObjectDrag(objectItem.id, event)
-                          }
-                          style={{
-                            height: 28,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "flex-start",
-                            gap: "0.35rem",
-                            padding: "0 0.5rem",
-                            background: "rgba(0,0,0,0.08)",
-                            cursor: canEdit
-                              ? isObjectDragging
-                                ? "grabbing"
-                                : "grab"
-                              : "default",
-                          }}
-                        />
-
-                        <textarea
-                          value={objectText}
-                          onPointerDown={(event) => {
-                            event.stopPropagation();
-                            if (event.shiftKey) {
-                              toggleObjectSelection(objectItem.id);
-                              clearStickyTextHoldDrag();
-                              return;
-                            }
-
-                            if (!shouldPreserveGroupSelection(objectItem.id)) {
-                              selectSingleObject(objectItem.id);
-                            }
-
-                            if (!canEdit || event.button !== 0) {
-                              clearStickyTextHoldDrag();
-                              return;
-                            }
-
-                            clearStickyTextHoldDrag();
-                            const timerId = window.setTimeout(() => {
-                              const holdState = stickyTextHoldDragRef.current;
-                              if (
-                                !holdState ||
-                                holdState.objectId !== objectItem.id ||
-                                holdState.started
-                              ) {
-                                return;
-                              }
-
-                              stickyTextHoldDragRef.current = {
-                                ...holdState,
-                                started: true,
-                                timerId: null,
-                              };
-                              startObjectDrag(
-                                objectItem.id,
-                                {
-                                  button: 0,
-                                  shiftKey: false,
-                                  clientX: holdState.startClientX,
-                                  clientY: holdState.startClientY,
-                                  preventDefault: () => {},
-                                  stopPropagation: () => {},
-                                } as unknown as ReactPointerEvent<HTMLElement>,
-                              );
-                            }, STICKY_TEXT_HOLD_DRAG_DELAY_MS);
-
-                            stickyTextHoldDragRef.current = {
-                              objectId: objectItem.id,
-                              startClientX: event.clientX,
-                              startClientY: event.clientY,
-                              timerId,
-                              started: false,
-                            };
-                          }}
-                          onPointerMove={(event) => {
-                            const holdState = stickyTextHoldDragRef.current;
-                            if (
-                              !holdState ||
-                              holdState.objectId !== objectItem.id ||
-                              holdState.started
-                            ) {
-                              return;
-                            }
-
-                            if (!canEdit) {
-                              clearStickyTextHoldDrag();
-                              return;
-                            }
-
-                            const distance = Math.hypot(
-                              event.clientX - holdState.startClientX,
-                              event.clientY - holdState.startClientY,
-                            );
-                            if (distance < DRAG_CLICK_SLOP_PX) {
-                              return;
-                            }
-
-                            if (holdState.timerId !== null) {
-                              window.clearTimeout(holdState.timerId);
-                            }
-
-                            stickyTextHoldDragRef.current = {
-                              ...holdState,
-                              started: true,
-                              timerId: null,
-                            };
-                            event.preventDefault();
-                            startObjectDrag(
-                              objectItem.id,
-                              {
-                                button: 0,
-                                shiftKey: false,
-                                clientX: event.clientX,
-                                clientY: event.clientY,
-                                preventDefault: () => {},
-                                stopPropagation: () => {},
-                              } as unknown as ReactPointerEvent<HTMLElement>,
-                            );
-                          }}
-                          onPointerUp={() => {
-                            clearStickyTextHoldDrag();
-                          }}
-                          onPointerCancel={() => {
-                            clearStickyTextHoldDrag();
-                          }}
-                          onFocus={() => {
-                            if (!shouldPreserveGroupSelection(objectItem.id)) {
-                              selectSingleObject(objectItem.id);
-                            }
-                          }}
-                          onChange={(event) => {
-                            const nextText = event.target.value.slice(0, 1_000);
-                            setTextDrafts((previous) => ({
-                              ...previous,
-                              [objectItem.id]: nextText,
-                            }));
-                            queueStickyTextSync(objectItem.id, nextText);
-                          }}
-                          onBlur={(event) => {
-                            clearStickyTextHoldDrag();
-                            const nextText = event.target.value;
-                            setTextDrafts((previous) => {
-                              const next = { ...previous };
-                              delete next[objectItem.id];
-                              return next;
-                            });
-
-                            queueStickyTextSync(objectItem.id, nextText);
-                            flushStickyTextSync(objectItem.id);
-                          }}
-                          readOnly={!canEdit}
-                          style={{
-                            width: "100%",
-                            height: objectHeight - 28,
-                            border: "none",
-                            resize: "none",
-                            padding: "0.5rem",
-                            background: "transparent",
-                            color: objectTextColor,
-                            fontSize: 14,
-                            outline: "none",
-                            cursor: canEdit
-                              ? isObjectDragging
-                                ? "grabbing"
-                                : "grab"
-                              : "default",
-                          }}
-                        />
-                      </div>
-
-                      {isSingleSelected && canEdit ? (
-                        <div>
-                          {CORNER_HANDLES.map((corner) => (
-                            <button
-                              key={corner}
-                              type="button"
-                              onPointerDown={(event) =>
-                                startCornerResize(objectItem.id, corner, event)
-                              }
-                              style={{
-                                position: "absolute",
-                                ...getCornerPositionStyle(corner),
-                                width: RESIZE_HANDLE_SIZE,
-                                height: RESIZE_HANDLE_SIZE,
-                                border: "1px solid #1d4ed8",
-                                borderRadius: 2,
-                                background: "var(--surface)",
-                                cursor: getCornerCursor(corner),
-                              }}
-                              aria-label={`Resize ${corner} corner`}
-                            />
-                          ))}
-                        </div>
-                      ) : null}
-
-                      {isSingleSelected && canEdit ? (
-                        <>
-                          <div
-                            style={{
-                              position: "absolute",
-                              left: "50%",
-                              top: 0,
-                              width: 2,
-                              height: 16,
-                              background: "#93c5fd",
-                              transform: "translate(-50%, -102%)",
-                              pointerEvents: "none",
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onPointerDown={(event) =>
-                              startShapeRotate(objectItem.id, event)
-                            }
-                            aria-label="Rotate note"
-                            title="Drag to rotate note (hold Shift to snap)"
-                            style={{
-                              position: "absolute",
-                              left: "50%",
-                              top: 0,
-                              transform: "translate(-50%, -168%)",
-                              width: 14,
-                              height: 14,
-                              borderRadius: "50%",
-                              border: "1px solid #1d4ed8",
-                              background: "var(--surface)",
-                              boxShadow: "0 1px 4px rgba(15, 23, 42, 0.25)",
-                              cursor: "grab",
-                            }}
-                          />
-                        </>
-                      ) : null}
-                    </article>
+                      objectItem={objectItem}
+                      objectX={objectX}
+                      objectY={objectY}
+                      objectWidth={objectWidth}
+                      objectHeight={objectHeight}
+                      objectRotationDeg={objectRotationDeg}
+                      objectText={objectText}
+                      objectTextColor={objectTextColor}
+                      renderedObjectColor={renderedObjectColor}
+                      isSelected={isSelected}
+                      isSingleSelected={isSingleSelected}
+                      hasDraftGeometry={hasDraftGeometry}
+                      canEdit={canEdit}
+                      isObjectDragging={isObjectDragging}
+                      shouldPreserveGroupSelection={shouldPreserveGroupSelection}
+                      selectSingleObject={selectSingleObject}
+                      toggleObjectSelection={toggleObjectSelection}
+                      startObjectDrag={startObjectDrag}
+                      startCornerResize={startCornerResize}
+                      startShapeRotate={startShapeRotate}
+                      stickyTextHoldDragRef={stickyTextHoldDragRef}
+                      clearStickyTextHoldDrag={clearStickyTextHoldDrag}
+                      setTextDrafts={setTextDrafts}
+                      queueStickyTextSync={queueStickyTextSync}
+                      flushStickyTextSync={flushStickyTextSync}
+                    />
                   );
                 }
 
                 if (objectItem.type === "text") {
                   return (
-                    <article
+                    <TextObjectArticle
                       key={objectItem.id}
-                      data-board-object="true"
-                      onPointerDown={(event) => {
-                        event.stopPropagation();
-                        if (event.shiftKey) {
-                          toggleObjectSelection(objectItem.id);
-                          return;
-                        }
-
-                        if (shouldPreserveGroupSelection(objectItem.id)) {
-                          return;
-                        }
-                        selectSingleObject(objectItem.id);
-                      }}
-                      style={{
-                        position: "absolute",
-                        left: objectX,
-                        top: objectY,
-                        width: objectWidth,
-                        height: objectHeight,
-                        zIndex: 0,
-                        isolation: "isolate",
-                        borderRadius: 8,
-                        border: isSelected
-                          ? "1px dashed #2563eb"
-                          : "1px dashed transparent",
-                        background: "transparent",
-                        boxShadow: isSelected ? SELECTED_OBJECT_HALO : "none",
-                        overflow: "visible",
-                        transform: `rotate(${objectRotationDeg}deg)`,
-                        transformOrigin: "center center",
-                        transition: hasDraftGeometry
-                          ? "none"
-                          : "left 55ms linear, top 55ms linear, width 55ms linear, height 55ms linear, transform 55ms linear",
-                      }}
-                    >
-                      <div
-                        onPointerDown={(event) =>
-                          startObjectDrag(objectItem.id, event)
-                        }
-                        style={{
-                          height: 20,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          cursor: canEdit
-                            ? isObjectDragging
-                              ? "grabbing"
-                              : "grab"
-                            : "default",
-                          color: "var(--text-muted)",
-                          fontSize: 11,
-                          letterSpacing: "0.03em",
-                          userSelect: "none",
-                        }}
-                      >
-                        TEXT
-                      </div>
-                      <textarea
-                        value={objectText}
-                        onPointerDown={(event) => {
-                          event.stopPropagation();
-                          if (event.shiftKey) {
-                            toggleObjectSelection(objectItem.id);
-                            clearStickyTextHoldDrag();
-                            return;
-                          }
-
-                          if (!shouldPreserveGroupSelection(objectItem.id)) {
-                            selectSingleObject(objectItem.id);
-                          }
-
-                          if (!canEdit || event.button !== 0) {
-                            clearStickyTextHoldDrag();
-                            return;
-                          }
-
-                          clearStickyTextHoldDrag();
-                          const timerId = window.setTimeout(() => {
-                            const holdState = stickyTextHoldDragRef.current;
-                            if (
-                              !holdState ||
-                              holdState.objectId !== objectItem.id ||
-                              holdState.started
-                            ) {
-                              return;
-                            }
-
-                            stickyTextHoldDragRef.current = {
-                              ...holdState,
-                              started: true,
-                              timerId: null,
-                            };
-                            startObjectDrag(
-                              objectItem.id,
-                              {
-                                button: 0,
-                                shiftKey: false,
-                                clientX: holdState.startClientX,
-                                clientY: holdState.startClientY,
-                                preventDefault: () => {},
-                                stopPropagation: () => {},
-                              } as unknown as ReactPointerEvent<HTMLElement>,
-                            );
-                          }, STICKY_TEXT_HOLD_DRAG_DELAY_MS);
-
-                          stickyTextHoldDragRef.current = {
-                            objectId: objectItem.id,
-                            startClientX: event.clientX,
-                            startClientY: event.clientY,
-                            timerId,
-                            started: false,
-                          };
-                        }}
-                        onPointerMove={(event) => {
-                          const holdState = stickyTextHoldDragRef.current;
-                          if (
-                            !holdState ||
-                            holdState.objectId !== objectItem.id ||
-                            holdState.started
-                          ) {
-                            return;
-                          }
-
-                          if (!canEdit) {
-                            clearStickyTextHoldDrag();
-                            return;
-                          }
-
-                          const distance = Math.hypot(
-                            event.clientX - holdState.startClientX,
-                            event.clientY - holdState.startClientY,
-                          );
-                          if (distance < DRAG_CLICK_SLOP_PX) {
-                            return;
-                          }
-
-                          if (holdState.timerId !== null) {
-                            window.clearTimeout(holdState.timerId);
-                          }
-
-                          stickyTextHoldDragRef.current = {
-                            ...holdState,
-                            started: true,
-                            timerId: null,
-                          };
-                          event.preventDefault();
-                          startObjectDrag(
-                            objectItem.id,
-                            {
-                              button: 0,
-                              shiftKey: false,
-                              clientX: event.clientX,
-                              clientY: event.clientY,
-                              preventDefault: () => {},
-                              stopPropagation: () => {},
-                            } as unknown as ReactPointerEvent<HTMLElement>,
-                          );
-                        }}
-                        onPointerUp={() => {
-                          clearStickyTextHoldDrag();
-                        }}
-                        onPointerCancel={() => {
-                          clearStickyTextHoldDrag();
-                        }}
-                        onFocus={() => {
-                          if (!shouldPreserveGroupSelection(objectItem.id)) {
-                            selectSingleObject(objectItem.id);
-                          }
-                        }}
-                        onChange={(event) => {
-                          const nextText = event.target.value.slice(0, 2_000);
-                          setTextDrafts((previous) => ({
-                            ...previous,
-                            [objectItem.id]: nextText,
-                          }));
-                          queueStickyTextSync(objectItem.id, nextText);
-                        }}
-                        onBlur={(event) => {
-                          clearStickyTextHoldDrag();
-                          const nextText = event.target.value;
-                          setTextDrafts((previous) => {
-                            const next = { ...previous };
-                            delete next[objectItem.id];
-                            return next;
-                          });
-
-                          queueStickyTextSync(objectItem.id, nextText);
-                          flushStickyTextSync(objectItem.id);
-                        }}
-                        readOnly={!canEdit}
-                        style={{
-                          width: "100%",
-                          height: objectHeight - 20,
-                          border: "none",
-                          resize: "none",
-                          padding: "0.2rem 0.35rem",
-                          background: "transparent",
-                          color: renderedObjectColor,
-                          fontSize: 18,
-                          fontWeight: 600,
-                          lineHeight: 1.35,
-                          outline: "none",
-                          cursor: canEdit
-                            ? isObjectDragging
-                              ? "grabbing"
-                              : "text"
-                            : "default",
-                        }}
-                      />
-
-                      {isSingleSelected && canEdit ? (
-                        <div>
-                          {CORNER_HANDLES.map((corner) => (
-                            <button
-                              key={corner}
-                              type="button"
-                              onPointerDown={(event) =>
-                                startCornerResize(objectItem.id, corner, event)
-                              }
-                              style={{
-                                position: "absolute",
-                                ...getCornerPositionStyle(corner),
-                                width: RESIZE_HANDLE_SIZE,
-                                height: RESIZE_HANDLE_SIZE,
-                                border: "1px solid #1d4ed8",
-                                borderRadius: 2,
-                                background: "var(--surface)",
-                                cursor: getCornerCursor(corner),
-                              }}
-                              aria-label={`Resize ${corner} corner`}
-                            />
-                          ))}
-                        </div>
-                      ) : null}
-
-                      {isSingleSelected && canEdit ? (
-                        <>
-                          <div
-                            style={{
-                              position: "absolute",
-                              left: "50%",
-                              top: 0,
-                              width: 2,
-                              height: 16,
-                              background: "#93c5fd",
-                              transform: "translate(-50%, -102%)",
-                              pointerEvents: "none",
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onPointerDown={(event) =>
-                              startShapeRotate(objectItem.id, event)
-                            }
-                            aria-label="Rotate text"
-                            title="Drag to rotate text (hold Shift to snap)"
-                            style={{
-                              position: "absolute",
-                              left: "50%",
-                              top: 0,
-                              transform: "translate(-50%, -168%)",
-                              width: 14,
-                              height: 14,
-                              borderRadius: "50%",
-                              border: "1px solid #1d4ed8",
-                              background: "var(--surface)",
-                              boxShadow: "0 1px 4px rgba(15, 23, 42, 0.25)",
-                              cursor: "grab",
-                            }}
-                          />
-                        </>
-                      ) : null}
-                    </article>
+                      objectItem={objectItem}
+                      objectX={objectX}
+                      objectY={objectY}
+                      objectWidth={objectWidth}
+                      objectHeight={objectHeight}
+                      objectRotationDeg={objectRotationDeg}
+                      objectText={objectText}
+                      renderedObjectColor={renderedObjectColor}
+                      isSelected={isSelected}
+                      isSingleSelected={isSingleSelected}
+                      hasDraftGeometry={hasDraftGeometry}
+                      canEdit={canEdit}
+                      isObjectDragging={isObjectDragging}
+                      shouldPreserveGroupSelection={shouldPreserveGroupSelection}
+                      selectSingleObject={selectSingleObject}
+                      toggleObjectSelection={toggleObjectSelection}
+                      startObjectDrag={startObjectDrag}
+                      startCornerResize={startCornerResize}
+                      startShapeRotate={startShapeRotate}
+                      stickyTextHoldDragRef={stickyTextHoldDragRef}
+                      clearStickyTextHoldDrag={clearStickyTextHoldDrag}
+                      setTextDrafts={setTextDrafts}
+                      queueStickyTextSync={queueStickyTextSync}
+                      flushStickyTextSync={flushStickyTextSync}
+                    />
                   );
                 }
 

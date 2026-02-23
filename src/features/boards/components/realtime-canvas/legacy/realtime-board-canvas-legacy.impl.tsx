@@ -18,7 +18,6 @@ import {
 import type {
   BoardObject,
   BoardObjectKind,
-  ConnectorAnchor,
   PresenceUser,
 } from "@/features/boards/types";
 import {
@@ -26,10 +25,7 @@ import {
 } from "@/features/boards/components/realtime-canvas/ai-chat-content";
 import {
   canUseSelectionHudColor,
-  getMinimumObjectSize,
-  isConnectableShapeKind,
   isConnectorKind,
-  LINE_MIN_LENGTH,
 } from "@/features/boards/components/realtime-canvas/board-object-helpers";
 import { hashToColor } from "@/features/boards/components/realtime-canvas/board-doc-parsers";
 import {
@@ -38,20 +34,13 @@ import {
 } from "@/features/boards/components/realtime-canvas/ai-footer-config";
 import { toBoardErrorMessage } from "@/features/boards/components/realtime-canvas/board-error";
 import {
-  CONNECTOR_MIN_SEGMENT_SIZE,
-  getAnchorDirectionForGeometry,
-  getAnchorPointForGeometry,
   getDistance,
   hasMeaningfulRotation,
-  isSnapEligibleObjectType,
   roundToStep,
-  snapToGrid,
-  toDegrees,
   toNormalizedRect,
   toWritePoint,
   ZOOM_SLIDER_MAX_PERCENT,
   ZOOM_SLIDER_MIN_PERCENT,
-  type ResolvedConnectorEndpoint,
 } from "@/features/boards/components/realtime-canvas/legacy/legacy-canvas-geometry";
 import {
   CURSOR_MIN_MOVE_DISTANCE,
@@ -120,6 +109,8 @@ import { useGridContentSync } from "@/features/boards/components/realtime-canvas
 import { useObjectWriteActions } from "@/features/boards/components/realtime-canvas/legacy/use-object-write-actions";
 import { useStickyTextSync } from "@/features/boards/components/realtime-canvas/legacy/use-sticky-text-sync";
 import { createSwotTemplateAction } from "@/features/boards/components/realtime-canvas/legacy/swot-template-action";
+import { useDraftGeometryAndConnectors } from "@/features/boards/components/realtime-canvas/legacy/use-draft-geometry-and-connectors";
+import { useResizeGeometry } from "@/features/boards/components/realtime-canvas/legacy/use-resize-geometry";
 
 export default function RealtimeBoardCanvas({
   boardId,
@@ -303,224 +294,22 @@ export default function RealtimeBoardCanvas({
     idTokenRef,
   });
 
-  const getCurrentObjectGeometry = useCallback(
-    (objectId: string): ObjectGeometry | null => {
-      const draftGeometry = draftGeometryByIdRef.current[objectId];
-      if (draftGeometry) {
-        return draftGeometry;
-      }
-
-      const objectItem = objectsByIdRef.current.get(objectId);
-      if (!objectItem) {
-        return null;
-      }
-
-      return {
-        x: objectItem.x,
-        y: objectItem.y,
-        width: objectItem.width,
-        height: objectItem.height,
-        rotationDeg: objectItem.rotationDeg,
-      };
-    },
-    [],
-  );
-
-  const setDraftGeometry = useCallback(
-    (objectId: string, geometry: ObjectGeometry) => {
-      setDraftGeometryById((previous) => ({
-        ...previous,
-        [objectId]: geometry,
-      }));
-    },
-    [],
-  );
-
-  const clearDraftGeometry = useCallback((objectId: string) => {
-    setDraftGeometryById((previous) => {
-      if (!(objectId in previous)) {
-        return previous;
-      }
-
-      const next = { ...previous };
-      delete next[objectId];
-      return next;
-    });
-  }, []);
-
-  const setDraftConnector = useCallback(
-    (objectId: string, draft: ConnectorDraft) => {
-      setDraftConnectorById((previous) => ({
-        ...previous,
-        [objectId]: draft,
-      }));
-    },
-    [],
-  );
-
-  const clearDraftConnector = useCallback((objectId: string) => {
-    setDraftConnectorById((previous) => {
-      if (!(objectId in previous)) {
-        return previous;
-      }
-
-      const next = { ...previous };
-      delete next[objectId];
-      return next;
-    });
-  }, []);
-
-  const getConnectorDraftForObject = useCallback(
-    (objectItem: BoardObject): ConnectorDraft | null => {
-      if (!isConnectorKind(objectItem.type)) {
-        return null;
-      }
-
-      const draft = draftConnectorByIdRef.current[objectItem.id];
-      if (draft) {
-        return draft;
-      }
-
-      const objectGeometry = getCurrentObjectGeometry(objectItem.id);
-      const fallbackGeometry: ObjectGeometry = objectGeometry ?? {
-        x: objectItem.x,
-        y: objectItem.y,
-        width: objectItem.width,
-        height: objectItem.height,
-        rotationDeg: objectItem.rotationDeg,
-      };
-
-      const defaultFromX =
-        objectItem.fromX ??
-        fallbackGeometry.x +
-          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, fallbackGeometry.width) * 0.1;
-      const defaultFromY =
-        objectItem.fromY ??
-        fallbackGeometry.y +
-          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, fallbackGeometry.height) * 0.5;
-      const defaultToX =
-        objectItem.toX ??
-        fallbackGeometry.x +
-          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, fallbackGeometry.width) * 0.9;
-      const defaultToY =
-        objectItem.toY ??
-        fallbackGeometry.y +
-          Math.max(CONNECTOR_MIN_SEGMENT_SIZE, fallbackGeometry.height) * 0.5;
-
-      return {
-        fromObjectId: objectItem.fromObjectId ?? null,
-        toObjectId: objectItem.toObjectId ?? null,
-        fromAnchor: objectItem.fromAnchor ?? null,
-        toAnchor: objectItem.toAnchor ?? null,
-        fromX: defaultFromX,
-        fromY: defaultFromY,
-        toX: defaultToX,
-        toY: defaultToY,
-      };
-    },
-    [getCurrentObjectGeometry],
-  );
-
-  const resolveConnectorEndpoint = useCallback(
-    (
-      objectId: string | null,
-      anchor: ConnectorAnchor | null,
-      fallbackPoint: BoardPoint,
-    ): ResolvedConnectorEndpoint => {
-      if (!objectId || !anchor) {
-        return {
-          x: fallbackPoint.x,
-          y: fallbackPoint.y,
-          objectId: null,
-          anchor: null,
-          direction: null,
-          connected: false,
-        };
-      }
-
-      const anchorObject = objectsByIdRef.current.get(objectId);
-      if (!anchorObject || !isConnectableShapeKind(anchorObject.type)) {
-        return {
-          x: fallbackPoint.x,
-          y: fallbackPoint.y,
-          objectId: null,
-          anchor: null,
-          direction: null,
-          connected: false,
-        };
-      }
-
-      const geometry = getCurrentObjectGeometry(objectId);
-      if (!geometry) {
-        return {
-          x: fallbackPoint.x,
-          y: fallbackPoint.y,
-          objectId: null,
-          anchor: null,
-          direction: null,
-          connected: false,
-        };
-      }
-
-      const anchorPoint = getAnchorPointForGeometry(
-        geometry,
-        anchor,
-        anchorObject.type,
-      );
-      return {
-        x: anchorPoint.x,
-        y: anchorPoint.y,
-        objectId,
-        anchor,
-        direction: getAnchorDirectionForGeometry(anchor, geometry),
-        connected: true,
-      };
-    },
-    [getCurrentObjectGeometry],
-  );
-
-  const getResolvedConnectorEndpoints = useCallback(
-    (
-      objectItem: BoardObject,
-    ): {
-      from: ResolvedConnectorEndpoint;
-      to: ResolvedConnectorEndpoint;
-      draft: ConnectorDraft;
-    } | null => {
-      if (!isConnectorKind(objectItem.type)) {
-        return null;
-      }
-
-      const connectorDraft = getConnectorDraftForObject(objectItem);
-      if (!connectorDraft) {
-        return null;
-      }
-
-      const from = resolveConnectorEndpoint(
-        connectorDraft.fromObjectId,
-        connectorDraft.fromAnchor,
-        {
-          x: connectorDraft.fromX,
-          y: connectorDraft.fromY,
-        },
-      );
-      const to = resolveConnectorEndpoint(
-        connectorDraft.toObjectId,
-        connectorDraft.toAnchor,
-        {
-          x: connectorDraft.toX,
-          y: connectorDraft.toY,
-        },
-      );
-
-      return {
-        from,
-        to,
-        draft: connectorDraft,
-      };
-    },
-    [getConnectorDraftForObject, resolveConnectorEndpoint],
-  );
+  const {
+    getCurrentObjectGeometry,
+    setDraftGeometry,
+    clearDraftGeometry,
+    setDraftConnector,
+    clearDraftConnector,
+    getConnectorDraftForObject,
+    resolveConnectorEndpoint,
+    getResolvedConnectorEndpoints,
+  } = useDraftGeometryAndConnectors({
+    draftGeometryByIdRef,
+    draftConnectorByIdRef,
+    objectsByIdRef,
+    setDraftGeometryById,
+    setDraftConnectorById,
+  });
 
   const {
     getContainerSectionsInfoById,
@@ -565,160 +354,10 @@ export default function RealtimeBoardCanvas({
     getResolvedConnectorEndpoints,
   });
 
-  const getResizedGeometry = useCallback(
-    (
-      state: CornerResizeState,
-      clientX: number,
-      clientY: number,
-      scale: number,
-    ): ObjectGeometry => {
-      const deltaX = (clientX - state.startClientX) / scale;
-      const deltaY = (clientY - state.startClientY) / scale;
-
-      const minimumSize = getMinimumObjectSize(state.objectType);
-      let nextX = state.initialGeometry.x;
-      let nextY = state.initialGeometry.y;
-      let nextWidth = state.initialGeometry.width;
-      let nextHeight = state.initialGeometry.height;
-
-      if (state.corner === "nw") {
-        nextX = state.initialGeometry.x + deltaX;
-        nextY = state.initialGeometry.y + deltaY;
-        nextWidth = state.initialGeometry.width - deltaX;
-        nextHeight = state.initialGeometry.height - deltaY;
-      } else if (state.corner === "ne") {
-        nextY = state.initialGeometry.y + deltaY;
-        nextWidth = state.initialGeometry.width + deltaX;
-        nextHeight = state.initialGeometry.height - deltaY;
-      } else if (state.corner === "sw") {
-        nextX = state.initialGeometry.x + deltaX;
-        nextWidth = state.initialGeometry.width - deltaX;
-        nextHeight = state.initialGeometry.height + deltaY;
-      } else {
-        nextWidth = state.initialGeometry.width + deltaX;
-        nextHeight = state.initialGeometry.height + deltaY;
-      }
-
-      if (nextWidth < minimumSize.width) {
-        const deficit = minimumSize.width - nextWidth;
-        nextWidth = minimumSize.width;
-        if (state.corner === "nw" || state.corner === "sw") {
-          nextX -= deficit;
-        }
-      }
-
-      if (nextHeight < minimumSize.height) {
-        const deficit = minimumSize.height - nextHeight;
-        nextHeight = minimumSize.height;
-        if (state.corner === "nw" || state.corner === "ne") {
-          nextY -= deficit;
-        }
-      }
-
-      if (state.objectType === "circle") {
-        const size = Math.max(
-          minimumSize.width,
-          Math.max(nextWidth, nextHeight),
-        );
-        if (state.corner === "nw") {
-          nextX = state.initialGeometry.x + state.initialGeometry.width - size;
-          nextY = state.initialGeometry.y + state.initialGeometry.height - size;
-        } else if (state.corner === "ne") {
-          nextY = state.initialGeometry.y + state.initialGeometry.height - size;
-        } else if (state.corner === "sw") {
-          nextX = state.initialGeometry.x + state.initialGeometry.width - size;
-        }
-
-        nextWidth = size;
-        nextHeight = size;
-      }
-
-      if (
-        snapToGridEnabledRef.current &&
-        isSnapEligibleObjectType(state.objectType)
-      ) {
-        const initialRight = state.initialGeometry.x + state.initialGeometry.width;
-        const initialBottom =
-          state.initialGeometry.y + state.initialGeometry.height;
-
-        if (state.objectType === "circle") {
-          const snappedSize = Math.max(minimumSize.width, snapToGrid(nextWidth));
-          nextWidth = snappedSize;
-          nextHeight = snappedSize;
-
-          if (state.corner === "nw") {
-            nextX = initialRight - snappedSize;
-            nextY = initialBottom - snappedSize;
-          } else if (state.corner === "ne") {
-            nextY = initialBottom - snappedSize;
-          } else if (state.corner === "sw") {
-            nextX = initialRight - snappedSize;
-          }
-        } else {
-          const snappedWidth = Math.max(minimumSize.width, snapToGrid(nextWidth));
-          const snappedHeight = Math.max(
-            minimumSize.height,
-            snapToGrid(nextHeight),
-          );
-
-          if (state.corner === "nw" || state.corner === "sw") {
-            nextX = initialRight - snappedWidth;
-          }
-          if (state.corner === "nw" || state.corner === "ne") {
-            nextY = initialBottom - snappedHeight;
-          }
-
-          nextWidth = snappedWidth;
-          nextHeight = snappedHeight;
-        }
-      }
-
-      return {
-        x: nextX,
-        y: nextY,
-        width: nextWidth,
-        height: nextHeight,
-        rotationDeg: state.initialGeometry.rotationDeg,
-      };
-    },
-    [],
-  );
-
-  const getLineGeometryFromEndpointDrag = useCallback(
-    (
-      state: LineEndpointResizeState,
-      movingPoint: BoardPoint,
-    ): ObjectGeometry => {
-      const dx = movingPoint.x - state.fixedPoint.x;
-      const dy = movingPoint.y - state.fixedPoint.y;
-      const distance = Math.hypot(dx, dy);
-      const length = Math.max(LINE_MIN_LENGTH, distance);
-      const angle = distance < 0.001 ? 0 : toDegrees(Math.atan2(dy, dx));
-
-      const normalizedX = distance < 0.001 ? 1 : dx / distance;
-      const normalizedY = distance < 0.001 ? 0 : dy / distance;
-      const adjustedMovingPoint = {
-        x: state.fixedPoint.x + normalizedX * length,
-        y: state.fixedPoint.y + normalizedY * length,
-      };
-
-      const startPoint =
-        state.endpoint === "start" ? adjustedMovingPoint : state.fixedPoint;
-      const endPoint =
-        state.endpoint === "end" ? adjustedMovingPoint : state.fixedPoint;
-      const centerX = (startPoint.x + endPoint.x) / 2;
-      const centerY = (startPoint.y + endPoint.y) / 2;
-
-      return {
-        x: centerX - length / 2,
-        y: centerY - state.handleHeight / 2,
-        width: length,
-        height: state.handleHeight,
-        rotationDeg: angle,
-      };
-    },
-    [],
-  );
+  const { getResizedGeometry, getLineGeometryFromEndpointDrag } =
+    useResizeGeometry({
+      snapToGridEnabledRef,
+    });
 
   useBoardStageWindowPointerEvents({
     aiFooterResizeStateRef,

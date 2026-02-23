@@ -8,24 +8,13 @@ import {
   doc,
 } from "firebase/firestore";
 
-import {
-  isConnectorKind,
-} from "@/features/boards/components/realtime-canvas/board-object-helpers";
 import { hashToColor } from "@/features/boards/components/realtime-canvas/board-doc-parsers";
 import {
-  clampAiFooterHeight,
-} from "@/features/boards/components/realtime-canvas/ai-footer-config";
-import {
-  getDistance,
-  roundToStep,
   toNormalizedRect,
   ZOOM_SLIDER_MAX_PERCENT,
   ZOOM_SLIDER_MIN_PERCENT,
 } from "@/features/boards/components/realtime-canvas/legacy/legacy-canvas-geometry";
 import {
-  GRID_CONTAINER_DEFAULT_GAP,
-  GRID_CONTAINER_MAX_COLS,
-  GRID_CONTAINER_MAX_ROWS,
   INITIAL_VIEWPORT,
   OBJECT_LABEL_MAX_LENGTH,
 } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-config";
@@ -35,28 +24,21 @@ import type {
 import { useObjectTemplateActions } from "@/features/boards/components/realtime-canvas/legacy/use-object-template-actions";
 import { useBoardSelectionActions } from "@/features/boards/components/realtime-canvas/legacy/use-board-selection-actions";
 import { useAiCommandSubmit } from "@/features/boards/components/realtime-canvas/legacy/use-ai-command-submit";
-import { useBoardStageWindowPointerEvents } from "@/features/boards/components/realtime-canvas/legacy/use-board-stage-window-pointer-events";
 import { RealtimeBoardCanvasLayout } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-layout";
 import { useBoardAssistantActions } from "@/features/boards/components/realtime-canvas/legacy/use-board-assistant-actions";
-import {
-  useContainerMembership,
-} from "@/features/boards/components/realtime-canvas/use-container-membership";
 import { useTheme } from "@/features/theme/use-theme";
 import { getFirebaseClientDb } from "@/lib/firebase/client";
 import { useGridAxisLabels } from "@/features/boards/components/realtime-canvas/legacy/use-grid-axis-labels";
 import { useGridDimensionUpdates } from "@/features/boards/components/realtime-canvas/legacy/use-grid-dimension-updates";
-import { useSelectionGeometryActions } from "@/features/boards/components/realtime-canvas/legacy/use-selection-geometry-actions";
 import { useGridContentSync } from "@/features/boards/components/realtime-canvas/legacy/use-grid-content-sync";
-import { useObjectWriteActions } from "@/features/boards/components/realtime-canvas/legacy/use-object-write-actions";
 import { useStickyTextSync } from "@/features/boards/components/realtime-canvas/legacy/use-sticky-text-sync";
-import { useDraftGeometryAndConnectors } from "@/features/boards/components/realtime-canvas/legacy/use-draft-geometry-and-connectors";
-import { useResizeGeometry } from "@/features/boards/components/realtime-canvas/legacy/use-resize-geometry";
 import { useSelectionStyleActions } from "@/features/boards/components/realtime-canvas/legacy/use-selection-style-actions";
 import { useBoardRuntimeActions } from "@/features/boards/components/realtime-canvas/legacy/use-board-runtime-actions";
 import { useCanvasSelectionViewState } from "@/features/boards/components/realtime-canvas/legacy/use-canvas-selection-view-state";
 import { useBoardStageActions } from "@/features/boards/components/realtime-canvas/legacy/use-board-stage-actions";
 import { useLegacyCanvasState } from "@/features/boards/components/realtime-canvas/legacy/use-legacy-canvas-state";
 import { useLegacyCanvasRealtimeSync } from "@/features/boards/components/realtime-canvas/legacy/use-legacy-canvas-realtime-sync";
+import { useLegacyCanvasGeometryWiring } from "@/features/boards/components/realtime-canvas/legacy/use-legacy-canvas-geometry-wiring";
 
 export default function RealtimeBoardCanvas({
   boardId,
@@ -74,22 +56,22 @@ export default function RealtimeBoardCanvas({
     cornerResizeStateRef, lineEndpointResizeStateRef, connectorEndpointDragStateRef,
     rotateStateRef, marqueeSelectionStateRef, aiFooterResizeStateRef, stickyTextHoldDragRef,
     idTokenRef, objectsByIdRef, objectSpawnSequenceRef, copiedObjectsRef, copyPasteSequenceRef,
-    selectedObjectIdsRef, draftGeometryByIdRef, draftConnectorByIdRef, gridContentDraftByIdRef,
+    selectedObjectIdsRef, gridContentDraftByIdRef,
     stickyTextSyncStateRef, gridContentSyncTimerByIdRef, sendCursorAtRef, canEditRef,
     lastCursorWriteRef, lastPositionWriteByIdRef, lastGeometryWriteByIdRef, lastStickyWriteByIdRef,
     writeMetricsRef, boardStatusTimerRef, snapToGridEnabledRef,
   } = refs;
   const {
     viewport, setViewport, objects, setObjects, presenceUsers,
-    textDrafts, setTextDrafts, draftGeometryById, setDraftGeometryById, draftConnectorById,
-    setDraftConnectorById, setGridContentDraftById, selectedObjectIds,
+    textDrafts, setTextDrafts, draftGeometryById, draftConnectorById,
+    setGridContentDraftById, selectedObjectIds,
     setSelectedObjectIds, marqueeSelectionState, setMarqueeSelectionState, boardError,
     setBoardError, boardStatusMessage, setBoardStatusMessage, isLeftPanelCollapsed,
     setIsLeftPanelCollapsed, isRightPanelCollapsed, setIsRightPanelCollapsed, isSnapToGridEnabled,
     setIsSnapToGridEnabled, isAiFooterCollapsed, setIsAiFooterCollapsed,
     setHasAiDrawerBeenInteracted, isAiDrawerNudgeActive,
     isAiFooterResizing, setIsAiFooterResizing, isObjectDragging, setIsObjectDragging,
-    aiFooterHeight, setAiFooterHeight, isAiSubmitting, setIsAiSubmitting,
+    aiFooterHeight, isAiSubmitting, setIsAiSubmitting,
     isSwotTemplateCreating, setIsSwotTemplateCreating, selectionLabelDraft, setSelectionLabelDraft,
     cursorBoardPosition, setCursorBoardPosition, stageSize, selectionHudSize,
     setSelectionHudSize, fps, presenceClock,
@@ -133,103 +115,16 @@ export default function RealtimeBoardCanvas({
     setDraftConnector,
     clearDraftConnector,
     getConnectorDraftForObject,
-    resolveConnectorEndpoint,
-    getResolvedConnectorEndpoints,
-  } = useDraftGeometryAndConnectors({
-    draftGeometryByIdRef,
-    draftConnectorByIdRef,
-    objectsByIdRef,
-    setDraftGeometryById,
-    setDraftConnectorById,
-  });
-
-  const {
-    getContainerSectionsInfoById,
-    resolveContainerMembershipForGeometry,
     getSectionAnchoredObjectUpdatesForContainer,
     buildContainerMembershipPatchesForPositions,
-  } = useContainerMembership({
-    objectsByIdRef,
-    getCurrentObjectGeometry,
-    maxRows: GRID_CONTAINER_MAX_ROWS,
-    maxCols: GRID_CONTAINER_MAX_COLS,
-    defaultGap: GRID_CONTAINER_DEFAULT_GAP,
-    getDistance,
-    roundToStep,
-    isConnectorKind,
-  });
-
-  const {
-    updateObjectGeometry,
-    updateConnectorDraft,
     updateObjectPositionsBatch,
-  } = useObjectWriteActions({
+    getConnectableAnchorPoints,
+  } = useLegacyCanvasGeometryWiring({
     boardId,
     db,
-    canEditRef,
-    objectsByIdRef,
-    writeMetricsRef,
-    lastGeometryWriteByIdRef,
-    lastPositionWriteByIdRef,
-    setBoardError,
-    getContainerSectionsInfoById,
-    resolveContainerMembershipForGeometry,
-    resolveConnectorEndpoint,
-  });
-
-  const {
-    getObjectsIntersectingRect,
-    getConnectableAnchorPoints,
-  } = useSelectionGeometryActions({
-    objectsByIdRef,
-    getCurrentObjectGeometry,
-    getResolvedConnectorEndpoints,
-  });
-
-  const { getResizedGeometry, getLineGeometryFromEndpointDrag } =
-    useResizeGeometry({
-      snapToGridEnabledRef,
-    });
-
-  useBoardStageWindowPointerEvents({
-    aiFooterResizeStateRef,
-    cornerResizeStateRef,
-    connectorEndpointDragStateRef,
-    dragStateRef,
-    lineEndpointResizeStateRef,
-    marqueeSelectionStateRef,
-    objectsByIdRef,
-    panStateRef,
-    rotateStateRef,
-    stageRef,
-    snapToGridEnabledRef,
-    canEditRef,
-    draftConnectorByIdRef,
-    draftGeometryByIdRef,
-    setDraftConnector,
-    setDraftGeometry,
-    setSelectedObjectIds,
-    setIsObjectDragging,
-    setMarqueeSelectionState,
-    setIsAiFooterResizing,
-    setAiFooterHeight,
-    updateObjectGeometry,
-    updateObjectPositionsBatch,
-    updateConnectorDraft,
-    clearDraftConnector,
-    clearDraftGeometry,
+    refs,
+    state,
     clearStickyTextHoldDrag,
-    setViewport,
-    getCurrentObjectGeometry,
-    getConnectorDraftForObject,
-    getConnectableAnchorPoints,
-    getLineGeometryFromEndpointDrag,
-    getResizedGeometry,
-    getObjectsIntersectingRect,
-    getSectionAnchoredObjectUpdatesForContainer,
-    buildContainerMembershipPatchesForPositions,
-    viewportRef,
-    clampAiFooterHeight: clampAiFooterHeight,
   });
 
   const {

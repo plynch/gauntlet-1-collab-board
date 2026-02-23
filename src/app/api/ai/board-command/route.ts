@@ -1,8 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
-import { CallbackManager } from "@langchain/core/callbacks/manager";
-import type { Serialized } from "@langchain/core/load/serializable";
 
 import {
   buildClearBoardAssistantMessage,
@@ -24,40 +21,30 @@ import {
 import {
   callCommandPlanTool,
 } from "@/features/ai/mcp/template-mcp-client";
-import { LangChainLangfuseCallbackHandler } from "@/features/ai/observability/langchain-langfuse-handler";
 import {
   flushLangfuseClient,
 } from "@/features/ai/observability/langfuse-client";
 import { createAiTraceRun } from "@/features/ai/observability/trace-run";
 import { planDeterministicCommand } from "@/features/ai/commands/deterministic-command-planner";
-import { parseCoordinateHintsFromMessage } from "@/features/ai/commands/coordinate-hints";
-import {
-  finalizeOpenAiBudgetReservation,
-  releaseOpenAiBudgetReservation,
-  reserveOpenAiBudget,
-} from "@/features/ai/openai/openai-cost-controls";
 import { getOpenAiPlannerConfig } from "@/features/ai/openai/openai-client";
 import {
-  planBoardCommandWithOpenAi,
-} from "@/features/ai/openai/openai-command-planner";
-import {
   flushOpenAiTraces,
-  runBoardCommandWithOpenAiAgents,
 } from "@/features/ai/openai/agents/openai-agents-runner";
-import { parseMessageIntentHints } from "@/features/ai/openai/agents/message-intent-hints";
 import { getOpenAiRequiredErrorResponse } from "@/features/ai/openai/openai-required-response";
+import { attemptOpenAiPlanner } from "@/features/ai/server/board-command-openai-attempt";
 import {
   buildOpenAiExecutionSummary,
-  getOpenAiUsageFromError,
   isOpenAiRequiredForStubCommands,
-  type OpenAiPlanAttempt,
 } from "@/features/ai/server/board-command-openai-types";
 import {
-  buildOpenAiPlanTraceFields,
-  buildOperationCountsByTool,
   buildOutcomeAssistantMessageFromExecution,
-  buildToolCallArgTraceFields,
 } from "@/features/ai/server/board-command-plan-trace";
+import {
+  deleteBoardObjectsById,
+  executePlanWithTracing,
+  listAllBoardObjectIds,
+  writeAiAuditLogIfEnabled,
+} from "@/features/ai/server/board-command-plan-executor";
 import {
   createHttpError,
   getAiTraceFlushTimeoutMs,
@@ -65,14 +52,11 @@ import {
   getDebugMessage,
   getErrorReason,
   getInternalMcpToken,
-  isAiAuditEnabled,
 } from "@/features/ai/server/board-command-runtime-config";
 import { BoardToolExecutor } from "@/features/ai/tools/board-tools";
 import type {
-  BoardObjectSnapshot,
   BoardToolCall,
   TemplatePlan,
-  ViewportBounds,
 } from "@/features/ai/types";
 import {
   assertFirestoreWritesAllowedInDev,
@@ -87,7 +71,6 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-const DIRECT_DELETE_BATCH_CHUNK_SIZE = 400;
 const SAFE_DETERMINISTIC_INTENT_PREFIXES = [
   "create-",
   "move-",
@@ -128,12 +111,6 @@ const SAFE_DETERMINISTIC_EXACT_INTENTS = new Set([
   "select-all",
   "select-visible",
 ]);
-const LANGCHAIN_TOOL_PLAN_SERIALIZED: Serialized = {
-  lc: 1,
-  type: "not_implemented",
-  id: ["collabboard", "ai", "tool-plan"],
-};
-
 function isSafeDeterministicIntent(intent: string): boolean {
   if (SAFE_DETERMINISTIC_EXACT_INTENTS.has(intent)) {
     return true;
@@ -152,473 +129,6 @@ function shouldExecuteDeterministicPlan(
   }
 
   return isSafeDeterministicIntent(intent);
-}
-
-function toSerializedTool(toolName: BoardToolCall["tool"]): Serialized {
-  return {
-    lc: 1,
-    type: "not_implemented",
-    id: ["collabboard", "ai", "tool", toolName],
-  };
-}
-
-function createsObject(toolCall: BoardToolCall): boolean {
-  return (
-    toolCall.tool === "createStickyNote" ||
-    toolCall.tool === "createStickyBatch" ||
-    toolCall.tool === "createShape" ||
-    toolCall.tool === "createShapeBatch" ||
-    toolCall.tool === "createGridContainer" ||
-    toolCall.tool === "createFrame" ||
-    toolCall.tool === "createConnector"
-  );
-}
-
-async function attemptOpenAiPlanner(options: {
-  message: string;
-  boardState: BoardObjectSnapshot[];
-  selectedObjectIds: string[];
-  viewportBounds: ViewportBounds | null;
-  boardId: string;
-  userId: string;
-  executor: BoardToolExecutor;
-  trace: ReturnType<typeof createAiTraceRun>;
-}): Promise<OpenAiPlanAttempt> {
-  const config = getOpenAiPlannerConfig();
-  if (!config.enabled) {
-    return {
-      status: "disabled",
-      model: config.model,
-      runtime: config.runtime,
-      reason: "OpenAI planner disabled.",
-    };
-  }
-
-  const budgetSpan = options.trace.startSpan("openai.budget.reserve", {
-    reserveUsd: config.reserveUsdPerCall,
-  });
-  const budgetReservation = await reserveOpenAiBudget(config.reserveUsdPerCall);
-  if (!budgetReservation.ok) {
-    budgetSpan.fail(budgetReservation.error, {
-      totalSpentUsd: budgetReservation.totalSpentUsd,
-    });
-    return {
-      status: "budget-blocked",
-      model: config.model,
-      runtime: config.runtime,
-      assistantMessage: budgetReservation.error,
-      totalSpentUsd: budgetReservation.totalSpentUsd,
-    };
-  }
-  budgetSpan.end({
-    totalSpentUsd: budgetReservation.totalSpentUsd,
-  });
-
-  let reservationOpen = true;
-  const coordinateHints = parseCoordinateHintsFromMessage(options.message);
-  const messageIntentHints = parseMessageIntentHints(options.message);
-  const openAiSpan = options.trace.startSpan("openai.call", {
-    model: config.model,
-    runtime: config.runtime,
-    openAiTraceEnabled: config.agentsTracing,
-    openAiWorkflowName: config.agentsWorkflowName,
-    messagePreview: options.message.slice(0, 240),
-    hintedX: coordinateHints.hintedX,
-    hintedY: coordinateHints.hintedY,
-    requestedCreateCount: messageIntentHints.requestedCreateCount,
-    stickyRequestedCount: messageIntentHints.stickyRequestedCount,
-    shapeRequestedCount: messageIntentHints.shapeRequestedCount,
-    requestedColumns: messageIntentHints.stickyLayoutHints.columns ?? null,
-    requestedGapX: messageIntentHints.stickyLayoutHints.gapX ?? null,
-    requestedGapY: messageIntentHints.stickyLayoutHints.gapY ?? null,
-  });
-
-  try {
-    if (config.runtime === "agents-sdk") {
-      const toolExecutionSpan = options.trace.startSpan("tool.execute", {
-        runtime: "agents-sdk",
-      });
-
-      const agentsRunResult = await runBoardCommandWithOpenAiAgents({
-        message: options.message,
-        boardId: options.boardId,
-        userId: options.userId,
-        boardState: options.boardState,
-        selectedObjectIds: options.selectedObjectIds,
-        viewportBounds: options.viewportBounds,
-        executor: options.executor,
-        trace: options.trace,
-      });
-      toolExecutionSpan.end({
-        runtime: "agents-sdk",
-        toolCalls: agentsRunResult.toolCalls,
-        operationsExecuted: agentsRunResult.operationsExecuted.length,
-      });
-
-      const syntheticPlan: TemplatePlan = {
-        templateId: "openai.agents.direct",
-        templateName: "OpenAI Agents Direct",
-        operations: agentsRunResult.operationsExecuted,
-      };
-      const planTraceFields = buildOpenAiPlanTraceFields(syntheticPlan);
-      const operationCountsByToolJson = buildOperationCountsByTool(syntheticPlan);
-
-      const actualUsd =
-        agentsRunResult.usage.estimatedCostUsd > 0
-          ? agentsRunResult.usage.estimatedCostUsd
-          : config.reserveUsdPerCall;
-      const finalized = await finalizeOpenAiBudgetReservation({
-        reservedUsd: budgetReservation.reservedUsd,
-        actualUsd:
-          agentsRunResult.policyBlocked && actualUsd > 0 ? 0 : actualUsd,
-      });
-      reservationOpen = false;
-
-      openAiSpan.end({
-        planned: agentsRunResult.planned,
-        intent: agentsRunResult.intent,
-        inputTokens: agentsRunResult.usage.inputTokens,
-        outputTokens: agentsRunResult.usage.outputTokens,
-        totalTokens: agentsRunResult.usage.totalTokens,
-        estimatedCostUsd: agentsRunResult.usage.estimatedCostUsd,
-        totalSpentUsd: finalized.totalSpentUsd,
-        openAiRuntime: "agents-sdk",
-        openAiRunId: agentsRunResult.responseId ?? null,
-        openAiTraceId: agentsRunResult.traceId ?? null,
-        operationCount: planTraceFields.operationCount,
-        operationCountsByToolJson,
-        operationsPreviewJson: planTraceFields.operationsPreviewJson,
-        firstOperationTool: planTraceFields.firstOperationTool,
-        firstOperationX: planTraceFields.firstOperationX,
-        firstOperationY: planTraceFields.firstOperationY,
-        policyBlocked: Boolean(agentsRunResult.policyBlocked),
-        requestedCount: agentsRunResult.policyBlocked?.requestedCreateCount ?? null,
-        maxAllowedCount: agentsRunResult.policyBlocked?.maxAllowedCount ?? null,
-      });
-
-      if (agentsRunResult.policyBlocked) {
-        return {
-          status: "policy-blocked",
-          model: config.model,
-          runtime: config.runtime,
-          intent: "create-object-limit-exceeded",
-          assistantMessage: agentsRunResult.assistantMessage,
-          requestedCount: agentsRunResult.policyBlocked.requestedCreateCount,
-          maxAllowedCount: agentsRunResult.policyBlocked.maxAllowedCount,
-          totalSpentUsd: finalized.totalSpentUsd,
-        };
-      }
-
-      if (!agentsRunResult.planned) {
-        return {
-          status: "not-planned",
-          model: config.model,
-          runtime: config.runtime,
-          intent: agentsRunResult.intent,
-          assistantMessage: agentsRunResult.assistantMessage,
-          ...(agentsRunResult.traceId
-            ? { openAiTraceId: agentsRunResult.traceId }
-            : {}),
-          totalSpentUsd: finalized.totalSpentUsd,
-          usage: agentsRunResult.usage,
-        };
-      }
-
-      return {
-        status: "planned",
-        model: config.model,
-        runtime: config.runtime,
-        intent: agentsRunResult.intent,
-        assistantMessage: agentsRunResult.assistantMessage,
-        ...(agentsRunResult.traceId
-          ? { openAiTraceId: agentsRunResult.traceId }
-          : {}),
-        plan: null,
-        executedDirectly: true,
-        directExecution: {
-          operationsExecuted: agentsRunResult.operationsExecuted,
-          results: agentsRunResult.results,
-          createdObjectIds: agentsRunResult.createdObjectIds,
-          deletedCount: agentsRunResult.deletedCount,
-          toolCalls: agentsRunResult.toolCalls,
-          responseId: agentsRunResult.responseId,
-        },
-        totalSpentUsd: finalized.totalSpentUsd,
-        usage: agentsRunResult.usage,
-      };
-    }
-
-    const plannerResult = await planBoardCommandWithOpenAi({
-      message: options.message,
-      boardState: options.boardState,
-      selectedObjectIds: options.selectedObjectIds,
-    });
-    const planTraceFields = buildOpenAiPlanTraceFields(plannerResult.plan);
-    const operationCountsByToolJson = buildOperationCountsByTool(
-      plannerResult.plan,
-    );
-
-    const actualUsd =
-      plannerResult.usage.estimatedCostUsd > 0
-        ? plannerResult.usage.estimatedCostUsd
-        : config.reserveUsdPerCall;
-    const finalized = await finalizeOpenAiBudgetReservation({
-      reservedUsd: budgetReservation.reservedUsd,
-      actualUsd,
-    });
-    reservationOpen = false;
-
-    openAiSpan.end({
-      planned: plannerResult.planned,
-      intent: plannerResult.intent,
-      inputTokens: plannerResult.usage.inputTokens,
-      outputTokens: plannerResult.usage.outputTokens,
-      totalTokens: plannerResult.usage.totalTokens,
-      estimatedCostUsd: plannerResult.usage.estimatedCostUsd,
-      totalSpentUsd: finalized.totalSpentUsd,
-      openAiRuntime: "chat-completions",
-      operationCount: planTraceFields.operationCount,
-      operationCountsByToolJson,
-      operationsPreviewJson: planTraceFields.operationsPreviewJson,
-      firstOperationTool: planTraceFields.firstOperationTool,
-      firstOperationX: planTraceFields.firstOperationX,
-      firstOperationY: planTraceFields.firstOperationY,
-    });
-
-    if (!plannerResult.planned || !plannerResult.plan) {
-      return {
-        status: "not-planned",
-        model: config.model,
-        runtime: config.runtime,
-        intent: plannerResult.intent,
-        assistantMessage: plannerResult.assistantMessage,
-        totalSpentUsd: finalized.totalSpentUsd,
-        usage: plannerResult.usage,
-      };
-    }
-
-    return {
-      status: "planned",
-      model: config.model,
-      runtime: config.runtime,
-      intent: plannerResult.intent,
-      assistantMessage: plannerResult.assistantMessage,
-      plan: plannerResult.plan,
-      executedDirectly: false,
-      totalSpentUsd: finalized.totalSpentUsd,
-      usage: plannerResult.usage,
-    };
-  } catch (error) {
-    const usage = getOpenAiUsageFromError(error);
-    let totalSpentUsd: number | undefined;
-
-    if (reservationOpen) {
-      if (usage) {
-        const finalized = await finalizeOpenAiBudgetReservation({
-          reservedUsd: budgetReservation.reservedUsd,
-          actualUsd:
-            usage.estimatedCostUsd > 0
-              ? usage.estimatedCostUsd
-              : config.reserveUsdPerCall,
-        });
-        totalSpentUsd = finalized.totalSpentUsd;
-      } else {
-        await releaseOpenAiBudgetReservation(budgetReservation.reservedUsd);
-      }
-    }
-
-    const reason = getErrorReason(error);
-    openAiSpan.fail("OpenAI planner failed.", {
-      reason,
-      ...(usage
-        ? {
-            inputTokens: usage.inputTokens,
-            outputTokens: usage.outputTokens,
-            totalTokens: usage.totalTokens,
-            estimatedCostUsd: usage.estimatedCostUsd,
-          }
-        : {}),
-      ...(typeof totalSpentUsd === "number" ? { totalSpentUsd } : {}),
-    });
-    return {
-      status: "error",
-      model: config.model,
-      runtime: config.runtime,
-      reason,
-      ...(usage ? { usage } : {}),
-      ...(typeof totalSpentUsd === "number" ? { totalSpentUsd } : {}),
-    };
-  }
-}
-
-async function executePlanWithTracing(options: {
-  executor: BoardToolExecutor;
-  trace: ReturnType<typeof createAiTraceRun>;
-  operations: BoardToolCall[];
-}): Promise<{
-  results: Awaited<ReturnType<BoardToolExecutor["executeToolCall"]>>[];
-  createdObjectIds: string[];
-}> {
-  const results: Awaited<ReturnType<BoardToolExecutor["executeToolCall"]>>[] =
-    [];
-  const createdObjectIdSet = new Set<string>();
-  const callbackManager = new CallbackManager();
-  callbackManager.addHandler(
-    new LangChainLangfuseCallbackHandler(options.trace),
-    true,
-  );
-  const chainRun = await callbackManager.handleChainStart(
-    LANGCHAIN_TOOL_PLAN_SERIALIZED,
-    {
-      operationCount: options.operations.length,
-    },
-    undefined,
-    "chain",
-    ["langchain", "tool-execution"],
-    {
-      traceId: options.trace.traceId,
-    },
-    "tool.execute",
-  );
-
-  try {
-    const toolManager = chainRun.getChild("tool.execute.call");
-
-    for (let index = 0; index < options.operations.length; index += 1) {
-      const operation = options.operations[index];
-      const argTraceFields = buildToolCallArgTraceFields(operation);
-      const toolRun = await toolManager.handleToolStart(
-        toSerializedTool(operation.tool),
-        JSON.stringify(operation.args ?? {}),
-        undefined,
-        undefined,
-        ["board-tool-call"],
-        {
-          operationIndex: index,
-          tool: operation.tool,
-          argKeysJson: argTraceFields.argKeysJson,
-          argsPreviewJson: argTraceFields.argsPreviewJson,
-          x: argTraceFields.x,
-          y: argTraceFields.y,
-          objectIdsCount: argTraceFields.objectIdsCount,
-        },
-        operation.tool,
-      );
-
-      try {
-        const result = await options.executor.executeToolCall(operation);
-        results.push(result);
-
-        if (result.objectId && createsObject(operation)) {
-          createdObjectIdSet.add(result.objectId);
-        }
-        if (Array.isArray(result.createdObjectIds)) {
-          result.createdObjectIds.forEach((createdObjectId) => {
-            if (typeof createdObjectId === "string" && createdObjectId.length > 0) {
-              createdObjectIdSet.add(createdObjectId);
-            }
-          });
-        }
-
-        await toolRun.handleToolEnd({
-          objectId: result.objectId ?? null,
-          deletedCount: result.deletedCount ?? 0,
-          createdCount: result.createdObjectIds?.length ?? 0,
-          tool: operation.tool,
-        });
-      } catch (error) {
-        await toolRun.handleToolError(error);
-        throw error;
-      }
-    }
-
-    await chainRun.handleChainEnd({
-      toolCalls: results.length,
-    });
-
-    return {
-      results,
-      createdObjectIds: Array.from(createdObjectIdSet),
-    };
-  } catch (error) {
-    await chainRun.handleChainError(error, undefined, undefined, undefined, {
-      inputs: {
-        completedToolCalls: results.length,
-      },
-    });
-    throw error;
-  }
-}
-
-async function listAllBoardObjectIds(boardId: string): Promise<string[]> {
-  const snapshot = await getFirebaseAdminDb()
-    .collection("boards")
-    .doc(boardId)
-    .collection("objects")
-    .get();
-  return snapshot.docs.map((documentSnapshot) => documentSnapshot.id);
-}
-
-async function deleteBoardObjectsById(
-  boardId: string,
-  objectIds: string[],
-): Promise<void> {
-  if (objectIds.length === 0) {
-    return;
-  }
-
-  const objectsCollection = getFirebaseAdminDb()
-    .collection("boards")
-    .doc(boardId)
-    .collection("objects");
-
-  for (
-    let index = 0;
-    index < objectIds.length;
-    index += DIRECT_DELETE_BATCH_CHUNK_SIZE
-  ) {
-    const chunk = objectIds.slice(
-      index,
-      index + DIRECT_DELETE_BATCH_CHUNK_SIZE,
-    );
-    const batch = getFirebaseAdminDb().batch();
-    chunk.forEach((objectId) => {
-      batch.delete(objectsCollection.doc(objectId));
-    });
-    await batch.commit();
-  }
-}
-
-async function writeAiAuditLogIfEnabled(options: {
-  boardId: string;
-  userId: string;
-  message: string;
-  traceId: string;
-  fallbackUsed: boolean;
-  mcpUsed: boolean;
-  toolCalls: number;
-  objectsCreated: number;
-  intent: string;
-}): Promise<void> {
-  if (!isAiAuditEnabled()) {
-    return;
-  }
-
-  await getFirebaseAdminDb()
-    .collection("boards")
-    .doc(options.boardId)
-    .collection("aiRuns")
-    .add({
-      userId: options.userId,
-      message: options.message,
-      traceId: options.traceId,
-      intent: options.intent,
-      fallbackUsed: options.fallbackUsed,
-      mcpUsed: options.mcpUsed,
-      toolCalls: options.toolCalls,
-      objectsCreated: options.objectsCreated,
-      createdAt: FieldValue.serverTimestamp(),
-    });
 }
 
 export async function POST(request: NextRequest) {

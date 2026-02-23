@@ -3,7 +3,6 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import type { RefObject, MutableRefObject, Dispatch, SetStateAction } from "react";
 
 import type {
-  BoardPoint,
   DragState,
   ObjectGeometry,
 } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-types";

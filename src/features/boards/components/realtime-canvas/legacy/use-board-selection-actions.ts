@@ -22,6 +22,7 @@ type UseBoardSelectionActionsParams = {
   setSelectedObjectIds: Dispatch<SetStateAction<string[]>>;
   deleteObject: (objectId: string) => Promise<void>;
   createObject: (toolKind: BoardObjectKind) => Promise<void>;
+  createFrameObject: () => Promise<void>;
   copySelectedObjects: () => void;
   duplicateSelectedObjects: () => Promise<void>;
   pasteCopiedObjects: () => Promise<void>;
@@ -34,7 +35,11 @@ type UseBoardSelectionActionsParams = {
 
 type UseBoardSelectionActionsResult = {
   handleDeleteButtonClick: () => void;
-  handleToolButtonClick: (toolKind: BoardObjectKind) => void;
+  handleToolButtonClick: (
+    toolKind: BoardObjectKind,
+    options?: { asFrame?: boolean },
+  ) => void;
+  handleCreateFrameButtonClick: () => void;
   handleAiFooterResizeStart: (
     event: ReactPointerEvent<HTMLDivElement>,
   ) => void;
@@ -49,6 +54,7 @@ export function useBoardSelectionActions({
   setSelectedObjectIds,
   deleteObject,
   createObject,
+  createFrameObject,
   copySelectedObjects,
   duplicateSelectedObjects,
   pasteCopiedObjects,
@@ -72,11 +78,19 @@ export function useBoardSelectionActions({
   }, [canEdit, deleteObject, selectedObjectIds]);
 
   const handleToolButtonClick = useCallback(
-    (toolKind: BoardObjectKind) => {
+    (toolKind: BoardObjectKind, options?: { asFrame?: boolean }) => {
+      if (options?.asFrame) {
+        void createFrameObject();
+        return;
+      }
       void createObject(toolKind);
     },
-    [createObject],
+    [createFrameObject, createObject],
   );
+
+  const handleCreateFrameButtonClick = useCallback(() => {
+    void createFrameObject();
+  }, [createFrameObject]);
 
   const handleDeleteButtonClick = useCallback(() => {
     handleDeleteSelectedObjects();
@@ -171,6 +185,7 @@ export function useBoardSelectionActions({
   return {
     handleDeleteButtonClick,
     handleToolButtonClick,
+    handleCreateFrameButtonClick,
     handleAiFooterResizeStart,
   };
 }

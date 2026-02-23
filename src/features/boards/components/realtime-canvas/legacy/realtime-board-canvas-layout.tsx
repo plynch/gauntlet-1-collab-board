@@ -28,6 +28,7 @@ type RealtimeBoardCanvasLayoutProps = {
   onLeftCollapse: () => void;
   onLeftExpand: () => void;
   onToolButtonClick: ComponentProps<typeof LeftToolsPanel>["onToolButtonClick"];
+  onCreateFrame: () => void;
   onCreateSwot: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
@@ -51,6 +52,7 @@ export function RealtimeBoardCanvasLayout({
   onLeftCollapse,
   onLeftExpand,
   onToolButtonClick,
+  onCreateFrame,
   onCreateSwot,
   onDuplicate,
   onDelete,
@@ -94,6 +96,7 @@ export function RealtimeBoardCanvasLayout({
           onCollapse={onLeftCollapse}
           onExpand={onLeftExpand}
           onToolButtonClick={onToolButtonClick}
+          onCreateFrame={onCreateFrame}
           onCreateSwot={onCreateSwot}
           onDuplicate={onDuplicate}
           onDelete={onDelete}

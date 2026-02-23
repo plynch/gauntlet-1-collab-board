@@ -18,12 +18,23 @@ const BOARD_COLOR_SWATCHES: ColorSwatch[] = [
 
 export function ColorSwatchPicker({
   currentColor,
+  leadingSwatch,
   onSelectColor,
 }: {
   currentColor: string | null;
+  leadingSwatch?: ColorSwatch | null;
   onSelectColor: (nextColor: string) => void;
 }) {
   const currentColorKey = currentColor ? currentColor.toLowerCase() : null;
+  const swatches = leadingSwatch
+    ? [
+        leadingSwatch,
+        ...BOARD_COLOR_SWATCHES.filter(
+          (swatch) =>
+            swatch.value.toLowerCase() !== leadingSwatch.value.toLowerCase(),
+        ),
+      ]
+    : BOARD_COLOR_SWATCHES;
 
   return (
     <div
@@ -35,7 +46,7 @@ export function ColorSwatchPicker({
       }}
       onPointerDown={(event) => event.stopPropagation()}
     >
-      {BOARD_COLOR_SWATCHES.map((swatch) => {
+      {swatches.map((swatch) => {
         const isSelected =
           currentColorKey !== null &&
           swatch.value.toLowerCase() === currentColorKey;

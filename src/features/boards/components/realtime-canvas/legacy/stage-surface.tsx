@@ -211,6 +211,7 @@ export function StageSurface(props: StageSurfaceProps) {
         canShowSelectionHud={canShowSelectionHud}
         selectionHudPosition={selectionHudPosition}
         selectionHudRef={selectionHudRef}
+        resolvedTheme={resolvedTheme}
         canColorSelection={canColorSelection}
         selectedColor={selectedColor}
         saveSelectedObjectsColor={saveSelectedObjectsColor}

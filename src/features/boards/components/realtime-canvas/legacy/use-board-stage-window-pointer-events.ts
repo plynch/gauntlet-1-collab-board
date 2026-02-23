@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { handleBoardStageWindowPointerMove } from "@/features/boards/components/realtime-canvas/legacy/board-stage-window-pointer-move";
 import { handleBoardStageWindowPointerUp } from "@/features/boards/components/realtime-canvas/legacy/board-stage-window-pointer-up";
@@ -7,11 +7,17 @@ import type { UseBoardStageWindowPointerEventsParams } from "@/features/boards/c
 export function useBoardStageWindowPointerEvents(
   params: UseBoardStageWindowPointerEventsParams,
 ): void {
+  const paramsRef = useRef(params);
+
+  useEffect(() => {
+    paramsRef.current = params;
+  }, [params]);
+
   useEffect(() => {
     const handleWindowPointerMove = (event: PointerEvent) =>
-      handleBoardStageWindowPointerMove(event, params);
+      handleBoardStageWindowPointerMove(event, paramsRef.current);
     const handleWindowPointerUp = (event: PointerEvent) =>
-      handleBoardStageWindowPointerUp(event, params);
+      handleBoardStageWindowPointerUp(event, paramsRef.current);
 
     window.addEventListener("pointermove", handleWindowPointerMove);
     window.addEventListener("pointerup", handleWindowPointerUp);
@@ -20,43 +26,5 @@ export function useBoardStageWindowPointerEvents(
       window.removeEventListener("pointermove", handleWindowPointerMove);
       window.removeEventListener("pointerup", handleWindowPointerUp);
     };
-  }, [
-    params.aiFooterResizeStateRef,
-    params.canEditRef,
-    params.cornerResizeStateRef,
-    params.connectorEndpointDragStateRef,
-    params.dragStateRef,
-    params.lineEndpointResizeStateRef,
-    params.marqueeSelectionStateRef,
-    params.panStateRef,
-    params.viewportRef,
-    params.rotateStateRef,
-    params.objectsByIdRef,
-    params.draftConnectorByIdRef,
-    params.draftGeometryByIdRef,
-    params.getConnectorDraftForObject,
-    params.getConnectableAnchorPoints,
-    params.getCurrentObjectGeometry,
-    params.getLineGeometryFromEndpointDrag,
-    params.getObjectsIntersectingRect,
-    params.getResizedGeometry,
-    params.setAiFooterHeight,
-    params.setDraftConnector,
-    params.setDraftGeometry,
-    params.setIsAiFooterResizing,
-    params.setIsObjectDragging,
-    params.setMarqueeSelectionState,
-    params.setSelectedObjectIds,
-    params.setViewport,
-    params.snapToGridEnabledRef,
-    params.stageRef,
-    params.buildContainerMembershipPatchesForPositions,
-    params.getSectionAnchoredObjectUpdatesForContainer,
-    params.updateConnectorDraft,
-    params.updateObjectGeometry,
-    params.updateObjectPositionsBatch,
-    params.clearDraftConnector,
-    params.clearDraftGeometry,
-    params.clearStickyTextHoldDrag,
-  ]);
+  }, []);
 }

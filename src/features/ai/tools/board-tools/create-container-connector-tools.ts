@@ -120,14 +120,14 @@ export async function createFrameTool(
     height: number;
   },
 ): Promise<ExecuteToolResultLike> {
-  const normalizedTitle = args.title.trim().slice(0, 200) || "Frame";
+  const normalizedTitle = args.title.trim().slice(0, 200);
   const created = await context.createObject({
     type: "rect",
     x: args.x,
     y: args.y,
     width: Math.max(180, args.width),
     height: Math.max(120, args.height),
-    color: "#e2e8f0",
+    color: "transparent",
     text: normalizedTitle,
   });
 

@@ -27,6 +27,7 @@ type UseLegacyCanvasUiWiringArgs = {
   state: LegacyCanvasStateShape["state"];
   chat: LegacyCanvasStateShape["chat"];
   createObject: (kind: any) => Promise<void>;
+  createFrameObject: () => Promise<void>;
   showBoardStatus: (message: string) => void;
   createSwotTemplate: () => Promise<string | null>;
   deleteObject: (objectId: string) => Promise<void>;
@@ -52,6 +53,7 @@ export function useLegacyCanvasUiWiring({
   state,
   chat,
   createObject,
+  createFrameObject,
   showBoardStatus,
   createSwotTemplate,
   deleteObject,
@@ -147,6 +149,7 @@ export function useLegacyCanvasUiWiring({
   const {
     handleDeleteButtonClick,
     handleToolButtonClick,
+    handleCreateFrameButtonClick,
     handleAiFooterResizeStart,
   } = useBoardSelectionActions({
     canEdit,
@@ -157,6 +160,7 @@ export function useLegacyCanvasUiWiring({
     setSelectedObjectIds: state.setSelectedObjectIds,
     deleteObject,
     createObject,
+    createFrameObject,
     copySelectedObjects,
     duplicateSelectedObjects,
     pasteCopiedObjects,
@@ -272,6 +276,7 @@ export function useLegacyCanvasUiWiring({
     shouldPreserveGroupSelection,
     handleDeleteButtonClick,
     handleToolButtonClick,
+    handleCreateFrameButtonClick,
     handleAiFooterResizeStart,
     handleAiChatSubmit,
     handleAiChatInputKeyDown,

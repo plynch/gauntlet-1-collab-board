@@ -30,6 +30,13 @@ import type { BoardObject, BoardObjectKind } from "@/features/boards/types";
 
 type CreateBoardObjectActionParams = {
   kind: BoardObjectKind;
+  options?: {
+    kind?: BoardObjectKind;
+    width?: number;
+    height?: number;
+    color?: string;
+    text?: string;
+  };
   canEdit: boolean;
   userId: string;
   objectsCollectionRef: CollectionReference<DocumentData>;
@@ -43,6 +50,7 @@ type CreateBoardObjectActionParams = {
 
 export async function createBoardObjectAction({
   kind,
+  options,
   canEdit,
   userId,
   objectsCollectionRef,
@@ -66,15 +74,22 @@ export async function createBoardObjectAction({
   const centerX = (rect.width / 2 - viewportRef.current.x) / viewportRef.current.scale;
   const centerY =
     (rect.height / 2 - viewportRef.current.y) / viewportRef.current.scale;
-  const defaultSize = getDefaultObjectSize(kind);
+  const objectKind = options?.kind ?? kind;
+  const defaultSize = getDefaultObjectSize(objectKind);
   let width = defaultSize.width;
   let height = defaultSize.height;
-  if (kind === "gridContainer") {
+  if (objectKind === "gridContainer") {
     const viewableWidth = rect.width / viewportRef.current.scale;
     const viewableHeight = rect.height / viewportRef.current.scale;
-    const minimumSize = getMinimumObjectSize(kind);
+    const minimumSize = getMinimumObjectSize(objectKind);
     width = Math.max(minimumSize.width, Math.round(viewableWidth * 0.9));
     height = Math.max(minimumSize.height, Math.round(viewableHeight * 0.9));
+  }
+  if (typeof options?.width === "number" && Number.isFinite(options.width)) {
+    width = Math.max(getMinimumObjectSize(objectKind).width, options.width);
+  }
+  if (typeof options?.height === "number" && Number.isFinite(options.height)) {
+    height = Math.max(getMinimumObjectSize(objectKind).height, options.height);
   }
   const spawnIndex = objectsByIdRef.current.size + objectSpawnSequenceRef.current;
   objectSpawnSequenceRef.current += 1;
@@ -82,11 +97,11 @@ export async function createBoardObjectAction({
   const startXRaw = centerX - width / 2 + spawnOffset.x;
   const startYRaw = centerY - height / 2 + spawnOffset.y;
   const startX =
-    snapToGridEnabledRef.current && isSnapEligibleObjectType(kind)
+    snapToGridEnabledRef.current && isSnapEligibleObjectType(objectKind)
       ? snapToGrid(startXRaw)
       : startXRaw;
   const startY =
-    snapToGridEnabledRef.current && isSnapEligibleObjectType(kind)
+    snapToGridEnabledRef.current && isSnapEligibleObjectType(objectKind)
       ? snapToGrid(startYRaw)
       : startYRaw;
   const highestZIndex = Array.from(objectsByIdRef.current.values()).reduce(
@@ -97,10 +112,10 @@ export async function createBoardObjectAction({
     (minValue, objectItem) => Math.min(minValue, objectItem.zIndex),
     0,
   );
-  const nextZIndex = isBackgroundContainerType(kind)
+  const nextZIndex = isBackgroundContainerType(objectKind)
     ? lowestZIndex - 1
     : highestZIndex + 1;
-  const isConnector = isConnectorKind(kind);
+  const isConnector = isConnectorKind(objectKind);
 
   try {
     const connectorFrom = isConnector
@@ -121,20 +136,22 @@ export async function createBoardObjectAction({
         : null;
 
     const payload: Record<string, unknown> = {
-      type: kind,
+      type: objectKind,
       zIndex: nextZIndex,
       x: connectorGeometry ? connectorGeometry.x : startX,
       y: connectorGeometry ? connectorGeometry.y : startY,
       width: connectorGeometry ? connectorGeometry.width : width,
       height: connectorGeometry ? connectorGeometry.height : height,
       rotationDeg: 0,
-      color: getDefaultObjectColor(kind),
-      text: kind === "sticky" ? "New sticky note" : kind === "text" ? "Text" : "",
+      color: options?.color ?? getDefaultObjectColor(objectKind),
+      text:
+        options?.text ??
+        (objectKind === "sticky" ? "New sticky note" : objectKind === "text" ? "Text" : ""),
       createdBy: userId,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
-    if (kind === "gridContainer") {
+    if (objectKind === "gridContainer") {
       const defaultSectionTitles = getDefaultSectionTitles(1, 1);
       payload.gridRows = 1;
       payload.gridCols = 1;

@@ -93,6 +93,7 @@ export default function RealtimeBoardCanvas({
   const {
     updateCursor,
     createObject,
+    createFrameObject,
     showBoardStatus,
     createSwotTemplate,
     deleteObject,
@@ -139,6 +140,7 @@ export default function RealtimeBoardCanvas({
     shouldPreserveGroupSelection,
     handleDeleteButtonClick,
     handleToolButtonClick,
+    handleCreateFrameButtonClick,
     handleAiFooterResizeStart,
     handleAiChatSubmit,
     handleAiChatInputKeyDown,
@@ -182,6 +184,7 @@ export default function RealtimeBoardCanvas({
     state,
     chat,
     createObject,
+    createFrameObject,
     showBoardStatus,
     createSwotTemplate,
     deleteObject,
@@ -219,7 +222,7 @@ export default function RealtimeBoardCanvas({
       isAiSubmitting={isAiSubmitting} isSwotTemplateCreating={isSwotTemplateCreating} hasDeletableSelection={hasDeletableSelection}
       selectedObjectCount={selectedObjectCount} resolvedTheme={resolvedTheme}
       onLeftCollapse={() => setIsLeftPanelCollapsed(true)} onLeftExpand={() => setIsLeftPanelCollapsed(false)}
-      onToolButtonClick={handleToolButtonClick} onCreateSwot={handleCreateSwotButtonClick}
+      onToolButtonClick={handleToolButtonClick} onCreateFrame={handleCreateFrameButtonClick} onCreateSwot={handleCreateSwotButtonClick}
       onDuplicate={() => { void duplicateSelectedObjects(); }} onDelete={handleDeleteButtonClick}
       leftControlsProps={{ zoomSliderMin: ZOOM_SLIDER_MIN_PERCENT, zoomSliderMax: ZOOM_SLIDER_MAX_PERCENT, zoomSliderValue, zoomPercent, selectedObjectCount, isSnapToGridEnabled, cursorBoardPosition, boardError, boardStatusMessage, onResetView: () => setViewport(INITIAL_VIEWPORT), onNudgeZoomOut: () => nudgeZoom("out"), onNudgeZoomIn: () => nudgeZoom("in"), onZoomSliderChange: zoomAtStageCenter, onSnapToGridToggle: setIsSnapToGridEnabled }}
       stageSurfaceProps={{

@@ -15,6 +15,7 @@ type SelectionHudPanelProps = {
   canShowSelectionHud: boolean;
   selectionHudPosition: { x: number; y: number } | null;
   selectionHudRef: MutableRefObject<HTMLDivElement | null>;
+  resolvedTheme: "light" | "dark";
   canColorSelection: boolean;
   selectedColor: string | null;
   saveSelectedObjectsColor: (color: string) => Promise<void>;
@@ -32,6 +33,7 @@ export function SelectionHudPanel({
   canShowSelectionHud,
   selectionHudPosition,
   selectionHudRef,
+  resolvedTheme,
   canColorSelection,
   selectedColor,
   saveSelectedObjectsColor,
@@ -47,6 +49,14 @@ export function SelectionHudPanel({
   if (!canShowSelectionHud || !selectionHudPosition) {
     return null;
   }
+
+  const leadingTextSwatch =
+    singleSelectedObject?.type === "text"
+      ? {
+          name: resolvedTheme === "dark" ? "White (text default)" : "Black (text default)",
+          value: resolvedTheme === "dark" ? "#f8fafc" : "#0f172a",
+        }
+      : null;
 
   return (
     <div
@@ -84,6 +94,7 @@ export function SelectionHudPanel({
         {canColorSelection ? (
           <ColorSwatchPicker
             currentColor={selectedColor ?? ""}
+            leadingSwatch={leadingTextSwatch}
             onSelectColor={(nextColor) => {
               void saveSelectedObjectsColor(nextColor);
             }}

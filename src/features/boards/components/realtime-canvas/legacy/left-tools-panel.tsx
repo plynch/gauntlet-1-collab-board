@@ -12,7 +12,11 @@ type LeftToolsPanelProps = {
   resolvedTheme: "light" | "dark";
   onCollapse: () => void;
   onExpand: () => void;
-  onToolButtonClick: (toolKind: (typeof BOARD_TOOLS)[number]) => void;
+  onToolButtonClick: (
+    toolKind: (typeof BOARD_TOOLS)[number],
+    options?: { asFrame?: boolean },
+  ) => void;
+  onCreateFrame: () => void;
   onCreateSwot: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
@@ -30,6 +34,7 @@ export function LeftToolsPanel({
   onCollapse,
   onExpand,
   onToolButtonClick,
+  onCreateFrame,
   onCreateSwot,
   onDuplicate,
   onDelete,
@@ -163,42 +168,33 @@ export function LeftToolsPanel({
                   <ToolIcon kind={toolKind} />
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={onCreateFrame}
+                disabled={!canEdit}
+                title="Frame"
+                aria-label="Frame"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 42,
+                  minWidth: 42,
+                  maxWidth: 42,
+                  minHeight: 42,
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                  background: "var(--surface)",
+                  height: 42,
+                  padding: 0,
+                  lineHeight: 1,
+                }}
+              >
+                <span style={{ fontSize: 18 }} role="img" aria-hidden="true">
+                  🖼️
+                </span>
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => onToolButtonClick("rect")}
-              disabled={!canEdit}
-              title="Create free-form frame"
-              style={{
-                width: "100%",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "0.45rem",
-                border:
-                  !canEdit
-                    ? "1px solid var(--border)"
-                    : resolvedTheme === "dark"
-                      ? "1px solid rgba(129, 140, 248, 0.56)"
-                      : "1px solid #c7d2fe",
-                borderRadius: 8,
-                background:
-                  !canEdit
-                    ? "var(--surface-muted)"
-                    : resolvedTheme === "dark"
-                      ? "rgba(79, 70, 229, 0.24)"
-                      : "#e0e7ff",
-                color: !canEdit ? "var(--text-muted)" : resolvedTheme === "dark" ? "#c7d2fe" : "#312e81",
-                height: 34,
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: !canEdit ? "not-allowed" : "pointer",
-                transition: "background-color 180ms ease, border-color 180ms ease, color 180ms ease",
-              }}
-            >
-              <ToolIcon kind="rect" />
-              <span>Frame (New)</span>
-            </button>
             <button
               type="button"
               onClick={onCreateSwot}

@@ -158,6 +158,38 @@ export function useBoardRuntimeActions({
     ],
   );
 
+  const createFrameObject = useCallback(async () => {
+    await createBoardObjectAction({
+      kind: "rect",
+      options: {
+        kind: "rect",
+        width: 520,
+        height: 320,
+        color: "transparent",
+        text: "",
+      },
+      canEdit,
+      userId,
+      objectsCollectionRef,
+      objectsByIdRef,
+      objectSpawnSequenceRef,
+      stageRef,
+      viewportRef,
+      snapToGridEnabledRef,
+      setBoardError,
+    });
+  }, [
+    canEdit,
+    objectsByIdRef,
+    objectSpawnSequenceRef,
+    objectsCollectionRef,
+    setBoardError,
+    snapToGridEnabledRef,
+    stageRef,
+    userId,
+    viewportRef,
+  ]);
+
   const showBoardStatus = useCallback(
     (message: string) => {
       setBoardStatusMessage(message);
@@ -238,6 +270,7 @@ export function useBoardRuntimeActions({
   return {
     updateCursor,
     createObject,
+    createFrameObject,
     showBoardStatus,
     createSwotTemplate,
     deleteObject,

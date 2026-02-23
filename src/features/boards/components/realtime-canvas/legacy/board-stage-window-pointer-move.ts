@@ -19,7 +19,6 @@ export function handleBoardStageWindowPointerMove(
     connectorEndpointDragStateRef,
     canEditRef,
     objectsByIdRef,
-    draftGeometryByIdRef,
     draftConnectorByIdRef,
     setDraftGeometry,
     setDraftConnector,

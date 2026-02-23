@@ -126,7 +126,6 @@ import { LeftToolsPanelControls } from "@/features/boards/components/realtime-ca
 import {
   DEFAULT_SWOT_SECTION_TITLES,
   getDefaultSectionTitles,
-  normalizeSectionValues,
 } from "@/features/boards/components/realtime-canvas/grid-section-utils";
 import { useBoardAssistantActions } from "@/features/boards/components/realtime-canvas/legacy/use-board-assistant-actions";
 import {
@@ -155,6 +154,7 @@ import { useTheme } from "@/features/theme/use-theme";
 import { getFirebaseClientDb } from "@/lib/firebase/client";
 import { useRealtimeBoardCanvasRuntimeSync } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-runtime-sync";
 import { useGridAxisLabels } from "@/features/boards/components/realtime-canvas/legacy/use-grid-axis-labels";
+import { useGridDimensionUpdates } from "@/features/boards/components/realtime-canvas/legacy/use-grid-dimension-updates";
 import { useSelectionUiState } from "@/features/boards/components/realtime-canvas/legacy/use-selection-ui-state";
 import { useGridContentSync } from "@/features/boards/components/realtime-canvas/legacy/use-grid-content-sync";
 import { useStickyTextSync } from "@/features/boards/components/realtime-canvas/legacy/use-sticky-text-sync";
@@ -1533,121 +1533,19 @@ export default function RealtimeBoardCanvas({
     setBoardError,
   });
 
-  const updateGridContainerDimensions = useCallback(
-    async (objectId: string, nextRowsRaw: number, nextColsRaw: number) => {
-      if (!canEditRef.current) {
-        return;
-      }
-
-      const objectItem = objectsByIdRef.current.get(objectId);
-      if (!objectItem || objectItem.type !== "gridContainer") {
-        return;
-      }
-
-      const nextRows = Math.max(
-        1,
-        Math.min(GRID_CONTAINER_MAX_ROWS, Math.floor(nextRowsRaw)),
-      );
-      const nextCols = Math.max(
-        1,
-        Math.min(GRID_CONTAINER_MAX_COLS, Math.floor(nextColsRaw)),
-      );
-      const currentRows = Math.max(1, objectItem.gridRows ?? 2);
-      const currentCols = Math.max(1, objectItem.gridCols ?? 2);
-      if (nextRows === currentRows && nextCols === currentCols) {
-        return;
-      }
-
-      const sectionCount = nextRows * nextCols;
-      const fallbackTitles = getDefaultSectionTitles(nextRows, nextCols);
-      const currentDraft = getGridDraftForObject(objectItem);
-      const nextSectionTitles = normalizeSectionValues(
-        currentDraft.sectionTitles,
-        sectionCount,
-        (index) => fallbackTitles[index] ?? `Section ${index + 1}`,
-        80,
-      );
-      const nextSectionNotes = normalizeSectionValues(
-        currentDraft.sectionNotes,
-        sectionCount,
-        () => "",
-        600,
-      );
-
-      const nextCellColors = Array.from(
-        { length: sectionCount },
-        (_, index) => objectItem.gridCellColors?.[index] ?? "transparent",
-      );
-      const geometry = getCurrentObjectGeometry(objectId) ?? {
-        x: objectItem.x,
-        y: objectItem.y,
-        width: objectItem.width,
-        height: objectItem.height,
-        rotationDeg: objectItem.rotationDeg,
-      };
-      const nextGap = Math.max(
-        0,
-        objectItem.gridGap ?? GRID_CONTAINER_DEFAULT_GAP,
-      );
-      const childUpdates = getSectionAnchoredObjectUpdatesForContainer(
-        objectId,
-        geometry,
-        nextRows,
-        nextCols,
-        nextGap,
-      );
-      const membershipByObjectId = buildContainerMembershipPatchesForPositions(
-        childUpdates.positionByObjectId,
-        childUpdates.membershipByObjectId,
-      );
-
-      try {
-        await updateDoc(doc(db, `boards/${boardId}/objects/${objectId}`), {
-          gridRows: nextRows,
-          gridCols: nextCols,
-          gridSectionTitles: nextSectionTitles,
-          gridSectionNotes: nextSectionNotes,
-          gridCellColors: nextCellColors,
-          updatedAt: serverTimestamp(),
-        });
-        setGridContentDraftById((previous) => {
-          if (!(objectId in previous)) {
-            return previous;
-          }
-
-          const next = { ...previous };
-          delete next[objectId];
-          return next;
-        });
-
-        const childIds = Object.keys(childUpdates.positionByObjectId);
-        if (childIds.length > 0) {
-          await updateObjectPositionsBatch(childUpdates.positionByObjectId, {
-            includeUpdatedAt: true,
-            force: true,
-            containerMembershipById: membershipByObjectId,
-          });
-        }
-      } catch (error) {
-        console.error("Failed to update grid container dimensions", error);
-        setBoardError(
-          toBoardErrorMessage(
-            error,
-            "Failed to update grid container dimensions.",
-          ),
-        );
-      }
-    },
-    [
-      boardId,
-      buildContainerMembershipPatchesForPositions,
-      db,
-      getCurrentObjectGeometry,
-      getGridDraftForObject,
-      getSectionAnchoredObjectUpdatesForContainer,
-      updateObjectPositionsBatch,
-    ],
-  );
+  const { updateGridContainerDimensions } = useGridDimensionUpdates({
+    boardId,
+    db,
+    canEditRef,
+    objectsByIdRef,
+    getCurrentObjectGeometry,
+    getGridDraftForObject,
+    getSectionAnchoredObjectUpdatesForContainer,
+    buildContainerMembershipPatchesForPositions,
+    updateObjectPositionsBatch,
+    setGridContentDraftById,
+    setBoardError,
+  });
 
   const saveSelectedObjectsColor = useCallback(
     async (color: string) => {

@@ -36,9 +36,7 @@ import {
   getDefaultObjectColor,
   getDefaultObjectSize,
   getMinimumObjectSize,
-  getReadableTextColor,
   getRenderLayerRank,
-  getRenderedObjectColor,
   isBackgroundContainerType,
   isConnectableShapeKind,
   isConnectorKind,
@@ -67,7 +65,6 @@ import {
   getAnchorPointForGeometry,
   getConnectorHitBounds,
   getDistance,
-  getLineEndpointOffsets,
   getLineEndpoints,
   getObjectVisualBounds,
   getSpawnOffset,
@@ -151,15 +148,12 @@ import { useFpsMeter } from "@/features/boards/components/realtime-canvas/legacy
 import { useObjectTemplateActions } from "@/features/boards/components/realtime-canvas/legacy/use-object-template-actions";
 import { useAiCommandSubmit } from "@/features/boards/components/realtime-canvas/legacy/use-ai-command-submit";
 import { AiAssistantFooter } from "@/features/boards/components/realtime-canvas/legacy/ai-assistant-footer";
-import { ConnectorObjectArticle } from "@/features/boards/components/realtime-canvas/legacy/connector-object-article";
 import { LeftToolsPanel } from "@/features/boards/components/realtime-canvas/legacy/left-tools-panel";
 import { RightPresencePanel } from "@/features/boards/components/realtime-canvas/legacy/right-presence-panel";
 import { SelectionHudPanel } from "@/features/boards/components/realtime-canvas/legacy/selection-hud-panel";
-import { ShapeObjectArticle } from "@/features/boards/components/realtime-canvas/legacy/shape-object-article";
-import { StickyObjectArticle } from "@/features/boards/components/realtime-canvas/legacy/sticky-object-article";
+import { StageObjectLayer } from "@/features/boards/components/realtime-canvas/legacy/stage-object-layer";
 import { StageOverlays } from "@/features/boards/components/realtime-canvas/legacy/stage-overlays";
 import { StageAxisOverlay } from "@/features/boards/components/realtime-canvas/legacy/stage-axis-overlay";
-import { TextObjectArticle } from "@/features/boards/components/realtime-canvas/legacy/text-object-article";
 import {
   DEFAULT_SWOT_SECTION_TITLES,
   getDefaultSectionTitles,
@@ -4411,258 +4405,39 @@ export default function RealtimeBoardCanvas({
               persistObjectLabelText={persistObjectLabelText}
             />
 
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                zIndex: 1,
-                transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`,
-                transformOrigin: "0 0",
-              }}
-            >
-              {objects.map((objectItem) => {
-                const draftGeometry = draftGeometryById[objectItem.id];
-                const hasDraftGeometry = Boolean(draftGeometry);
-                const objectX = draftGeometry?.x ?? objectItem.x;
-                const objectY = draftGeometry?.y ?? objectItem.y;
-                const objectWidth = draftGeometry?.width ?? objectItem.width;
-                const objectHeight = draftGeometry?.height ?? objectItem.height;
-                const objectRotationDeg =
-                  draftGeometry?.rotationDeg ?? objectItem.rotationDeg;
-                const objectText = textDrafts[objectItem.id] ?? objectItem.text;
-                const objectLabelText =
-                  objectItem.type === "sticky" ||
-                  objectItem.type === "gridContainer" ||
-                  objectItem.type === "text"
-                    ? ""
-                    : (objectItem.text ?? "").trim();
-                const isSelected = selectedObjectIds.includes(objectItem.id);
-                const isSingleSelected =
-                  selectedObjectIds.length === 1 && isSelected;
-                const isConnector = isConnectorKind(objectItem.type);
-                const renderedObjectColor = getRenderedObjectColor(
-                  objectItem.color,
-                  objectItem.type,
-                  resolvedTheme,
-                );
-                const objectSurfaceColor =
-                  resolvedTheme === "dark" ? "rgba(241, 245, 249, 0.58)" : "rgba(15, 23, 42, 0.55)";
-                const objectTextColor = getReadableTextColor(renderedObjectColor);
-                const objectGeometry: ObjectGeometry = {
-                  x: objectX,
-                  y: objectY,
-                  width: objectWidth,
-                  height: objectHeight,
-                  rotationDeg: objectRotationDeg,
-                };
-                const connectorRoute = isConnector
-                  ? (connectorRoutesById.get(objectItem.id) ?? null)
-                  : null;
-                const connectorFrame = connectorRoute
-                  ? {
-                      left: connectorRoute.geometry.bounds.left,
-                      top: connectorRoute.geometry.bounds.top,
-                      width: Math.max(
-                        1,
-                        connectorRoute.geometry.bounds.right -
-                          connectorRoute.geometry.bounds.left,
-                      ),
-                      height: Math.max(
-                        1,
-                        connectorRoute.geometry.bounds.bottom -
-                          connectorRoute.geometry.bounds.top,
-                      ),
-                    }
-                  : null;
-                const lineEndpointOffsets =
-                  objectItem.type === "line"
-                    ? getLineEndpointOffsets(objectGeometry)
-                    : null;
-                const isPolygonShape =
-                  objectItem.type === "triangle" || objectItem.type === "star";
-                const isGridContainer = objectItem.type === "gridContainer";
-                const gridRows = isGridContainer
-                  ? Math.max(1, objectItem.gridRows ?? 2)
-                  : 0;
-                const gridCols = isGridContainer
-                  ? Math.max(1, objectItem.gridCols ?? 2)
-                  : 0;
-                const gridGap = isGridContainer
-                  ? Math.max(
-                      0,
-                      objectItem.gridGap ?? GRID_CONTAINER_DEFAULT_GAP,
-                    )
-                  : 0;
-                const gridTotalCells = isGridContainer
-                  ? gridRows * gridCols
-                  : 0;
-                const gridCellColors = isGridContainer
-                  ? Array.from({ length: gridTotalCells }, (_, index) => {
-                      const explicitColor = objectItem.gridCellColors?.[index];
-                      if (
-                        typeof explicitColor === "string" &&
-                        explicitColor.trim().length > 0
-                      ) {
-                        return explicitColor;
-                      }
-
-                      if (gridRows === 2 && gridCols === 2) {
-                        return SWOT_SECTION_COLORS[index] ?? "transparent";
-                      }
-
-                      return "transparent";
-                    })
-                  : [];
-                const gridFallbackTitles = isGridContainer
-                  ? getDefaultSectionTitles(gridRows, gridCols)
-                  : [];
-                const gridDraft = isGridContainer
-                  ? getGridDraftForObject(objectItem)
-                  : null;
-                const gridContainerTitle =
-                  gridDraft?.containerTitle ?? objectItem.containerTitle ?? "";
-                const gridSectionTitles =
-                  gridDraft?.sectionTitles ??
-                  normalizeSectionValues(
-                    objectItem.gridSectionTitles,
-                    gridTotalCells,
-                    (index) =>
-                      gridFallbackTitles[index] ?? `Section ${index + 1}`,
-                    80,
-                  );
-
-                if (isConnector && connectorRoute && connectorFrame) {
-                  return (
-                    <ConnectorObjectArticle
-                      key={objectItem.id}
-                      objectItem={objectItem}
-                      connectorRoute={connectorRoute}
-                      connectorFrame={connectorFrame}
-                      renderedObjectColor={renderedObjectColor}
-                      objectLabelText={objectLabelText}
-                      isSelected={isSelected}
-                      isSingleSelected={isSingleSelected}
-                      canEdit={canEdit}
-                      isEndpointDragActive={
-                        connectorEndpointDragStateRef.current?.objectId ===
-                        objectItem.id
-                      }
-                      shouldPreserveGroupSelection={shouldPreserveGroupSelection}
-                      selectSingleObject={selectSingleObject}
-                      toggleObjectSelection={toggleObjectSelection}
-                      startConnectorEndpointDrag={startConnectorEndpointDrag}
-                    />
-                  );
-                }
-
-                if (objectItem.type === "sticky") {
-                  return (
-                    <StickyObjectArticle
-                      key={objectItem.id}
-                      objectItem={objectItem}
-                      objectX={objectX}
-                      objectY={objectY}
-                      objectWidth={objectWidth}
-                      objectHeight={objectHeight}
-                      objectRotationDeg={objectRotationDeg}
-                      objectText={objectText}
-                      objectTextColor={objectTextColor}
-                      renderedObjectColor={renderedObjectColor}
-                      isSelected={isSelected}
-                      isSingleSelected={isSingleSelected}
-                      hasDraftGeometry={hasDraftGeometry}
-                      canEdit={canEdit}
-                      isObjectDragging={isObjectDragging}
-                      shouldPreserveGroupSelection={shouldPreserveGroupSelection}
-                      selectSingleObject={selectSingleObject}
-                      toggleObjectSelection={toggleObjectSelection}
-                      startObjectDrag={startObjectDrag}
-                      startCornerResize={startCornerResize}
-                      startShapeRotate={startShapeRotate}
-                      stickyTextHoldDragRef={stickyTextHoldDragRef}
-                      clearStickyTextHoldDrag={clearStickyTextHoldDrag}
-                      setTextDrafts={setTextDrafts}
-                      queueStickyTextSync={queueStickyTextSync}
-                      flushStickyTextSync={flushStickyTextSync}
-                    />
-                  );
-                }
-
-                if (objectItem.type === "text") {
-                  return (
-                    <TextObjectArticle
-                      key={objectItem.id}
-                      objectItem={objectItem}
-                      objectX={objectX}
-                      objectY={objectY}
-                      objectWidth={objectWidth}
-                      objectHeight={objectHeight}
-                      objectRotationDeg={objectRotationDeg}
-                      objectText={objectText}
-                      renderedObjectColor={renderedObjectColor}
-                      isSelected={isSelected}
-                      isSingleSelected={isSingleSelected}
-                      hasDraftGeometry={hasDraftGeometry}
-                      canEdit={canEdit}
-                      isObjectDragging={isObjectDragging}
-                      shouldPreserveGroupSelection={shouldPreserveGroupSelection}
-                      selectSingleObject={selectSingleObject}
-                      toggleObjectSelection={toggleObjectSelection}
-                      startObjectDrag={startObjectDrag}
-                      startCornerResize={startCornerResize}
-                      startShapeRotate={startShapeRotate}
-                      stickyTextHoldDragRef={stickyTextHoldDragRef}
-                      clearStickyTextHoldDrag={clearStickyTextHoldDrag}
-                      setTextDrafts={setTextDrafts}
-                      queueStickyTextSync={queueStickyTextSync}
-                      flushStickyTextSync={flushStickyTextSync}
-                    />
-                  );
-                }
-
-                return (
-                  <ShapeObjectArticle
-                    key={objectItem.id}
-                    objectItem={objectItem}
-                    objectX={objectX}
-                    objectY={objectY}
-                    objectWidth={objectWidth}
-                    objectHeight={objectHeight}
-                    objectRotationDeg={objectRotationDeg}
-                    hasDraftGeometry={hasDraftGeometry}
-                    renderedObjectColor={renderedObjectColor}
-                    objectSurfaceColor={objectSurfaceColor}
-                    objectLabelText={objectLabelText}
-                    isSelected={isSelected}
-                    isSingleSelected={isSingleSelected}
-                    canEdit={canEdit}
-                    isObjectDragging={isObjectDragging}
-                    resolvedTheme={resolvedTheme}
-                    lineEndpointOffsets={lineEndpointOffsets}
-                    isPolygonShape={isPolygonShape}
-                    isGridContainer={isGridContainer}
-                    gridRows={gridRows}
-                    gridCols={gridCols}
-                    gridGap={gridGap}
-                    gridTotalCells={gridTotalCells}
-                    gridCellColors={gridCellColors}
-                    gridContainerTitle={gridContainerTitle}
-                    gridSectionTitles={gridSectionTitles}
-                    shouldPreserveGroupSelection={shouldPreserveGroupSelection}
-                    selectSingleObject={selectSingleObject}
-                    toggleObjectSelection={toggleObjectSelection}
-                    startObjectDrag={startObjectDrag}
-                    startShapeRotate={startShapeRotate}
-                    startCornerResize={startCornerResize}
-                    startLineEndpointResize={startLineEndpointResize}
-                    updateGridContainerDimensions={updateGridContainerDimensions}
-                    getGridDraftForObject={getGridDraftForObject}
-                    queueGridContentSync={queueGridContentSync}
-                    saveGridContainerCellColors={saveGridContainerCellColors}
-                  />
-                );
-              })}
-            </div>
+            <StageObjectLayer
+              objects={objects}
+              viewportX={viewport.x}
+              viewportY={viewport.y}
+              viewportScale={viewport.scale}
+              draftGeometryById={draftGeometryById}
+              textDrafts={textDrafts}
+              selectedObjectIds={selectedObjectIds}
+              connectorRoutesById={connectorRoutesById}
+              resolvedTheme={resolvedTheme}
+              canEdit={canEdit}
+              isObjectDragging={isObjectDragging}
+              connectorEndpointDragObjectId={
+                connectorEndpointDragStateRef.current?.objectId ?? null
+              }
+              shouldPreserveGroupSelection={shouldPreserveGroupSelection}
+              selectSingleObject={selectSingleObject}
+              toggleObjectSelection={toggleObjectSelection}
+              startObjectDrag={startObjectDrag}
+              startShapeRotate={startShapeRotate}
+              startCornerResize={startCornerResize}
+              startLineEndpointResize={startLineEndpointResize}
+              startConnectorEndpointDrag={startConnectorEndpointDrag}
+              updateGridContainerDimensions={updateGridContainerDimensions}
+              getGridDraftForObject={getGridDraftForObject}
+              queueGridContentSync={queueGridContentSync}
+              saveGridContainerCellColors={saveGridContainerCellColors}
+              stickyTextHoldDragRef={stickyTextHoldDragRef}
+              clearStickyTextHoldDrag={clearStickyTextHoldDrag}
+              setTextDrafts={setTextDrafts}
+              queueStickyTextSync={queueStickyTextSync}
+              flushStickyTextSync={flushStickyTextSync}
+            />
 
             <StageOverlays
               shouldShowConnectorAnchors={shouldShowConnectorAnchors}

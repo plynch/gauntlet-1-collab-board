@@ -68,7 +68,6 @@ import {
   getLineEndpoints,
   getObjectVisualBounds,
   getSpawnOffset,
-  GRID_CELL_SIZE,
   hasMeaningfulRotation,
   isSnapEligibleObjectType,
   POSITION_WRITE_STEP,
@@ -85,9 +84,6 @@ import {
   type ResolvedConnectorEndpoint,
 } from "@/features/boards/components/realtime-canvas/legacy/legacy-canvas-geometry";
 import {
-  BOARD_GRID_MAJOR_LINE_COLOR,
-  BOARD_GRID_MINOR_LINE_COLOR,
-  BOARD_GRID_SUPER_MAJOR_LINE_COLOR,
   COLLAPSED_PANEL_WIDTH,
   CONNECTOR_HIT_PADDING,
   CONNECTOR_SNAP_DISTANCE_PX,
@@ -100,7 +96,6 @@ import {
   GRID_CONTAINER_MAX_COLS,
   GRID_CONTAINER_MAX_ROWS,
   GRID_MAJOR_SPACING,
-  GRID_SUPER_MAJOR_SPACING,
   INITIAL_VIEWPORT,
   LEFT_PANEL_WIDTH,
   OBJECT_LABEL_MAX_LENGTH,
@@ -150,10 +145,7 @@ import { useAiCommandSubmit } from "@/features/boards/components/realtime-canvas
 import { AiAssistantFooter } from "@/features/boards/components/realtime-canvas/legacy/ai-assistant-footer";
 import { LeftToolsPanel } from "@/features/boards/components/realtime-canvas/legacy/left-tools-panel";
 import { RightPresencePanel } from "@/features/boards/components/realtime-canvas/legacy/right-presence-panel";
-import { SelectionHudPanel } from "@/features/boards/components/realtime-canvas/legacy/selection-hud-panel";
-import { StageObjectLayer } from "@/features/boards/components/realtime-canvas/legacy/stage-object-layer";
-import { StageOverlays } from "@/features/boards/components/realtime-canvas/legacy/stage-overlays";
-import { StageAxisOverlay } from "@/features/boards/components/realtime-canvas/legacy/stage-axis-overlay";
+import { StageSurface } from "@/features/boards/components/realtime-canvas/legacy/stage-surface";
 import {
   DEFAULT_SWOT_SECTION_TITLES,
   getDefaultSectionTitles,
@@ -4357,99 +4349,64 @@ export default function RealtimeBoardCanvas({
             position: "relative",
           }}
         >
-          <div
-            ref={stageRef}
-            onPointerDown={handleStagePointerDown}
-            onPointerMove={handleStagePointerMove}
-            onPointerLeave={handleStagePointerLeave}
-            onContextMenu={(event) => event.preventDefault()}
-            style={{
-              position: "relative",
-              width: "100%",
-              height: "100%",
-              minHeight: 0,
-              overflow: "hidden",
-              backgroundColor: "var(--canvas-bg)",
-              backgroundImage:
-                `linear-gradient(${BOARD_GRID_SUPER_MAJOR_LINE_COLOR} 1px, transparent 1px), linear-gradient(90deg, ${BOARD_GRID_SUPER_MAJOR_LINE_COLOR} 1px, transparent 1px), linear-gradient(${BOARD_GRID_MAJOR_LINE_COLOR} 1px, transparent 1px), linear-gradient(90deg, ${BOARD_GRID_MAJOR_LINE_COLOR} 1px, transparent 1px), linear-gradient(${BOARD_GRID_MINOR_LINE_COLOR} 1px, transparent 1px), linear-gradient(90deg, ${BOARD_GRID_MINOR_LINE_COLOR} 1px, transparent 1px)`,
-              backgroundSize: `${GRID_SUPER_MAJOR_SPACING * viewport.scale}px ${GRID_SUPER_MAJOR_SPACING * viewport.scale}px, ${GRID_SUPER_MAJOR_SPACING * viewport.scale}px ${GRID_SUPER_MAJOR_SPACING * viewport.scale}px, ${GRID_MAJOR_SPACING * viewport.scale}px ${GRID_MAJOR_SPACING * viewport.scale}px, ${GRID_MAJOR_SPACING * viewport.scale}px ${GRID_MAJOR_SPACING * viewport.scale}px, ${GRID_CELL_SIZE * viewport.scale}px ${GRID_CELL_SIZE * viewport.scale}px, ${GRID_CELL_SIZE * viewport.scale}px ${GRID_CELL_SIZE * viewport.scale}px`,
-              backgroundPosition: `${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px`,
-              touchAction: "none",
-              overscrollBehavior: "none",
-              overscrollBehaviorX: "none",
-            }}
-          >
-            <StageAxisOverlay
-              stageWidth={stageSize.width}
-              stageHeight={stageSize.height}
-              viewportX={viewport.x}
-              viewportY={viewport.y}
-              xLabels={gridAxisLabels.xLabels}
-              yLabels={gridAxisLabels.yLabels}
-            />
-
-            <SelectionHudPanel
-              canShowSelectionHud={canShowSelectionHud}
-              selectionHudPosition={selectionHudPosition}
-              selectionHudRef={selectionHudRef}
-              canColorSelection={canColorSelection}
-              selectedColor={selectedColor}
-              saveSelectedObjectsColor={saveSelectedObjectsColor}
-              canResetSelectionRotation={canResetSelectionRotation}
-              resetSelectedObjectsRotation={resetSelectedObjectsRotation}
-              canEditSelectedLabel={canEditSelectedLabel}
-              singleSelectedObject={singleSelectedObject}
-              selectionLabelDraft={selectionLabelDraft}
-              setSelectionLabelDraft={setSelectionLabelDraft}
-              commitSelectionLabelDraft={commitSelectionLabelDraft}
-              persistObjectLabelText={persistObjectLabelText}
-            />
-
-            <StageObjectLayer
-              objects={objects}
-              viewportX={viewport.x}
-              viewportY={viewport.y}
-              viewportScale={viewport.scale}
-              draftGeometryById={draftGeometryById}
-              textDrafts={textDrafts}
-              selectedObjectIds={selectedObjectIds}
-              connectorRoutesById={connectorRoutesById}
-              resolvedTheme={resolvedTheme}
-              canEdit={canEdit}
-              isObjectDragging={isObjectDragging}
-              connectorEndpointDragObjectId={
-                connectorEndpointDragStateRef.current?.objectId ?? null
-              }
-              shouldPreserveGroupSelection={shouldPreserveGroupSelection}
-              selectSingleObject={selectSingleObject}
-              toggleObjectSelection={toggleObjectSelection}
-              startObjectDrag={startObjectDrag}
-              startShapeRotate={startShapeRotate}
-              startCornerResize={startCornerResize}
-              startLineEndpointResize={startLineEndpointResize}
-              startConnectorEndpointDrag={startConnectorEndpointDrag}
-              updateGridContainerDimensions={updateGridContainerDimensions}
-              getGridDraftForObject={getGridDraftForObject}
-              queueGridContentSync={queueGridContentSync}
-              saveGridContainerCellColors={saveGridContainerCellColors}
-              stickyTextHoldDragRef={stickyTextHoldDragRef}
-              clearStickyTextHoldDrag={clearStickyTextHoldDrag}
-              setTextDrafts={setTextDrafts}
-              queueStickyTextSync={queueStickyTextSync}
-              flushStickyTextSync={flushStickyTextSync}
-            />
-
-            <StageOverlays
-              shouldShowConnectorAnchors={shouldShowConnectorAnchors}
-              connectorAnchorPoints={connectorAnchorPoints}
-              marqueeRect={marqueeRect}
-              viewport={viewport}
-              remoteCursors={remoteCursors}
-              fps={fps}
-              fpsTone={fpsTone}
-              fpsTarget={fpsTarget}
-            />
-          </div>
+          <StageSurface
+            stageRef={stageRef}
+            selectionHudRef={selectionHudRef}
+            stageSize={stageSize}
+            viewport={viewport}
+            gridAxisLabels={gridAxisLabels}
+            canEdit={canEdit}
+            isObjectDragging={isObjectDragging}
+            objects={objects}
+            draftGeometryById={draftGeometryById}
+            textDrafts={textDrafts}
+            selectedObjectIds={selectedObjectIds}
+            connectorRoutesById={connectorRoutesById}
+            resolvedTheme={resolvedTheme}
+            connectorEndpointDragObjectId={
+              connectorEndpointDragStateRef.current?.objectId ?? null
+            }
+            shouldShowConnectorAnchors={shouldShowConnectorAnchors}
+            connectorAnchorPoints={connectorAnchorPoints}
+            marqueeRect={marqueeRect}
+            remoteCursors={remoteCursors}
+            fps={fps}
+            fpsTone={fpsTone}
+            fpsTarget={fpsTarget}
+            canShowSelectionHud={canShowSelectionHud}
+            selectionHudPosition={selectionHudPosition}
+            canColorSelection={canColorSelection}
+            selectedColor={selectedColor}
+            canResetSelectionRotation={canResetSelectionRotation}
+            canEditSelectedLabel={canEditSelectedLabel}
+            selectionLabelDraft={selectionLabelDraft}
+            singleSelectedObject={singleSelectedObject}
+            stickyTextHoldDragRef={stickyTextHoldDragRef}
+            handleStagePointerDown={handleStagePointerDown}
+            handleStagePointerMove={handleStagePointerMove}
+            handleStagePointerLeave={handleStagePointerLeave}
+            setSelectionLabelDraft={setSelectionLabelDraft}
+            saveSelectedObjectsColor={saveSelectedObjectsColor}
+            resetSelectedObjectsRotation={resetSelectedObjectsRotation}
+            commitSelectionLabelDraft={commitSelectionLabelDraft}
+            persistObjectLabelText={persistObjectLabelText}
+            shouldPreserveGroupSelection={shouldPreserveGroupSelection}
+            selectSingleObject={selectSingleObject}
+            toggleObjectSelection={toggleObjectSelection}
+            startObjectDrag={startObjectDrag}
+            startShapeRotate={startShapeRotate}
+            startCornerResize={startCornerResize}
+            startLineEndpointResize={startLineEndpointResize}
+            startConnectorEndpointDrag={startConnectorEndpointDrag}
+            updateGridContainerDimensions={updateGridContainerDimensions}
+            getGridDraftForObject={getGridDraftForObject}
+            queueGridContentSync={queueGridContentSync}
+            saveGridContainerCellColors={saveGridContainerCellColors}
+            clearStickyTextHoldDrag={clearStickyTextHoldDrag}
+            setTextDrafts={setTextDrafts}
+            queueStickyTextSync={queueStickyTextSync}
+            flushStickyTextSync={flushStickyTextSync}
+          />
         </div>
 
         <div

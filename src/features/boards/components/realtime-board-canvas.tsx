@@ -29,10 +29,8 @@ import type {
   PresenceUser,
 } from "@/features/boards/types";
 import {
-  AI_HELP_MESSAGE,
   AI_WELCOME_MESSAGE,
 } from "@/features/boards/components/realtime-canvas/ai-chat-content";
-import { sendBoardAiCommand } from "@/features/boards/components/realtime-canvas/ai-command-client";
 import {
   canUseSelectionHudColor,
   getDefaultObjectColor,
@@ -151,6 +149,7 @@ import { useBoardSelectionAndConnectors } from "@/features/boards/components/rea
 import { useClipboardShortcuts } from "@/features/boards/components/realtime-canvas/legacy/use-clipboard-shortcuts";
 import { useFpsMeter } from "@/features/boards/components/realtime-canvas/legacy/use-fps-meter";
 import { useObjectTemplateActions } from "@/features/boards/components/realtime-canvas/legacy/use-object-template-actions";
+import { useAiCommandSubmit } from "@/features/boards/components/realtime-canvas/legacy/use-ai-command-submit";
 import { AiAssistantFooter } from "@/features/boards/components/realtime-canvas/legacy/ai-assistant-footer";
 import { ConnectorObjectArticle } from "@/features/boards/components/realtime-canvas/legacy/connector-object-article";
 import { LeftToolsPanel } from "@/features/boards/components/realtime-canvas/legacy/left-tools-panel";
@@ -180,7 +179,6 @@ import {
   usePresenceClock,
 } from "@/features/boards/components/realtime-canvas/use-presence-sync";
 import {
-  isLocalAiHelpCommand,
   useAiChatState,
 } from "@/features/boards/components/realtime-canvas/use-ai-chat-state";
 import {
@@ -3307,99 +3305,21 @@ export default function RealtimeBoardCanvas({
     [aiFooterHeight, isAiFooterCollapsed],
   );
 
-  const submitAiCommandMessage = useCallback(
-    async (
-      nextMessage: string,
-      options?: { appendUserMessage?: boolean; clearInput?: boolean },
-    ) => {
-      const shouldAppendUserMessage = options?.appendUserMessage ?? true;
-      const shouldClearInput = options?.clearInput ?? false;
-      const trimmedMessage = nextMessage.trim();
-      if (trimmedMessage.length === 0 || isAiSubmitting) {
-        return;
-      }
-
-      if (shouldAppendUserMessage) {
-        appendUserMessage(nextMessage);
-      }
-      if (shouldClearInput) {
-        clearChatInputForSubmit();
-      }
-
-      if (isLocalAiHelpCommand(trimmedMessage)) {
-        appendAssistantMessage(AI_HELP_MESSAGE);
-        return;
-      }
-
-      setIsAiSubmitting(true);
-
-      const applySelectionUpdate = (
-        selectionUpdate?: {
-          mode: "clear" | "replace";
-          objectIds: string[];
-        },
-      ): void => {
-        if (!selectionUpdate) {
-          return;
-        }
-
-        const objectIdsInBoard = new Set(objectsByIdRef.current.keys());
-        const normalized = Array.from(
-          new Set(
-            selectionUpdate.objectIds
-              .filter((id) => objectIdsInBoard.has(id))
-              .map((id) => id.trim())
-              .filter(Boolean),
-          ),
-        );
-
-        if (selectionUpdate.mode === "clear") {
-          setSelectedObjectIds([]);
-          return;
-        }
-
-        setSelectedObjectIds(normalized);
-      };
-
-      try {
-        const idToken = idTokenRef.current ?? (await user.getIdToken());
-        idTokenRef.current = idToken;
-        const stageElement = stageRef.current;
-        const viewportBounds = stageElement
-          ? {
-              left: -viewportRef.current.x / viewportRef.current.scale,
-              top: -viewportRef.current.y / viewportRef.current.scale,
-              width: stageElement.clientWidth / viewportRef.current.scale,
-              height: stageElement.clientHeight / viewportRef.current.scale,
-            }
-          : undefined;
-
-        const aiResult = await sendBoardAiCommand({
-          boardId,
-          message: nextMessage,
-          idToken,
-          selectedObjectIds: Array.from(selectedObjectIdsRef.current),
-          viewportBounds,
-        });
-        applySelectionUpdate(aiResult.selectionUpdate);
-        appendAssistantMessage(aiResult.assistantMessage);
-      } catch {
-        appendAssistantMessage(
-          "Your session expired. Please sign in again to use the AI assistant.",
-        );
-      } finally {
-        setIsAiSubmitting(false);
-      }
-    },
-    [
-      appendAssistantMessage,
-      appendUserMessage,
-      boardId,
-      clearChatInputForSubmit,
-      isAiSubmitting,
-      user,
-    ],
-  );
+  const submitAiCommandMessage = useAiCommandSubmit({
+    boardId,
+    user,
+    stageRef,
+    viewportRef,
+    objectsByIdRef,
+    idTokenRef,
+    selectedObjectIdsRef,
+    isAiSubmitting,
+    setIsAiSubmitting,
+    setSelectedObjectIds,
+    appendUserMessage,
+    appendAssistantMessage,
+    clearChatInputForSubmit,
+  });
 
   const handleAiChatSubmit = useCallback(
     (event: ReactFormEvent<HTMLFormElement>) => {

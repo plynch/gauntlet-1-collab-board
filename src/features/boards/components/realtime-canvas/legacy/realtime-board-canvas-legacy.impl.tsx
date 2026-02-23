@@ -14,7 +14,6 @@ import {
   doc,
   serverTimestamp,
   setDoc,
-  updateDoc,
   writeBatch,
 } from "firebase/firestore";
 
@@ -44,8 +43,6 @@ import {
 } from "@/features/boards/components/realtime-canvas/ai-footer-config";
 import { toBoardErrorMessage } from "@/features/boards/components/realtime-canvas/board-error";
 import {
-  areGeometriesClose,
-  arePointsClose,
   CONNECTOR_ANCHORS,
   CONNECTOR_MIN_SEGMENT_SIZE,
   getAnchorDirectionForGeometry,
@@ -56,7 +53,6 @@ import {
   getSpawnOffset,
   hasMeaningfulRotation,
   isSnapEligibleObjectType,
-  POSITION_WRITE_STEP,
   roundToStep,
   snapToGrid,
   toConnectorGeometryFromEndpoints,
@@ -85,7 +81,6 @@ import {
   PANEL_COLLAPSE_ANIMATION,
   PANEL_SEPARATOR_COLOR,
   PANEL_SEPARATOR_WIDTH,
-  POSITION_WRITE_EPSILON,
   PRESENCE_TTL_MS,
   RESIZE_THROTTLE_MS,
   RIGHT_PANEL_WIDTH,
@@ -104,7 +99,6 @@ import type {
   LineEndpointResizeState,
   MarqueeSelectionState,
   ObjectGeometry,
-  ObjectWriteOptions,
   PanState,
   RealtimeBoardCanvasProps,
   RotateState,
@@ -129,9 +123,6 @@ import {
 } from "@/features/boards/components/realtime-canvas/grid-section-utils";
 import { useBoardAssistantActions } from "@/features/boards/components/realtime-canvas/legacy/use-board-assistant-actions";
 import {
-  areContainerMembershipPatchesEqual,
-  getMembershipPatchFromObject,
-  type ContainerMembershipPatch,
   useContainerMembership,
 } from "@/features/boards/components/realtime-canvas/use-container-membership";
 import {
@@ -157,6 +148,7 @@ import { useGridAxisLabels } from "@/features/boards/components/realtime-canvas/
 import { useGridDimensionUpdates } from "@/features/boards/components/realtime-canvas/legacy/use-grid-dimension-updates";
 import { useSelectionUiState } from "@/features/boards/components/realtime-canvas/legacy/use-selection-ui-state";
 import { useGridContentSync } from "@/features/boards/components/realtime-canvas/legacy/use-grid-content-sync";
+import { useObjectWriteActions } from "@/features/boards/components/realtime-canvas/legacy/use-object-write-actions";
 import { useStickyTextSync } from "@/features/boards/components/realtime-canvas/legacy/use-sticky-text-sync";
 
 export default function RealtimeBoardCanvas({
@@ -576,308 +568,23 @@ export default function RealtimeBoardCanvas({
     isConnectorKind,
   });
 
-  const updateObjectGeometry = useCallback(
-    async (
-      objectId: string,
-      geometry: ObjectGeometry,
-      options: ObjectWriteOptions = {},
-    ) => {
-      const writeMetrics = writeMetricsRef.current;
-      writeMetrics.markAttempted("object-geometry");
-
-      if (!canEditRef.current) {
-        writeMetrics.markSkipped("object-geometry");
-        return;
-      }
-
-      const includeUpdatedAt = options.includeUpdatedAt ?? true;
-      const force = options.force ?? false;
-      const objectItem = objectsByIdRef.current.get(objectId);
-      const nextGeometry: ObjectGeometry = {
-        x: roundToStep(geometry.x, POSITION_WRITE_STEP),
-        y: roundToStep(geometry.y, POSITION_WRITE_STEP),
-        width: roundToStep(geometry.width, POSITION_WRITE_STEP),
-        height: roundToStep(geometry.height, POSITION_WRITE_STEP),
-        rotationDeg:
-          objectItem?.type === "gridContainer" ? 0 : geometry.rotationDeg,
-      };
-      const currentMembership = objectItem
-        ? getMembershipPatchFromObject(objectItem)
-        : {
-            containerId: null,
-            containerSectionIndex: null,
-            containerRelX: null,
-            containerRelY: null,
-          };
-      const membershipPatchFromOptions =
-        options.containerMembershipById?.[objectId];
-      const membershipPatch =
-        membershipPatchFromOptions ??
-        (objectItem &&
-        objectItem.type !== "gridContainer" &&
-        !isConnectorKind(objectItem.type)
-          ? resolveContainerMembershipForGeometry(
-              objectId,
-              nextGeometry,
-              getContainerSectionsInfoById({
-                [objectId]: nextGeometry,
-              }),
-            )
-          : null);
-      const previousGeometry =
-        lastGeometryWriteByIdRef.current.get(objectId) ??
-        (objectItem
-          ? {
-              x: objectItem.x,
-              y: objectItem.y,
-              width: objectItem.width,
-              height: objectItem.height,
-              rotationDeg: objectItem.rotationDeg,
-            }
-          : null);
-      const hasMembershipChange = membershipPatch
-        ? !areContainerMembershipPatchesEqual(
-            currentMembership,
-            membershipPatch,
-          )
-        : false;
-
-      if (
-        !force &&
-        previousGeometry &&
-        areGeometriesClose(previousGeometry, nextGeometry) &&
-        !hasMembershipChange
-      ) {
-        writeMetrics.markSkipped("object-geometry");
-        return;
-      }
-
-      try {
-        const payload: Record<string, unknown> = {
-          x: nextGeometry.x,
-          y: nextGeometry.y,
-          width: nextGeometry.width,
-          height: nextGeometry.height,
-          rotationDeg: nextGeometry.rotationDeg,
-        };
-        if (membershipPatch && (hasMembershipChange || force)) {
-          payload.containerId = membershipPatch.containerId;
-          payload.containerSectionIndex = membershipPatch.containerSectionIndex;
-          payload.containerRelX = membershipPatch.containerRelX;
-          payload.containerRelY = membershipPatch.containerRelY;
-        }
-        if (includeUpdatedAt) {
-          payload.updatedAt = serverTimestamp();
-        }
-
-        await updateDoc(
-          doc(db, `boards/${boardId}/objects/${objectId}`),
-          payload,
-        );
-        lastGeometryWriteByIdRef.current.set(objectId, nextGeometry);
-        lastPositionWriteByIdRef.current.set(objectId, {
-          x: nextGeometry.x,
-          y: nextGeometry.y,
-        });
-        writeMetrics.markCommitted("object-geometry");
-      } catch (error) {
-        console.error("Failed to update object transform", error);
-        setBoardError(
-          toBoardErrorMessage(error, "Failed to update object transform."),
-        );
-      }
-    },
-    [
-      boardId,
-      db,
-      getContainerSectionsInfoById,
-      resolveContainerMembershipForGeometry,
-    ],
-  );
-
-  const updateConnectorDraft = useCallback(
-    async (
-      objectId: string,
-      draft: ConnectorDraft,
-      options: ObjectWriteOptions = {},
-    ) => {
-      if (!canEditRef.current) {
-        return;
-      }
-
-      const includeUpdatedAt = options.includeUpdatedAt ?? true;
-
-      const resolvedFrom = resolveConnectorEndpoint(
-        draft.fromObjectId,
-        draft.fromAnchor,
-        { x: draft.fromX, y: draft.fromY },
-      );
-      const resolvedTo = resolveConnectorEndpoint(
-        draft.toObjectId,
-        draft.toAnchor,
-        { x: draft.toX, y: draft.toY },
-      );
-      const geometry = toConnectorGeometryFromEndpoints(
-        resolvedFrom,
-        resolvedTo,
-      );
-
-      const payload: Record<string, unknown> = {
-        x: geometry.x,
-        y: geometry.y,
-        width: geometry.width,
-        height: geometry.height,
-        rotationDeg: 0,
-        fromObjectId: resolvedFrom.connected ? resolvedFrom.objectId : null,
-        toObjectId: resolvedTo.connected ? resolvedTo.objectId : null,
-        fromAnchor: resolvedFrom.connected ? resolvedFrom.anchor : null,
-        toAnchor: resolvedTo.connected ? resolvedTo.anchor : null,
-        fromX: resolvedFrom.x,
-        fromY: resolvedFrom.y,
-        toX: resolvedTo.x,
-        toY: resolvedTo.y,
-      };
-
-      if (includeUpdatedAt) {
-        payload.updatedAt = serverTimestamp();
-      }
-
-      try {
-        await updateDoc(
-          doc(db, `boards/${boardId}/objects/${objectId}`),
-          payload,
-        );
-      } catch (error) {
-        console.error("Failed to update connector", error);
-        setBoardError(
-          toBoardErrorMessage(error, "Failed to update connector."),
-        );
-      }
-    },
-    [boardId, db, resolveConnectorEndpoint],
-  );
-
-  const updateObjectPositionsBatch = useCallback(
-    async (
-      nextPositionsById: Record<string, BoardPoint>,
-      options: ObjectWriteOptions = {},
-    ) => {
-      const entries = Object.entries(nextPositionsById);
-      if (entries.length === 0) {
-        return;
-      }
-
-      const writeMetrics = writeMetricsRef.current;
-      writeMetrics.markAttempted("object-position", entries.length);
-
-      if (!canEditRef.current) {
-        writeMetrics.markSkipped("object-position", entries.length);
-        return;
-      }
-
-      const includeUpdatedAt = options.includeUpdatedAt ?? false;
-      const force = options.force ?? false;
-      const membershipPatches = options.containerMembershipById ?? {};
-
-      try {
-        const batch = writeBatch(db);
-        const writeEntries: Array<[string, BoardPoint]> = [];
-        let skippedCount = 0;
-
-        entries.forEach(([objectId, position]) => {
-          const nextPosition = toWritePoint(position);
-          const objectItem = objectsByIdRef.current.get(objectId);
-          const previousPosition =
-            lastPositionWriteByIdRef.current.get(objectId) ??
-            (objectItem
-              ? {
-                  x: objectItem.x,
-                  y: objectItem.y,
-                }
-              : null);
-          const currentMembership = objectItem
-            ? getMembershipPatchFromObject(objectItem)
-            : {
-                containerId: null,
-                containerSectionIndex: null,
-                containerRelX: null,
-                containerRelY: null,
-              };
-          const nextMembershipPatch = membershipPatches[objectId];
-          const hasMembershipChange = nextMembershipPatch
-            ? !areContainerMembershipPatchesEqual(
-                currentMembership,
-                nextMembershipPatch,
-              )
-            : false;
-
-          if (
-            !force &&
-            previousPosition &&
-            arePointsClose(
-              previousPosition,
-              nextPosition,
-              POSITION_WRITE_EPSILON,
-            ) &&
-            !hasMembershipChange
-          ) {
-            skippedCount += 1;
-            return;
-          }
-
-          const updatePayload: Record<string, unknown> = {
-            x: nextPosition.x,
-            y: nextPosition.y,
-          };
-          if (nextMembershipPatch && (hasMembershipChange || force)) {
-            updatePayload.containerId = nextMembershipPatch.containerId;
-            updatePayload.containerSectionIndex =
-              nextMembershipPatch.containerSectionIndex;
-            updatePayload.containerRelX = nextMembershipPatch.containerRelX;
-            updatePayload.containerRelY = nextMembershipPatch.containerRelY;
-          }
-          if (includeUpdatedAt) {
-            updatePayload.updatedAt = serverTimestamp();
-          }
-
-          batch.update(
-            doc(db, `boards/${boardId}/objects/${objectId}`),
-            updatePayload,
-          );
-          writeEntries.push([objectId, nextPosition]);
-        });
-
-        if (skippedCount > 0) {
-          writeMetrics.markSkipped("object-position", skippedCount);
-        }
-
-        if (writeEntries.length === 0) {
-          return;
-        }
-
-        await batch.commit();
-        writeMetrics.markCommitted("object-position", writeEntries.length);
-        writeEntries.forEach(([objectId, position]) => {
-          lastPositionWriteByIdRef.current.set(objectId, position);
-          const previousGeometry =
-            lastGeometryWriteByIdRef.current.get(objectId);
-          if (previousGeometry) {
-            lastGeometryWriteByIdRef.current.set(objectId, {
-              ...previousGeometry,
-              x: position.x,
-              y: position.y,
-            });
-          }
-        });
-      } catch (error) {
-        console.error("Failed to update object positions", error);
-        setBoardError(
-          toBoardErrorMessage(error, "Failed to update object positions."),
-        );
-      }
-    },
-    [boardId, db],
-  );
+  const {
+    updateObjectGeometry,
+    updateConnectorDraft,
+    updateObjectPositionsBatch,
+  } = useObjectWriteActions({
+    boardId,
+    db,
+    canEditRef,
+    objectsByIdRef,
+    writeMetricsRef,
+    lastGeometryWriteByIdRef,
+    lastPositionWriteByIdRef,
+    setBoardError,
+    getContainerSectionsInfoById,
+    resolveContainerMembershipForGeometry,
+    resolveConnectorEndpoint,
+  });
 
   const getObjectSelectionBounds = useCallback(
     (objectItem: BoardObject) => {

@@ -48,7 +48,7 @@ type GridSectionBounds = {
   bounds: MembershipObjectBounds;
 };
 
-type ContainerSectionsInfo = {
+export type ContainerSectionsInfo = {
   containerId: string;
   containerZIndex: number;
   rows: number;

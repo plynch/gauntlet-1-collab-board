@@ -1,6 +1,7 @@
 import type {
   Dispatch,
   MutableRefObject,
+  WheelEvent as ReactWheelEvent,
   PointerEvent as ReactPointerEvent,
   SetStateAction,
 } from "react";
@@ -107,6 +108,8 @@ type StageSurfaceProps = {
   setTextDrafts: Dispatch<SetStateAction<Record<string, string>>>;
   queueStickyTextSync: (objectId: string, nextText: string) => void;
   flushStickyTextSync: (objectId: string) => void;
+  handleWheel: (event: ReactWheelEvent<HTMLDivElement>) => void;
+  onWheelCapture?: (event: ReactWheelEvent<HTMLDivElement>) => void;
 };
 
 export function StageSurface(props: StageSurfaceProps) {
@@ -165,16 +168,22 @@ export function StageSurface(props: StageSurfaceProps) {
     setTextDrafts,
     queueStickyTextSync,
     flushStickyTextSync,
+    handleWheel,
+    onWheelCapture,
   } = props;
 
   return (
     <div
       ref={stageRef}
-      onPointerDown={handleStagePointerDown}
-      onPointerMove={handleStagePointerMove}
-      onPointerLeave={handleStagePointerLeave}
-      onContextMenu={(event) => event.preventDefault()}
-      style={{
+        onPointerDown={handleStagePointerDown}
+        onPointerMove={handleStagePointerMove}
+        onPointerLeave={handleStagePointerLeave}
+        onWheelCapture={(event) => {
+          onWheelCapture?.(event);
+        }}
+        onWheel={handleWheel}
+        onContextMenu={(event) => event.preventDefault()}
+        style={{
         position: "relative",
         width: "100%",
         height: "100%",

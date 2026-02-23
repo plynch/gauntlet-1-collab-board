@@ -6,9 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
-  type FormEvent as ReactFormEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
+  type WheelEvent as ReactWheelEvent,
 } from "react";
 import {
   addDoc,
@@ -57,15 +55,12 @@ import { toBoardErrorMessage } from "@/features/boards/components/realtime-canva
 import {
   areGeometriesClose,
   arePointsClose,
-  clampScale,
   CONNECTOR_ANCHORS,
   CONNECTOR_MIN_SEGMENT_SIZE,
-  getAcceleratedWheelZoomDelta,
   getAnchorDirectionForGeometry,
   getAnchorPointForGeometry,
   getConnectorHitBounds,
   getDistance,
-  getLineEndpoints,
   getObjectVisualBounds,
   getSpawnOffset,
   hasMeaningfulRotation,
@@ -77,10 +72,8 @@ import {
   toDegrees,
   toNormalizedRect,
   toWritePoint,
-  ZOOM_BUTTON_STEP_PERCENT,
   ZOOM_SLIDER_MAX_PERCENT,
   ZOOM_SLIDER_MIN_PERCENT,
-  ZOOM_WHEEL_INTENSITY,
   type ResolvedConnectorEndpoint,
 } from "@/features/boards/components/realtime-canvas/legacy/legacy-canvas-geometry";
 import {
@@ -89,7 +82,6 @@ import {
   CONNECTOR_SNAP_DISTANCE_PX,
   CONTAINER_DRAG_THROTTLE_MS,
   CURSOR_MIN_MOVE_DISTANCE,
-  CURSOR_THROTTLE_MS,
   DRAG_CLICK_SLOP_PX,
   DRAG_THROTTLE_MS,
   GRID_CONTAINER_DEFAULT_GAP,
@@ -119,38 +111,37 @@ import type {
   AiFooterResizeState,
   BoardPoint,
   ConnectorDraft,
-  ConnectorEndpoint,
   ConnectorEndpointDragState,
   CornerResizeState,
   DragState,
   GridContainerContentDraft,
-  LineEndpoint,
   LineEndpointResizeState,
   MarqueeSelectionState,
   ObjectGeometry,
   ObjectWriteOptions,
   PanState,
   RealtimeBoardCanvasProps,
-  ResizeCorner,
   RotateState,
   StickyTextHoldDragState,
   StickyTextSyncState,
   ViewportState,
 } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-types";
 import { useBoardSelectionAndConnectors } from "@/features/boards/components/realtime-canvas/legacy/use-board-selection-and-connectors";
-import { useClipboardShortcuts } from "@/features/boards/components/realtime-canvas/legacy/use-clipboard-shortcuts";
 import { useFpsMeter } from "@/features/boards/components/realtime-canvas/legacy/use-fps-meter";
 import { useObjectTemplateActions } from "@/features/boards/components/realtime-canvas/legacy/use-object-template-actions";
+import { useBoardSelectionActions } from "@/features/boards/components/realtime-canvas/legacy/use-board-selection-actions";
 import { useAiCommandSubmit } from "@/features/boards/components/realtime-canvas/legacy/use-ai-command-submit";
 import { AiAssistantFooter } from "@/features/boards/components/realtime-canvas/legacy/ai-assistant-footer";
 import { LeftToolsPanel } from "@/features/boards/components/realtime-canvas/legacy/left-tools-panel";
 import { RightPresencePanel } from "@/features/boards/components/realtime-canvas/legacy/right-presence-panel";
 import { StageSurface } from "@/features/boards/components/realtime-canvas/legacy/stage-surface";
+import { useBoardStageInteractions } from "@/features/boards/components/realtime-canvas/legacy/use-board-stage-interactions";
 import {
   DEFAULT_SWOT_SECTION_TITLES,
   getDefaultSectionTitles,
   normalizeSectionValues,
 } from "@/features/boards/components/realtime-canvas/grid-section-utils";
+import { useBoardAssistantActions } from "@/features/boards/components/realtime-canvas/legacy/use-board-assistant-actions";
 import { calculateSelectionHudPosition } from "@/features/boards/components/realtime-canvas/selection-hud-layout";
 import {
   areContainerMembershipPatchesEqual,
@@ -171,6 +162,7 @@ import {
   createRealtimeWriteMetrics,
   isWriteMetricsDebugEnabled,
 } from "@/features/boards/lib/realtime-write-metrics";
+import { useBoardZoomControls } from "@/features/boards/components/realtime-canvas/legacy/use-board-zoom-controls";
 import { useTheme } from "@/features/theme/use-theme";
 import { getFirebaseClientDb } from "@/lib/firebase/client";
 
@@ -2266,26 +2258,6 @@ export default function RealtimeBoardCanvas({
     updateObjectPositionsBatch,
   ]);
 
-  const toBoardCoordinates = useCallback(
-    (clientX: number, clientY: number): BoardPoint | null => {
-      const stageElement = stageRef.current;
-      if (!stageElement) {
-        return null;
-      }
-
-      const rect = stageElement.getBoundingClientRect();
-      const x =
-        (clientX - rect.left - viewportRef.current.x) /
-        viewportRef.current.scale;
-      const y =
-        (clientY - rect.top - viewportRef.current.y) /
-        viewportRef.current.scale;
-
-      return { x, y };
-    },
-    [],
-  );
-
   const updateCursor = useCallback(
     async (cursor: BoardPoint | null, options: { force?: boolean } = {}) => {
       const writeMetrics = writeMetricsRef.current;
@@ -3183,113 +3155,33 @@ export default function RealtimeBoardCanvas({
     });
   }, []);
 
-    const shouldPreserveGroupSelection = useCallback((objectId: string) => {
+  const shouldPreserveGroupSelection = useCallback((objectId: string) => {
     const currentSelectedIds = selectedObjectIdsRef.current;
     return currentSelectedIds.size > 1 && currentSelectedIds.has(objectId);
   }, []);
 
-  const handleDeleteSelectedObjects = useCallback(() => {
-    if (!canEdit || selectedObjectIds.length === 0) {
-      return;
-    }
-
-    const objectIdsToDelete = [...selectedObjectIds];
-    void Promise.all(
-      objectIdsToDelete.map((objectId) => deleteObject(objectId)),
-    );
-  }, [canEdit, deleteObject, selectedObjectIds]);
-
-  const handleToolButtonClick = useCallback(
-    (toolKind: BoardObjectKind) => {
-      void createObject(toolKind);
-    },
-    [createObject],
-  );
-
-  const handleDeleteButtonClick = useCallback(() => {
-    handleDeleteSelectedObjects();
-  }, [handleDeleteSelectedObjects]);
-
-  const selectAllShapes = useCallback(() => {
-    const shapeIds = objects
-      .filter(
-        (objectItem) =>
-          objectItem.type === "rect" ||
-          objectItem.type === "circle" ||
-          objectItem.type === "triangle" ||
-          objectItem.type === "star" ||
-          objectItem.type === "line",
-      )
-      .map((objectItem) => objectItem.id);
-
-    if (shapeIds.length === 0) {
-      showBoardStatus("No shapes found to select.");
-      return;
-    }
-
-    setSelectedObjectIds(shapeIds);
-    showBoardStatus(
-      `Selected ${shapeIds.length} shape${shapeIds.length === 1 ? "" : "s"}.`,
-    );
-  }, [objects, showBoardStatus]);
-
-  const handleCopyShortcut = useCallback(() => {
-    const count = selectedObjectIdsRef.current.size;
-    if (count === 0) {
-      showBoardStatus("Nothing selected to copy.");
-      return;
-    }
-
-    copySelectedObjects();
-    showBoardStatus(`Copied ${count} object${count === 1 ? "" : "s"}.`);
-  }, [copySelectedObjects, showBoardStatus]);
-
-  const handleDuplicateShortcut = useCallback(async () => {
-    const count = selectedObjectIdsRef.current.size;
-    if (count === 0) {
-      showBoardStatus("Nothing selected to duplicate.");
-      return;
-    }
-
-    await duplicateSelectedObjects();
-    showBoardStatus(`Duplicated ${count} object${count === 1 ? "" : "s"}.`);
-  }, [duplicateSelectedObjects, showBoardStatus]);
-
-  const handlePasteShortcut = useCallback(async () => {
-    const count = copiedObjectsRef.current.length;
-    if (count === 0) {
-      showBoardStatus("Clipboard is empty.");
-      return;
-    }
-
-    await pasteCopiedObjects();
-    showBoardStatus(`Pasted ${count} object${count === 1 ? "" : "s"}.`);
-  }, [pasteCopiedObjects, showBoardStatus]);
-
-  useClipboardShortcuts({
-    selectAllShapes,
-    copySelectedObjects: handleCopyShortcut,
-    duplicateSelectedObjects: handleDuplicateShortcut,
-    pasteCopiedObjects: handlePasteShortcut,
+  const {
+    handleDeleteButtonClick,
+    handleToolButtonClick,
+    handleAiFooterResizeStart,
+  } = useBoardSelectionActions({
+    canEdit,
+    objects,
+    selectedObjectIds,
+    selectedObjectIdsRef,
+    copiedObjectsRef,
+    setSelectedObjectIds,
+    deleteObject,
+    createObject,
+    copySelectedObjects,
+    duplicateSelectedObjects,
+    pasteCopiedObjects,
+    showBoardStatus,
+    aiFooterHeight,
+    isAiFooterCollapsed,
+    aiFooterResizeStateRef,
+    setIsAiFooterResizing,
   });
-
-  const handleAiFooterResizeStart = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (event.button !== 0 || isAiFooterCollapsed) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      aiFooterResizeStateRef.current = {
-        startClientY: event.clientY,
-        initialHeight: aiFooterHeight,
-      };
-      setIsAiFooterResizing(true);
-    },
-    [aiFooterHeight, isAiFooterCollapsed],
-  );
 
   const submitAiCommandMessage = useAiCommandSubmit({
     boardId,
@@ -3307,566 +3199,87 @@ export default function RealtimeBoardCanvas({
     clearChatInputForSubmit,
   });
 
-  const handleAiChatSubmit = useCallback(
-    (event: ReactFormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      const nextMessage = chatInput.trim();
-      if (nextMessage.length === 0 || isAiSubmitting) {
-        return;
-      }
-      void submitAiCommandMessage(nextMessage, {
-        appendUserMessage: true,
-        clearInput: true,
-      });
-    },
-    [chatInput, isAiSubmitting, submitAiCommandMessage],
-  );
-
-  const handleAiChatInputKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLInputElement>) => {
-      handleChatInputKeyDown(event, isAiSubmitting);
-    },
-    [handleChatInputKeyDown, isAiSubmitting],
-  );
-
-  const persistObjectLabelText = useCallback(
-    async (objectId: string, nextText: string) => {
-      const objectItem = objectsByIdRef.current.get(objectId);
-      if (!objectItem || !isLabelEditableObjectType(objectItem.type)) {
-        return;
-      }
-
-      const previousText = objectItem.text ?? "";
-      if (nextText === previousText) {
-        return;
-      }
-
-      setObjects((previous) =>
-        previous.map((item) =>
-          item.id === objectId
-            ? {
-                ...item,
-                text: nextText,
-              }
-            : item,
-        ),
-      );
-
-      try {
-        await updateDoc(doc(db, `boards/${boardId}/objects/${objectId}`), {
-          text: nextText,
-          updatedAt: serverTimestamp(),
-        });
-      } catch (error) {
-        setObjects((previous) =>
-          previous.map((item) =>
-            item.id === objectId
-              ? {
-                  ...item,
-                  text: previousText,
-                }
-              : item,
-          ),
-        );
-        setBoardError(toBoardErrorMessage(error, "Failed to update label."));
-      }
-    },
-    [boardId, db],
-  );
-
-  const handleCreateSwotButtonClick = useCallback(() => {
-    if (!canEdit || isAiSubmitting || isSwotTemplateCreating) {
-      return;
-    }
-
-    void (async () => {
-      setIsAiSubmitting(false);
-      setIsSwotTemplateCreating(true);
-
-      try {
-        const swotObjectId = await createSwotTemplate();
-
-        if (!swotObjectId) {
-          return;
-        }
-
-        appendAssistantMessage("Created SWOT analysis template.");
-        setSelectedObjectIds([swotObjectId]);
-      } finally {
-        setIsSwotTemplateCreating(false);
-        setIsAiSubmitting(false);
-        resetHistoryNavigation();
-      }
-    })();
-  }, [
-    appendAssistantMessage,
+  const {
+    handleAiChatSubmit,
+    handleAiChatInputKeyDown,
+    persistObjectLabelText,
+    handleCreateSwotButtonClick,
+  } = useBoardAssistantActions({
     canEdit,
-    createSwotTemplate,
     isAiSubmitting,
     isSwotTemplateCreating,
+    setIsAiSubmitting,
+    setIsSwotTemplateCreating,
+    createSwotTemplate,
+    appendAssistantMessage,
+    setSelectedObjectIds,
     resetHistoryNavigation,
-  ]);
+    submitAiCommandMessage,
+    handleChatInputKeyDown,
+    chatInput,
+    boardId,
+    objectsByIdRef,
+    db,
+    setObjects,
+    setBoardError,
+  });
 
-  const handleStagePointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (event.button !== 0) {
-        return;
-      }
+  const {
+    toBoardCoordinates,
+    zoomAtStageCenter,
+    nudgeZoom,
+    handleWheel,
+  } = useBoardZoomControls({
+    stageRef,
+    viewportRef,
+    setViewport,
+  });
 
-      const target = event.target;
-      if (!(target instanceof HTMLElement)) {
-        return;
-      }
-
-      if (target.closest("[data-selection-hud='true']")) {
-        return;
-      }
-
-      if (target.closest("[data-board-object='true']")) {
-        return;
-      }
-
-      const isRemoveMarquee = event.ctrlKey || event.metaKey;
-      const isAddMarquee = event.shiftKey;
-
-      if (isAddMarquee || isRemoveMarquee) {
-        const startPoint = toBoardCoordinates(event.clientX, event.clientY);
-        if (!startPoint) {
-          return;
-        }
-
-        const nextMarqueeState: MarqueeSelectionState = {
-          startPoint,
-          currentPoint: startPoint,
-          mode: isRemoveMarquee ? "remove" : "add",
-        };
-
-        marqueeSelectionStateRef.current = nextMarqueeState;
-        setMarqueeSelectionState(nextMarqueeState);
-        return;
-      }
-
-      setSelectedObjectIds([]);
-
-      panStateRef.current = {
-        startClientX: event.clientX,
-        startClientY: event.clientY,
-        initialX: viewportRef.current.x,
-        initialY: viewportRef.current.y,
-      };
-    },
-    [toBoardCoordinates],
-  );
-
-  const handleStagePointerMove = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      const nextPoint = toBoardCoordinates(event.clientX, event.clientY);
-      if (nextPoint) {
-        setCursorBoardPosition((previous) => {
-          const nextRounded = {
-            x: Math.round(nextPoint.x),
-            y: Math.round(nextPoint.y),
-          };
-          if (
-            previous &&
-            previous.x === nextRounded.x &&
-            previous.y === nextRounded.y
-          ) {
-            return previous;
-          }
-          return nextRounded;
-        });
-      }
-
-      const now = Date.now();
-      if (now - sendCursorAtRef.current < CURSOR_THROTTLE_MS) {
-        return;
-      }
-
-      sendCursorAtRef.current = now;
-      if (!nextPoint) {
-        return;
-      }
-
-      void updateCursor(nextPoint);
-    },
-    [toBoardCoordinates, updateCursor],
-  );
-
-  const handleStagePointerLeave = useCallback(() => {
-    setCursorBoardPosition(null);
-    void updateCursor(null, { force: true });
-  }, [updateCursor]);
-
-  const setScaleAtClientPoint = useCallback(
-    (clientX: number, clientY: number, targetScale: number) => {
-      const stageElement = stageRef.current;
-      if (!stageElement) {
-        return;
-      }
-
-      const rect = stageElement.getBoundingClientRect();
-      const pointerX = clientX - rect.left;
-      const pointerY = clientY - rect.top;
-
-      const current = viewportRef.current;
-      const worldX = (pointerX - current.x) / current.scale;
-      const worldY = (pointerY - current.y) / current.scale;
-      const nextScale = clampScale(targetScale);
-
-      if (nextScale === current.scale) {
-        return;
-      }
-
-      const nextX = pointerX - worldX * nextScale;
-      const nextY = pointerY - worldY * nextScale;
-
-      setViewport({
-        x: nextX,
-        y: nextY,
-        scale: nextScale,
-      });
-    },
-    [],
-  );
-
-  const zoomAtPointer = useCallback(
-    (clientX: number, clientY: number, deltaY: number) => {
-      const effectiveDeltaY = getAcceleratedWheelZoomDelta(deltaY);
-      const zoomFactor = Math.exp(-effectiveDeltaY * ZOOM_WHEEL_INTENSITY);
-      const nextScale = clampScale(viewportRef.current.scale * zoomFactor);
-      setScaleAtClientPoint(clientX, clientY, nextScale);
-    },
-    [setScaleAtClientPoint],
-  );
-
-  const zoomAtStageCenter = useCallback(
-    (targetScale: number) => {
-      const stageElement = stageRef.current;
-      if (!stageElement) {
-        return;
-      }
-
-      const rect = stageElement.getBoundingClientRect();
-      setScaleAtClientPoint(
-        rect.left + rect.width / 2,
-        rect.top + rect.height / 2,
-        targetScale,
-      );
-    },
-    [setScaleAtClientPoint],
-  );
-
-  const nudgeZoom = useCallback(
-    (direction: "in" | "out") => {
-      const deltaPercent =
-        direction === "in"
-          ? ZOOM_BUTTON_STEP_PERCENT
-          : -ZOOM_BUTTON_STEP_PERCENT;
-      const nextPercent =
-        Math.round(viewportRef.current.scale * 100) + deltaPercent;
-      zoomAtStageCenter(nextPercent / 100);
-    },
-    [zoomAtStageCenter],
-  );
-
-  const panByWheel = useCallback((deltaX: number, deltaY: number) => {
-    setViewport((previous) => ({
-      x: previous.x - deltaX,
-      y: previous.y - deltaY,
-      scale: previous.scale,
-    }));
-  }, []);
-
-  useEffect(() => {
-    const handleNativeWheel = (event: WheelEvent) => {
-      const stageElement = stageRef.current;
-      if (!stageElement) {
-        return;
-      }
-
-      const rect = stageElement.getBoundingClientRect();
-      const isInStageBounds =
-        event.clientX >= rect.left &&
-        event.clientX <= rect.right &&
-        event.clientY >= rect.top &&
-        event.clientY <= rect.bottom;
-      if (!isInStageBounds) {
-        return;
-      }
-
+  const handleStageWheelCapture = useCallback(
+    (event: ReactWheelEvent<HTMLDivElement>) => {
       if (event.cancelable) {
         event.preventDefault();
       }
       event.stopPropagation();
-
-      if (event.ctrlKey || event.metaKey) {
-        zoomAtPointer(event.clientX, event.clientY, event.deltaY);
-        return;
-      }
-
-      panByWheel(event.deltaX, event.deltaY);
-    };
-
-    window.addEventListener("wheel", handleNativeWheel, {
-      passive: false,
-      capture: true,
-    });
-
-    return () => {
-      window.removeEventListener("wheel", handleNativeWheel, true);
-    };
-  }, [panByWheel, zoomAtPointer]);
-
-  const startObjectDrag = useCallback(
-    (objectId: string, event: ReactPointerEvent<HTMLElement>) => {
-      if (!canEdit) {
-        return;
-      }
-
-      if (event.button !== 0) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      if (event.shiftKey) {
-        toggleObjectSelection(objectId);
-        return;
-      }
-
-      const sourceObject = objectsByIdRef.current.get(objectId);
-      if (sourceObject && isConnectorKind(sourceObject.type)) {
-        selectSingleObject(objectId);
-        return;
-      }
-
-      const currentSelectedIds = selectedObjectIdsRef.current;
-      const shouldPrepareGroupDrag =
-        currentSelectedIds.has(objectId) && currentSelectedIds.size > 1;
-      const dragObjectIds = (
-        shouldPrepareGroupDrag ? Array.from(currentSelectedIds) : [objectId]
-      ).filter((candidateId) => {
-        const candidateObject = objectsByIdRef.current.get(candidateId);
-        return candidateObject ? !isConnectorKind(candidateObject.type) : false;
-      });
-
-      if (!shouldPrepareGroupDrag) {
-        selectSingleObject(objectId);
-      }
-
-      const initialGeometries: Record<string, ObjectGeometry> = {};
-      dragObjectIds.forEach((candidateId) => {
-        const geometry = getCurrentObjectGeometry(candidateId);
-        if (geometry) {
-          initialGeometries[candidateId] = geometry;
-        }
-      });
-
-      const availableObjectIds = Object.keys(initialGeometries);
-      if (availableObjectIds.length === 0) {
-        return;
-      }
-
-      setIsObjectDragging(true);
-      dragStateRef.current = {
-        objectIds: availableObjectIds,
-        initialGeometries,
-        startClientX: event.clientX,
-        startClientY: event.clientY,
-        lastSentAt: 0,
-        hasMoved: false,
-        // Preserve multi-selection when user grabs an already-selected object.
-        // Collapsing here causes accidental deselect when drag slop is not crossed.
-        collapseToObjectIdOnClick: shouldPrepareGroupDrag ? null : objectId,
-      };
+      handleWheel(event);
     },
-    [
-      canEdit,
-      getCurrentObjectGeometry,
-      selectSingleObject,
-      toggleObjectSelection,
-    ],
+    [handleWheel],
   );
 
-  const startShapeRotate = useCallback(
-    (objectId: string, event: ReactPointerEvent<HTMLButtonElement>) => {
-      if (!canEdit) {
-        return;
-      }
-
-      if (event.button !== 0) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      const objectItem = objectsByIdRef.current.get(objectId);
-      if (
-        !objectItem ||
-        !isConnectableShapeKind(objectItem.type) ||
-        objectItem.type === "gridContainer"
-      ) {
-        return;
-      }
-
-      const geometry = getCurrentObjectGeometry(objectId);
-      if (!geometry) {
-        return;
-      }
-
-      const pointer = toBoardCoordinates(event.clientX, event.clientY);
-      if (!pointer) {
-        return;
-      }
-
-      const centerPoint = {
-        x: geometry.x + geometry.width / 2,
-        y: geometry.y + geometry.height / 2,
-      };
-      const initialPointerAngleDeg = toDegrees(
-        Math.atan2(pointer.y - centerPoint.y, pointer.x - centerPoint.x),
-      );
-
-      selectSingleObject(objectId);
-      rotateStateRef.current = {
-        objectId,
-        centerPoint,
-        initialPointerAngleDeg,
-        initialRotationDeg: geometry.rotationDeg,
-        lastSentAt: 0,
-      };
-    },
-    [canEdit, getCurrentObjectGeometry, selectSingleObject, toBoardCoordinates],
-  );
-
-  const startCornerResize = useCallback(
-    (
-      objectId: string,
-      corner: ResizeCorner,
-      event: ReactPointerEvent<HTMLButtonElement>,
-    ) => {
-      if (!canEdit) {
-        return;
-      }
-
-      if (event.button !== 0) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      const objectItem = objectsByIdRef.current.get(objectId);
-      if (!objectItem || !isConnectableShapeKind(objectItem.type)) {
-        return;
-      }
-
-      const geometry = getCurrentObjectGeometry(objectId);
-      if (!geometry) {
-        return;
-      }
-
-      selectSingleObject(objectId);
-      cornerResizeStateRef.current = {
-        objectId,
-        objectType: objectItem.type,
-        corner,
-        startClientX: event.clientX,
-        startClientY: event.clientY,
-        initialGeometry: geometry,
-        lastSentAt: 0,
-      };
-    },
-    [canEdit, getCurrentObjectGeometry, selectSingleObject],
-  );
-
-  const startLineEndpointResize = useCallback(
-    (
-      objectId: string,
-      endpoint: LineEndpoint,
-      event: ReactPointerEvent<HTMLButtonElement>,
-    ) => {
-      if (!canEdit) {
-        return;
-      }
-
-      if (event.button !== 0) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      const objectItem = objectsByIdRef.current.get(objectId);
-      if (!objectItem || objectItem.type !== "line") {
-        return;
-      }
-
-      const geometry = getCurrentObjectGeometry(objectId);
-      if (!geometry) {
-        return;
-      }
-
-      const endpoints = getLineEndpoints(geometry);
-      const fixedPoint = endpoint === "start" ? endpoints.end : endpoints.start;
-
-      selectSingleObject(objectId);
-      lineEndpointResizeStateRef.current = {
-        objectId,
-        endpoint,
-        fixedPoint,
-        handleHeight: geometry.height,
-        lastSentAt: 0,
-      };
-    },
-    [canEdit, getCurrentObjectGeometry, selectSingleObject],
-  );
-
-  const startConnectorEndpointDrag = useCallback(
-    (
-      objectId: string,
-      endpoint: ConnectorEndpoint,
-      event: ReactPointerEvent<HTMLButtonElement>,
-    ) => {
-      if (!canEdit) {
-        return;
-      }
-
-      if (event.button !== 0) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      const objectItem = objectsByIdRef.current.get(objectId);
-      if (!objectItem || !isConnectorKind(objectItem.type)) {
-        return;
-      }
-
-      const currentDraft = getConnectorDraftForObject(objectItem);
-      if (!currentDraft) {
-        return;
-      }
-
-      setDraftConnector(objectId, currentDraft);
-      selectSingleObject(objectId);
-      connectorEndpointDragStateRef.current = {
-        objectId,
-        endpoint,
-        lastSentAt: 0,
-      };
-    },
-    [
-      canEdit,
-      getConnectorDraftForObject,
-      selectSingleObject,
-      setDraftConnector,
-    ],
-  );
+  const {
+    handleStagePointerDown,
+    handleStagePointerMove,
+    handleStagePointerLeave,
+    startObjectDrag,
+    startShapeRotate,
+    startCornerResize,
+    startLineEndpointResize,
+    startConnectorEndpointDrag,
+  } = useBoardStageInteractions({
+    canEdit,
+    setSelectedObjectIds,
+    setMarqueeSelectionState,
+    toBoardCoordinates,
+    marqueeSelectionStateRef,
+    panStateRef,
+    viewportRef,
+    objectsByIdRef,
+    selectedObjectIdsRef,
+    getCurrentObjectGeometry,
+    selectSingleObject,
+    toggleObjectSelection,
+    dragStateRef,
+    setIsObjectDragging,
+    rotateStateRef,
+    cornerResizeStateRef,
+    lineEndpointResizeStateRef,
+    connectorEndpointDragStateRef,
+    setDraftConnector,
+    getConnectorDraftForObject,
+    setCursorBoardPosition,
+    updateCursor,
+    sendCursorAtRef,
+  });
 
   const onlineUsers = useMemo(
     () =>
@@ -4406,6 +3819,8 @@ export default function RealtimeBoardCanvas({
             setTextDrafts={setTextDrafts}
             queueStickyTextSync={queueStickyTextSync}
             flushStickyTextSync={flushStickyTextSync}
+            handleWheel={handleWheel}
+            onWheelCapture={handleStageWheelCapture}
           />
         </div>
 

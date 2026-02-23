@@ -80,7 +80,6 @@ import {
   GRID_CONTAINER_DEFAULT_GAP,
   GRID_CONTAINER_MAX_COLS,
   GRID_CONTAINER_MAX_ROWS,
-  GRID_MAJOR_SPACING,
   INITIAL_VIEWPORT,
   LEFT_PANEL_WIDTH,
   OBJECT_LABEL_MAX_LENGTH,
@@ -127,6 +126,7 @@ import { RightPresencePanel } from "@/features/boards/components/realtime-canvas
 import { StageSurface } from "@/features/boards/components/realtime-canvas/legacy/stage-surface";
 import { useBoardStageInteractions } from "@/features/boards/components/realtime-canvas/legacy/use-board-stage-interactions";
 import { useBoardStageWindowPointerEvents } from "@/features/boards/components/realtime-canvas/legacy/use-board-stage-window-pointer-events";
+import { LeftToolsPanelControls } from "@/features/boards/components/realtime-canvas/legacy/left-tools-panel-controls";
 import {
   DEFAULT_SWOT_SECTION_TITLES,
   getDefaultSectionTitles,
@@ -159,6 +159,8 @@ import { useBoardZoomControls } from "@/features/boards/components/realtime-canv
 import { useTheme } from "@/features/theme/use-theme";
 import { getFirebaseClientDb } from "@/lib/firebase/client";
 import { useRealtimeBoardCanvasRuntimeSync } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-runtime-sync";
+import { useGridAxisLabels } from "@/features/boards/components/realtime-canvas/legacy/use-grid-axis-labels";
+import { useSelectionHudSizeSync } from "@/features/boards/components/realtime-canvas/legacy/use-selection-hud-size-sync";
 
 export default function RealtimeBoardCanvas({
   boardId,
@@ -2309,51 +2311,11 @@ export default function RealtimeBoardCanvas({
     ? getConnectableAnchorPoints()
     : [];
 
-  useEffect(() => {
-    if (!canShowSelectionHud) {
-      setSelectionHudSize((previous) =>
-        previous.width === 0 && previous.height === 0
-          ? previous
-          : { width: 0, height: 0 },
-      );
-      return;
-    }
-
-    const hudElement = selectionHudRef.current;
-    if (!hudElement) {
-      return;
-    }
-
-        const syncHudSize = () => {
-      const nextWidth = hudElement.offsetWidth;
-      const nextHeight = hudElement.offsetHeight;
-      setSelectionHudSize((previous) =>
-        previous.width === nextWidth && previous.height === nextHeight
-          ? previous
-          : { width: nextWidth, height: nextHeight },
-      );
-    };
-
-    syncHudSize();
-
-    if (typeof ResizeObserver === "undefined") {
-      return;
-    }
-
-    const resizeObserver = new ResizeObserver(() => {
-      syncHudSize();
-    });
-    resizeObserver.observe(hudElement);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [
-    canEditSelectedLabel,
-    canResetSelectionRotation,
+  useSelectionHudSizeSync({
     canShowSelectionHud,
-    selectedColor,
-  ]);
+    selectionHudRef,
+    setSelectionHudSize,
+  });
 
   const zoomPercent = Math.round(viewport.scale * 100);
   const fpsTarget = 60;
@@ -2369,75 +2331,7 @@ export default function RealtimeBoardCanvas({
         marqueeSelectionState.currentPoint,
       )
     : null;
-  const gridAxisLabels = useMemo(() => {
-    if (
-      stageSize.width <= 0 ||
-      stageSize.height <= 0 ||
-      viewport.scale <= 0 ||
-      !Number.isFinite(viewport.scale)
-    ) {
-      return {
-        xLabels: [] as Array<{ screen: number; value: number }>,
-        yLabels: [] as Array<{ screen: number; value: number }>,
-      };
-    }
-
-    const worldLeft = (-viewport.x) / viewport.scale;
-    const worldRight = (stageSize.width - viewport.x) / viewport.scale;
-    const worldTop = (-viewport.y) / viewport.scale;
-    const worldBottom = (stageSize.height - viewport.y) / viewport.scale;
-    const spacingOnScreen = GRID_MAJOR_SPACING * viewport.scale;
-    const labelStride = Math.max(
-      1,
-      Math.ceil(56 / Math.max(18, spacingOnScreen)),
-    );
-
-    const xLabels: Array<{ screen: number; value: number }> = [];
-    const yLabels: Array<{ screen: number; value: number }> = [];
-    const startX =
-      Math.floor(worldLeft / GRID_MAJOR_SPACING) * GRID_MAJOR_SPACING;
-    const startY =
-      Math.floor(worldTop / GRID_MAJOR_SPACING) * GRID_MAJOR_SPACING;
-
-    for (
-      let index = 0, worldX = startX;
-      worldX <= worldRight && index < 800;
-      index += 1, worldX += GRID_MAJOR_SPACING
-    ) {
-      const majorIndex = Math.round(worldX / GRID_MAJOR_SPACING);
-      if (majorIndex % labelStride !== 0) {
-        continue;
-      }
-
-      const screenX = viewport.x + worldX * viewport.scale;
-      xLabels.push({
-        screen: screenX,
-        value: Math.round(worldX),
-      });
-    }
-
-    for (
-      let index = 0, worldY = startY;
-      worldY <= worldBottom && index < 800;
-      index += 1, worldY += GRID_MAJOR_SPACING
-    ) {
-      const majorIndex = Math.round(worldY / GRID_MAJOR_SPACING);
-      if (majorIndex % labelStride !== 0) {
-        continue;
-      }
-
-      const screenY = viewport.y + worldY * viewport.scale;
-      yLabels.push({
-        screen: screenY,
-        value: Math.round(worldY),
-      });
-    }
-
-    return {
-      xLabels,
-      yLabels,
-    };
-  }, [stageSize.height, stageSize.width, viewport.scale, viewport.x, viewport.y]);
+  const gridAxisLabels = useGridAxisLabels(stageSize, viewport);
 
   return (
     <section
@@ -2478,184 +2372,22 @@ export default function RealtimeBoardCanvas({
           }}
           onDelete={handleDeleteButtonClick}
         >
-                <button
-                  type="button"
-                  onClick={() => setViewport(INITIAL_VIEWPORT)}
-                  style={{
-                    width: "100%",
-                    height: 32,
-                    borderRadius: 8,
-                    border: "1px solid var(--border)",
-                    background: "var(--surface)",
-                    fontSize: 12,
-                  }}
-                >
-                  Reset view
-                </button>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "22px minmax(0, 1fr) 22px auto",
-                    alignItems: "center",
-                    gap: "0.35rem",
-                    width: "100%",
-                    padding: "0.2rem 0.35rem",
-                    border: "1px solid var(--border)",
-                    borderRadius: 10,
-                    background: "var(--surface)",
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => nudgeZoom("out")}
-                    title="Zoom out"
-                    aria-label="Zoom out"
-                    style={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: 6,
-                      border: "1px solid var(--border)",
-                      background: "var(--surface-muted)",
-                      lineHeight: 1,
-                      padding: 0,
-                    }}
-                  >
-                    −
-                  </button>
-                  <input
-                    type="range"
-                    min={ZOOM_SLIDER_MIN_PERCENT}
-                    max={ZOOM_SLIDER_MAX_PERCENT}
-                    step={1}
-                    value={zoomSliderValue}
-                    onChange={(event) => {
-                      const nextScale = Number(event.target.value) / 100;
-                      zoomAtStageCenter(nextScale);
-                    }}
-                    aria-label="Zoom level"
-                    style={{
-                      width: "100%",
-                      minWidth: 0,
-                      accentColor: "#2563eb",
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => nudgeZoom("in")}
-                    title="Zoom in"
-                    aria-label="Zoom in"
-                    style={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: 6,
-                      border: "1px solid var(--border)",
-                      background: "var(--surface-muted)",
-                      lineHeight: 1,
-                      padding: 0,
-                    }}
-                  >
-                    +
-                  </button>
-                  <span
-                    style={{
-                      color: "var(--text-muted)",
-                      fontSize: 11,
-                      minWidth: 34,
-                      textAlign: "right",
-                      fontVariantNumeric: "tabular-nums",
-                    }}
-                  >
-                    {zoomPercent}%
-                  </span>
-                </div>
-
-                <label
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    width: "100%",
-                    padding: "0.45rem 0.55rem",
-                    border: "1px solid var(--border)",
-                    borderRadius: 8,
-                    background: "var(--surface)",
-                    color: "var(--text-muted)",
-                    fontSize: 12,
-                    fontWeight: 500,
-                    cursor: "pointer",
-                    userSelect: "none",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isSnapToGridEnabled}
-                    onChange={(event) =>
-                      setIsSnapToGridEnabled(event.target.checked)
-                    }
-                    style={{
-                      width: 14,
-                      height: 14,
-                      accentColor: "#2563eb",
-                      cursor: "pointer",
-                    }}
-                  />
-                  <span>Snap to grid</span>
-                </label>
-
-                <span
-                  style={{
-                    color:
-                      selectedObjectCount > 0
-                        ? "var(--text)"
-                        : "var(--text-muted)",
-                    fontSize: 12,
-                    lineHeight: 1.25,
-                    wordBreak: "break-word",
-                  }}
-                >
-                  Selected:{" "}
-                  {selectedObjectCount > 0
-                    ? `${selectedObjectCount} object${selectedObjectCount === 1 ? "" : "s"}`
-                    : "None"}
-                </span>
-
-                <span
-                  style={{
-                    color: cursorBoardPosition
-                      ? "var(--text)"
-                      : "var(--text-muted)",
-                    fontSize: 12,
-                    lineHeight: 1.25,
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                >
-                  Cursor:{" "}
-                  {cursorBoardPosition
-                    ? `${cursorBoardPosition.x}, ${cursorBoardPosition.y}`
-                    : "—"}
-                </span>
-
-                {boardError ? (
-                  <p style={{ color: "#b91c1c", margin: 0, fontSize: 13 }}>
-                    {boardError}
-                  </p>
-                ) : null}
-                {boardStatusMessage ? (
-                  <p
-                    style={{
-                      color: "var(--text)",
-                      margin: 0,
-                      fontSize: 12,
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      padding: "0.4rem 0.5rem",
-                      background: "var(--surface-muted)",
-                    }}
-                  >
-                    {boardStatusMessage}
-                  </p>
-                ) : null}
+          <LeftToolsPanelControls
+            zoomSliderMin={ZOOM_SLIDER_MIN_PERCENT}
+            zoomSliderMax={ZOOM_SLIDER_MAX_PERCENT}
+            zoomSliderValue={zoomSliderValue}
+            zoomPercent={zoomPercent}
+            selectedObjectCount={selectedObjectCount}
+            isSnapToGridEnabled={isSnapToGridEnabled}
+            cursorBoardPosition={cursorBoardPosition}
+            boardError={boardError}
+            boardStatusMessage={boardStatusMessage}
+            onResetView={() => setViewport(INITIAL_VIEWPORT)}
+            onNudgeZoomOut={() => nudgeZoom("out")}
+            onNudgeZoomIn={() => nudgeZoom("in")}
+            onZoomSliderChange={zoomAtStageCenter}
+            onSnapToGridToggle={setIsSnapToGridEnabled}
+          />
         </LeftToolsPanel>
 
         <div

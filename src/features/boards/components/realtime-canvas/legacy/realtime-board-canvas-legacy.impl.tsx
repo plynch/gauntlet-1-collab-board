@@ -11,13 +11,10 @@ import {
 import {
   collection,
   doc,
-  serverTimestamp,
-  setDoc,
 } from "firebase/firestore";
 
 import type {
   BoardObject,
-  BoardObjectKind,
   PresenceUser,
 } from "@/features/boards/types";
 import {
@@ -35,12 +32,10 @@ import {
   getDistance,
   roundToStep,
   toNormalizedRect,
-  toWritePoint,
   ZOOM_SLIDER_MAX_PERCENT,
   ZOOM_SLIDER_MIN_PERCENT,
 } from "@/features/boards/components/realtime-canvas/legacy/legacy-canvas-geometry";
 import {
-  CURSOR_MIN_MOVE_DISTANCE,
   GRID_CONTAINER_DEFAULT_GAP,
   GRID_CONTAINER_MAX_COLS,
   GRID_CONTAINER_MAX_ROWS,
@@ -86,8 +81,6 @@ import {
 import {
   useAiChatState,
 } from "@/features/boards/components/realtime-canvas/use-ai-chat-state";
-import { createBoardObjectAction } from "@/features/boards/components/realtime-canvas/legacy/create-board-object-action";
-import { deleteBoardObjectAction } from "@/features/boards/components/realtime-canvas/legacy/delete-board-object-action";
 import {
   useRealtimeBoardCanvasSubscriptionSync,
 } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-subscription-sync";
@@ -105,10 +98,10 @@ import { useSelectionUiState } from "@/features/boards/components/realtime-canva
 import { useGridContentSync } from "@/features/boards/components/realtime-canvas/legacy/use-grid-content-sync";
 import { useObjectWriteActions } from "@/features/boards/components/realtime-canvas/legacy/use-object-write-actions";
 import { useStickyTextSync } from "@/features/boards/components/realtime-canvas/legacy/use-sticky-text-sync";
-import { createSwotTemplateAction } from "@/features/boards/components/realtime-canvas/legacy/swot-template-action";
 import { useDraftGeometryAndConnectors } from "@/features/boards/components/realtime-canvas/legacy/use-draft-geometry-and-connectors";
 import { useResizeGeometry } from "@/features/boards/components/realtime-canvas/legacy/use-resize-geometry";
 import { useSelectionStyleActions } from "@/features/boards/components/realtime-canvas/legacy/use-selection-style-actions";
+import { useBoardRuntimeActions } from "@/features/boards/components/realtime-canvas/legacy/use-board-runtime-actions";
 
 export default function RealtimeBoardCanvas({
   boardId,
@@ -398,80 +391,39 @@ export default function RealtimeBoardCanvas({
     clampAiFooterHeight: clampAiFooterHeight,
   });
 
-  const updateCursor = useCallback(
-    async (cursor: BoardPoint | null, options: { force?: boolean } = {}) => {
-      const writeMetrics = writeMetricsRef.current;
-      writeMetrics.markAttempted("cursor");
-
-      const force = options.force ?? false;
-      const nextCursor = cursor ? toWritePoint(cursor) : null;
-      const previousCursor = lastCursorWriteRef.current;
-
-      if (!force) {
-        if (nextCursor === null && previousCursor === null) {
-          writeMetrics.markSkipped("cursor");
-          return;
-        }
-
-        if (
-          nextCursor !== null &&
-          previousCursor !== null &&
-          getDistance(nextCursor, previousCursor) < CURSOR_MIN_MOVE_DISTANCE
-        ) {
-          writeMetrics.markSkipped("cursor");
-          return;
-        }
-      }
-
-      try {
-        await setDoc(
-          selfPresenceRef,
-          {
-            cursorX: nextCursor?.x ?? null,
-            cursorY: nextCursor?.y ?? null,
-            active: true,
-            lastSeenAtMs: Date.now(),
-            lastSeenAt: serverTimestamp(),
-          },
-          { merge: true },
-        );
-        lastCursorWriteRef.current = nextCursor;
-        writeMetrics.markCommitted("cursor");
-      } catch {
-        // Ignore cursor write failures to avoid interrupting interactions.
-      }
-    },
-    [selfPresenceRef],
-  );
-
-  const createObject = useCallback(
-    async (kind: BoardObjectKind) => {
-      await createBoardObjectAction({
-        kind,
-        canEdit,
-        userId: user.uid,
-        objectsCollectionRef,
-        objectsByIdRef,
-        objectSpawnSequenceRef,
-        stageRef,
-        viewportRef,
-        snapToGridEnabledRef,
-        setBoardError,
-      });
-    },
-    [canEdit, objectsCollectionRef, setBoardError, user.uid],
-  );
-
-  const showBoardStatus = useCallback((message: string) => {
-    setBoardStatusMessage(message);
-    if (boardStatusTimerRef.current !== null) {
-      window.clearTimeout(boardStatusTimerRef.current);
-    }
-    boardStatusTimerRef.current = window.setTimeout(() => {
-      setBoardStatusMessage(null);
-      boardStatusTimerRef.current = null;
-    }, 2400);
-  }, []);
+  const {
+    updateCursor,
+    createObject,
+    showBoardStatus,
+    createSwotTemplate,
+    deleteObject,
+  } = useBoardRuntimeActions({
+    boardId,
+    db,
+    canEdit,
+    userId: user.uid,
+    objectsCollectionRef,
+    selfPresenceRef,
+    stageRef,
+    viewportRef,
+    objectsByIdRef,
+    objectSpawnSequenceRef,
+    snapToGridEnabledRef,
+    stickyTextSyncStateRef,
+    lastStickyWriteByIdRef,
+    lastPositionWriteByIdRef,
+    lastGeometryWriteByIdRef,
+    gridContentSyncTimerByIdRef,
+    lastCursorWriteRef,
+    writeMetricsRef,
+    setGridContentDraftById,
+    setTextDrafts,
+    setSelectedObjectIds,
+    clearDraftConnector,
+    setBoardError,
+    setBoardStatusMessage,
+    boardStatusTimerRef,
+  });
 
   const {
     copySelectedObjects,
@@ -490,45 +442,6 @@ export default function RealtimeBoardCanvas({
     setSelectedObjectIds,
     setBoardError,
   });
-
-  const createSwotTemplate = useCallback(async () => {
-    return createSwotTemplateAction({
-      canEdit,
-      stageRef,
-      viewportRef,
-      objectsByIdRef,
-      objectSpawnSequenceRef,
-      snapToGridEnabledRef,
-      objectsCollectionRef,
-      userId: user.uid,
-      setBoardError,
-    });
-  }, [canEdit, objectsCollectionRef, setBoardError, user.uid]);
-
-  const deleteObject = useCallback(
-    async (objectId: string) => {
-      if (!canEdit) {
-        return;
-      }
-
-      await deleteBoardObjectAction({
-        db,
-        boardId,
-        objectId,
-        stickyTextSyncStateRef,
-        lastStickyWriteByIdRef,
-        lastPositionWriteByIdRef,
-        lastGeometryWriteByIdRef,
-        gridContentSyncTimerByIdRef,
-        setGridContentDraftById,
-        setTextDrafts,
-        setSelectedObjectIds,
-        clearDraftConnector,
-        setBoardError,
-      });
-    },
-    [boardId, canEdit, clearDraftConnector, db, setBoardError],
-  );
 
   const { flushStickyTextSync, queueStickyTextSync } = useStickyTextSync({
     boardId,

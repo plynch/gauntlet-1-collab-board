@@ -8,7 +8,6 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import {
-  addDoc,
   collection,
   doc,
   serverTimestamp,
@@ -27,10 +26,7 @@ import {
 } from "@/features/boards/components/realtime-canvas/ai-chat-content";
 import {
   canUseSelectionHudColor,
-  getDefaultObjectColor,
-  getDefaultObjectSize,
   getMinimumObjectSize,
-  isBackgroundContainerType,
   isConnectableShapeKind,
   isConnectorKind,
   LINE_MIN_LENGTH,
@@ -49,12 +45,10 @@ import {
   getConnectorHitBounds,
   getDistance,
   getObjectVisualBounds,
-  getSpawnOffset,
   hasMeaningfulRotation,
   isSnapEligibleObjectType,
   roundToStep,
   snapToGrid,
-  toConnectorGeometryFromEndpoints,
   toDegrees,
   toNormalizedRect,
   toWritePoint,
@@ -70,7 +64,6 @@ import {
   GRID_CONTAINER_MAX_ROWS,
   INITIAL_VIEWPORT,
   OBJECT_LABEL_MAX_LENGTH,
-  OBJECT_SPAWN_STEP_PX,
   PRESENCE_TTL_MS,
 } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-config";
 import type {
@@ -98,9 +91,6 @@ import { useAiCommandSubmit } from "@/features/boards/components/realtime-canvas
 import { useBoardStageInteractions } from "@/features/boards/components/realtime-canvas/legacy/use-board-stage-interactions";
 import { useBoardStageWindowPointerEvents } from "@/features/boards/components/realtime-canvas/legacy/use-board-stage-window-pointer-events";
 import { RealtimeBoardCanvasLayout } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-layout";
-import {
-  getDefaultSectionTitles,
-} from "@/features/boards/components/realtime-canvas/grid-section-utils";
 import { useBoardAssistantActions } from "@/features/boards/components/realtime-canvas/legacy/use-board-assistant-actions";
 import {
   useContainerMembership,
@@ -114,6 +104,7 @@ import {
 import {
   useAiChatState,
 } from "@/features/boards/components/realtime-canvas/use-ai-chat-state";
+import { createBoardObjectAction } from "@/features/boards/components/realtime-canvas/legacy/create-board-object-action";
 import { deleteBoardObjectAction } from "@/features/boards/components/realtime-canvas/legacy/delete-board-object-action";
 import {
   useRealtimeBoardCanvasSubscriptionSync,
@@ -904,126 +895,20 @@ export default function RealtimeBoardCanvas({
 
   const createObject = useCallback(
     async (kind: BoardObjectKind) => {
-      if (!canEdit) {
-        return;
-      }
-
-      const stageElement = stageRef.current;
-      if (!stageElement) {
-        return;
-      }
-
-      const rect = stageElement.getBoundingClientRect();
-      const centerX =
-        (rect.width / 2 - viewportRef.current.x) / viewportRef.current.scale;
-      const centerY =
-        (rect.height / 2 - viewportRef.current.y) / viewportRef.current.scale;
-      const defaultSize = getDefaultObjectSize(kind);
-      let width = defaultSize.width;
-      let height = defaultSize.height;
-      if (kind === "gridContainer") {
-        const viewableWidth = rect.width / viewportRef.current.scale;
-        const viewableHeight = rect.height / viewportRef.current.scale;
-        const minimumSize = getMinimumObjectSize(kind);
-        width = Math.max(minimumSize.width, Math.round(viewableWidth * 0.9));
-        height = Math.max(minimumSize.height, Math.round(viewableHeight * 0.9));
-      }
-      const spawnIndex =
-        objectsByIdRef.current.size + objectSpawnSequenceRef.current;
-      objectSpawnSequenceRef.current += 1;
-      const spawnOffset = getSpawnOffset(spawnIndex, OBJECT_SPAWN_STEP_PX);
-      const highestZIndex = Array.from(objectsByIdRef.current.values()).reduce(
-        (maxValue, objectItem) => Math.max(maxValue, objectItem.zIndex),
-        0,
-      );
-      const lowestZIndex = Array.from(objectsByIdRef.current.values()).reduce(
-        (minValue, objectItem) => Math.min(minValue, objectItem.zIndex),
-        0,
-      );
-      const nextZIndex = isBackgroundContainerType(kind)
-        ? lowestZIndex - 1
-        : highestZIndex + 1;
-      const startXRaw = centerX - width / 2 + spawnOffset.x;
-      const startYRaw = centerY - height / 2 + spawnOffset.y;
-      const startX =
-        snapToGridEnabledRef.current && isSnapEligibleObjectType(kind)
-          ? snapToGrid(startXRaw)
-          : startXRaw;
-      const startY =
-        snapToGridEnabledRef.current && isSnapEligibleObjectType(kind)
-          ? snapToGrid(startYRaw)
-          : startYRaw;
-      const isConnector = isConnectorKind(kind);
-
-      try {
-        const connectorFrom = isConnector
-          ? {
-              x: startX,
-              y: startY + height / 2,
-            }
-          : null;
-        const connectorTo = isConnector
-          ? {
-              x: startX + width,
-              y: startY + height / 2,
-            }
-          : null;
-        const connectorGeometry =
-          connectorFrom && connectorTo
-            ? toConnectorGeometryFromEndpoints(connectorFrom, connectorTo)
-            : null;
-
-        const payload: Record<string, unknown> = {
-          type: kind,
-          zIndex: nextZIndex,
-          x: connectorGeometry ? connectorGeometry.x : startX,
-          y: connectorGeometry ? connectorGeometry.y : startY,
-          width: connectorGeometry ? connectorGeometry.width : width,
-          height: connectorGeometry ? connectorGeometry.height : height,
-          rotationDeg: 0,
-          color: getDefaultObjectColor(kind),
-          text:
-            kind === "sticky"
-              ? "New sticky note"
-              : kind === "text"
-                ? "Text"
-                : "",
-          createdBy: user.uid,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        };
-        if (kind === "gridContainer") {
-          const defaultSectionTitles = getDefaultSectionTitles(1, 1);
-          payload.gridRows = 1;
-          payload.gridCols = 1;
-          payload.gridGap = GRID_CONTAINER_DEFAULT_GAP;
-          payload.gridCellColors = ["transparent"];
-          payload.containerTitle = "";
-          payload.gridSectionTitles = defaultSectionTitles;
-          payload.gridSectionNotes = Array.from(
-            { length: defaultSectionTitles.length },
-            () => "",
-          );
-        }
-
-        if (connectorFrom && connectorTo) {
-          payload.fromObjectId = null;
-          payload.toObjectId = null;
-          payload.fromAnchor = null;
-          payload.toAnchor = null;
-          payload.fromX = connectorFrom.x;
-          payload.fromY = connectorFrom.y;
-          payload.toX = connectorTo.x;
-          payload.toY = connectorTo.y;
-        }
-
-        await addDoc(objectsCollectionRef, payload);
-      } catch (error) {
-        console.error("Failed to create object", error);
-        setBoardError(toBoardErrorMessage(error, "Failed to create object."));
-      }
+      await createBoardObjectAction({
+        kind,
+        canEdit,
+        userId: user.uid,
+        objectsCollectionRef,
+        objectsByIdRef,
+        objectSpawnSequenceRef,
+        stageRef,
+        viewportRef,
+        snapToGridEnabledRef,
+        setBoardError,
+      });
     },
-    [canEdit, objectsCollectionRef, user.uid],
+    [canEdit, objectsCollectionRef, setBoardError, user.uid],
   );
 
   const showBoardStatus = useCallback((message: string) => {

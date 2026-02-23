@@ -155,3 +155,10 @@ From Codex:
 
 From Patrick:
 - I may be in over my head. Trying to do well. There's much to learn.
+
+From Patrick, Sunday, 23:11
+
+- I've done what I could to respond to the AUDIT and MITIGATIONS suggested after early submission Friday.
+- Refactored out god components, 300 line cap for source code
+- Did what we could to mitigate performance impacts without time for a full rewrite
+- There's still much to do, but I'm going to submit and demo what I have.

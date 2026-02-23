@@ -1,11 +1,9 @@
 "use client";
 
 import {
-  useCallback,
   useMemo,
   useRef,
   useState,
-  type WheelEvent as ReactWheelEvent,
 } from "react";
 import {
   collection,
@@ -63,7 +61,6 @@ import { useFpsMeter } from "@/features/boards/components/realtime-canvas/legacy
 import { useObjectTemplateActions } from "@/features/boards/components/realtime-canvas/legacy/use-object-template-actions";
 import { useBoardSelectionActions } from "@/features/boards/components/realtime-canvas/legacy/use-board-selection-actions";
 import { useAiCommandSubmit } from "@/features/boards/components/realtime-canvas/legacy/use-ai-command-submit";
-import { useBoardStageInteractions } from "@/features/boards/components/realtime-canvas/legacy/use-board-stage-interactions";
 import { useBoardStageWindowPointerEvents } from "@/features/boards/components/realtime-canvas/legacy/use-board-stage-window-pointer-events";
 import { RealtimeBoardCanvasLayout } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-layout";
 import { useBoardAssistantActions } from "@/features/boards/components/realtime-canvas/legacy/use-board-assistant-actions";
@@ -82,7 +79,6 @@ import {
 import {
   createRealtimeWriteMetrics,
 } from "@/features/boards/lib/realtime-write-metrics";
-import { useBoardZoomControls } from "@/features/boards/components/realtime-canvas/legacy/use-board-zoom-controls";
 import { useTheme } from "@/features/theme/use-theme";
 import { getFirebaseClientDb } from "@/lib/firebase/client";
 import { useRealtimeBoardCanvasRuntimeSync } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-runtime-sync";
@@ -97,6 +93,7 @@ import { useResizeGeometry } from "@/features/boards/components/realtime-canvas/
 import { useSelectionStyleActions } from "@/features/boards/components/realtime-canvas/legacy/use-selection-style-actions";
 import { useBoardRuntimeActions } from "@/features/boards/components/realtime-canvas/legacy/use-board-runtime-actions";
 import { useCanvasSelectionViewState } from "@/features/boards/components/realtime-canvas/legacy/use-canvas-selection-view-state";
+import { useBoardStageActions } from "@/features/boards/components/realtime-canvas/legacy/use-board-stage-actions";
 
 export default function RealtimeBoardCanvas({
   boardId,
@@ -563,28 +560,10 @@ export default function RealtimeBoardCanvas({
   });
 
   const {
-    toBoardCoordinates,
     zoomAtStageCenter,
     nudgeZoom,
     handleWheel,
-  } = useBoardZoomControls({
-    stageRef,
-    viewportRef,
-    setViewport,
-  });
-
-  const handleStageWheelCapture = useCallback(
-    (event: ReactWheelEvent<HTMLDivElement>) => {
-      if (event.cancelable) {
-        event.preventDefault();
-      }
-      event.stopPropagation();
-      handleWheel(event);
-    },
-    [handleWheel],
-  );
-
-  const {
+    handleStageWheelCapture,
     handleStagePointerDown,
     handleStagePointerMove,
     handleStagePointerLeave,
@@ -593,14 +572,15 @@ export default function RealtimeBoardCanvas({
     startCornerResize,
     startLineEndpointResize,
     startConnectorEndpointDrag,
-  } = useBoardStageInteractions({
+  } = useBoardStageActions({
     canEdit,
+    stageRef,
+    viewportRef,
+    setViewport,
     setSelectedObjectIds,
     setMarqueeSelectionState,
-    toBoardCoordinates,
     marqueeSelectionStateRef,
     panStateRef,
-    viewportRef,
     objectsByIdRef,
     selectedObjectIdsRef,
     getCurrentObjectGeometry,

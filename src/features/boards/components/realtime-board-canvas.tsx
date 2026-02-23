@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type FormEvent as ReactFormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
@@ -61,7 +62,6 @@ import {
   toPresenceUser,
 } from "@/features/boards/components/realtime-canvas/board-doc-parsers";
 import {
-  AI_FOOTER_COLLAPSED_HEIGHT,
   AI_FOOTER_DEFAULT_HEIGHT,
   AI_FOOTER_HEIGHT_STORAGE_KEY,
   clampAiFooterHeight,
@@ -172,16 +172,15 @@ import { useBoardSelectionAndConnectors } from "@/features/boards/components/rea
 import { useClipboardShortcuts } from "@/features/boards/components/realtime-canvas/legacy/use-clipboard-shortcuts";
 import { useFpsMeter } from "@/features/boards/components/realtime-canvas/legacy/use-fps-meter";
 import { useObjectTemplateActions } from "@/features/boards/components/realtime-canvas/legacy/use-object-template-actions";
+import { AiAssistantFooter } from "@/features/boards/components/realtime-canvas/legacy/ai-assistant-footer";
+import { RightPresencePanel } from "@/features/boards/components/realtime-canvas/legacy/right-presence-panel";
+import { StageOverlays } from "@/features/boards/components/realtime-canvas/legacy/stage-overlays";
 import { StageAxisOverlay } from "@/features/boards/components/realtime-canvas/legacy/stage-axis-overlay";
 import {
   DEFAULT_SWOT_SECTION_TITLES,
   getDefaultSectionTitles,
   normalizeSectionValues,
 } from "@/features/boards/components/realtime-canvas/grid-section-utils";
-import {
-  OnlineUsersList,
-  RemoteCursorLayer,
-} from "@/features/boards/components/realtime-canvas/render-primitives";
 import { calculateSelectionHudPosition } from "@/features/boards/components/realtime-canvas/selection-hud-layout";
 import {
   areContainerMembershipPatchesEqual,
@@ -3421,6 +3420,13 @@ export default function RealtimeBoardCanvas({
     [chatInput, isAiSubmitting, submitAiCommandMessage],
   );
 
+  const handleAiChatInputKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      handleChatInputKeyDown(event, isAiSubmitting);
+    },
+    [handleChatInputKeyDown, isAiSubmitting],
+  );
+
   const persistObjectLabelText = useCallback(
     async (objectId: string, nextText: string) => {
       const objectItem = objectsByIdRef.current.get(objectId);
@@ -6277,78 +6283,16 @@ export default function RealtimeBoardCanvas({
               })}
             </div>
 
-            {shouldShowConnectorAnchors
-              ? connectorAnchorPoints.map((anchorPoint) => (
-                  <span
-                    key={`${anchorPoint.objectId}-${anchorPoint.anchor}`}
-                    style={{
-                      position: "absolute",
-                      left: viewport.x + anchorPoint.x * viewport.scale - 4,
-                      top: viewport.y + anchorPoint.y * viewport.scale - 4,
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      border: "1px solid var(--border-strong)",
-                      background: "var(--surface)",
-                      pointerEvents: "none",
-                      zIndex: 38,
-                    }}
-                  />
-                ))
-              : null}
-
-            {marqueeRect ? (
-              <div
-                style={{
-                  position: "absolute",
-                  left: viewport.x + marqueeRect.left * viewport.scale,
-                  top: viewport.y + marqueeRect.top * viewport.scale,
-                  width: Math.max(
-                    1,
-                    (marqueeRect.right - marqueeRect.left) * viewport.scale,
-                  ),
-                  height: Math.max(
-                    1,
-                    (marqueeRect.bottom - marqueeRect.top) * viewport.scale,
-                  ),
-                  border: "1px solid rgba(37, 99, 235, 0.95)",
-                  background: "rgba(59, 130, 246, 0.16)",
-                  pointerEvents: "none",
-                  zIndex: 40,
-                }}
-              />
-            ) : null}
-
-            <RemoteCursorLayer
-              remoteCursors={remoteCursors}
+            <StageOverlays
+              shouldShowConnectorAnchors={shouldShowConnectorAnchors}
+              connectorAnchorPoints={connectorAnchorPoints}
+              marqueeRect={marqueeRect}
               viewport={viewport}
+              remoteCursors={remoteCursors}
+              fps={fps}
+              fpsTone={fpsTone}
+              fpsTarget={fpsTarget}
             />
-            <div
-              style={{
-                position: "absolute",
-                right: 12,
-                bottom: 12,
-                zIndex: 60,
-                pointerEvents: "none",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                background:
-                  "color-mix(in oklab, var(--surface) 90%, transparent)",
-                color: "var(--text-muted)",
-                padding: "0.2rem 0.45rem",
-                fontSize: 11,
-                fontWeight: 600,
-                fontVariantNumeric: "tabular-nums",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.35rem",
-                boxShadow: "0 2px 8px rgba(2, 6, 23, 0.16)",
-              }}
-              aria-hidden="true"
-            >
-              <span style={{ color: fpsTone }}>{fps} FPS</span>
-              <span style={{ color: "var(--text-muted)" }}>/ {fpsTarget}</span>
-            </div>
           </div>
         </div>
 
@@ -6359,437 +6303,34 @@ export default function RealtimeBoardCanvas({
           }}
         />
 
-        <aside
-          style={{
-            minWidth: 0,
-            minHeight: 0,
-            background: "var(--surface)",
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-          }}
-        >
-          {isRightPanelCollapsed ? (
-            <div
-              style={{
-                height: "100%",
-                display: "flex",
-                flexDirection: "column",
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => setIsRightPanelCollapsed(false)}
-                title="Expand online users panel"
-                aria-label="Expand online users panel"
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  border: "none",
-                  borderLeft: "1px solid var(--border-strong)",
-                  borderRadius: 0,
-                  background: "var(--surface-subtle)",
-                  color: "var(--text)",
-                  fontWeight: 700,
-                  fontSize: 12,
-                  letterSpacing: 0.3,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "0.45rem",
-                  cursor: "pointer",
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: 16,
-                    lineHeight: 1,
-                  }}
-                >
-                  {"<"}
-                </span>
-                <span
-                  style={{
-                    writingMode: "vertical-rl",
-                    transform: "rotate(180deg)",
-                  }}
-                >
-                  Online users
-                </span>
-              </button>
-            </div>
-          ) : (
-            <>
-              <div
-                style={{
-                  padding: 0,
-                  borderBottom: "1px solid var(--border)",
-                  display: "grid",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setIsRightPanelCollapsed(true)}
-                  title="Collapse online users panel"
-                  aria-label="Collapse online users panel"
-                  style={{
-                    width: "100%",
-                    height: 30,
-                    border: "none",
-                    borderRadius: 0,
-                    borderBottom: "1px solid var(--border-strong)",
-                    background: "var(--surface-subtle)",
-                    color: "var(--text)",
-                    fontWeight: 700,
-                    fontSize: 12,
-                    letterSpacing: 0.3,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "0.45rem",
-                    cursor: "pointer",
-                    transition:
-                      "background-color 180ms ease, border-color 180ms ease, color 180ms ease",
-                  }}
-                >
-                  <span>Online users</span>
-                  <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>
-                    ({onlineUsers.length})
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 16,
-                      lineHeight: 1,
-                    }}
-                  >
-                    {">"}
-                  </span>
-                </button>
-              </div>
-
-              <div
-                style={{
-                  padding: "0.75rem 0.8rem",
-                  overflowY: "auto",
-                  minHeight: 0,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.45rem",
-                  fontSize: 14,
-                  color: "var(--text-muted)",
-                }}
-              >
-                <OnlineUsersList onlineUsers={onlineUsers} />
-              </div>
-            </>
-          )}
-        </aside>
+        <RightPresencePanel
+          isCollapsed={isRightPanelCollapsed}
+          onlineUsers={onlineUsers}
+          onCollapse={() => setIsRightPanelCollapsed(true)}
+          onExpand={() => setIsRightPanelCollapsed(false)}
+        />
       </div>
 
-      <footer
-        style={{
-          height: isAiFooterCollapsed
-            ? AI_FOOTER_COLLAPSED_HEIGHT
-            : aiFooterHeight,
-          minHeight: isAiFooterCollapsed
-            ? AI_FOOTER_COLLAPSED_HEIGHT
-            : aiFooterHeight,
-          maxHeight: isAiFooterCollapsed
-            ? AI_FOOTER_COLLAPSED_HEIGHT
-            : aiFooterHeight,
-          borderTop: `${PANEL_SEPARATOR_WIDTH}px solid ${PANEL_SEPARATOR_COLOR}`,
-          background: "var(--surface)",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          flexShrink: 0,
-          transition: isAiFooterResizing
-            ? "none"
-            : "height 220ms cubic-bezier(0.22, 1, 0.36, 1), min-height 220ms cubic-bezier(0.22, 1, 0.36, 1), max-height 220ms cubic-bezier(0.22, 1, 0.36, 1)",
+      <AiAssistantFooter
+        isCollapsed={isAiFooterCollapsed}
+        isResizing={isAiFooterResizing}
+        isDrawerNudgeActive={isAiDrawerNudgeActive}
+        height={aiFooterHeight}
+        selectedCount={selectedObjectIds.length}
+        chatMessages={chatMessages}
+        isSubmitting={isAiSubmitting}
+        chatInput={chatInput}
+        chatMessagesRef={chatMessagesRef}
+        onResizeStart={handleAiFooterResizeStart}
+        onToggleCollapsed={() => {
+          setHasAiDrawerBeenInteracted(true);
+          setIsAiFooterResizing(false);
+          setIsAiFooterCollapsed((previous) => !previous);
         }}
-      >
-        {!isAiFooterCollapsed ? (
-          <div
-            onPointerDown={handleAiFooterResizeStart}
-            style={{
-              height: 18,
-              borderBottom: "1px solid var(--border)",
-              cursor: "ns-resize",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: "var(--surface-muted)",
-              touchAction: "none",
-              flexShrink: 0,
-            }}
-          >
-            <span
-              style={{
-                width: 38,
-                height: 3,
-                borderRadius: 999,
-                background: "var(--border)",
-              }}
-            />
-          </div>
-        ) : null}
-
-        <button
-          type="button"
-          onClick={() => {
-            setHasAiDrawerBeenInteracted(true);
-            setIsAiFooterResizing(false);
-            setIsAiFooterCollapsed((previous) => !previous);
-          }}
-          aria-label={
-            isAiFooterCollapsed
-              ? "Expand AI assistant drawer"
-              : "Collapse AI assistant drawer"
-          }
-          title={
-            isAiFooterCollapsed
-              ? "Expand AI assistant drawer"
-              : "Collapse AI assistant drawer"
-          }
-          style={{
-            width: "100%",
-            height: 30,
-            border: "none",
-            borderBottom: "1px solid var(--border-strong)",
-            borderRadius: 0,
-            background: isAiFooterCollapsed
-              ? "var(--surface-subtle)"
-              : "var(--surface-muted)",
-            color: "var(--text)",
-            fontWeight: 700,
-            fontSize: 12,
-            lineHeight: 1,
-            cursor: "pointer",
-            letterSpacing: 0.3,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "0.45rem",
-            flexShrink: 0,
-            transform: isAiDrawerNudgeActive
-              ? "translateY(-1px) scale(1.01)"
-              : "translateY(0) scale(1)",
-            boxShadow: isAiDrawerNudgeActive
-              ? "0 0 0 4px rgba(14, 165, 233, 0.18)"
-              : "none",
-            transition:
-              "background-color 180ms ease, border-color 180ms ease, color 180ms ease, transform 220ms ease, box-shadow 260ms ease",
-          }}
-        >
-          <span
-            style={{
-              display: "inline-block",
-              fontSize: 16,
-              lineHeight: 1,
-              transform: isAiFooterCollapsed
-                ? "translateY(-1px) rotate(0deg)"
-                : "translateY(1px) rotate(180deg)",
-              transition: "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)",
-            }}
-          >
-            ^
-          </span>
-          <span>AI Assistant</span>
-        </button>
-
-        {isAiFooterCollapsed ? (
-          <div
-            style={{
-              flex: 1,
-              minHeight: 0,
-              display: "grid",
-              alignItems: "stretch",
-              padding: "0 clamp(0.8rem, 2vw, 1.5rem)",
-            }}
-          >
-            <div
-              style={{
-                width: "min(100%, 800px)",
-                margin: "0 auto",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "0.75rem",
-              }}
-            >
-              <strong style={{ fontSize: 13, color: "var(--text)" }}>
-                AI Assistant
-              </strong>
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                ✨ Open for quick commands
-              </span>
-            </div>
-          </div>
-        ) : (
-          <>
-            <div
-              style={{
-                display: "grid",
-                padding: "0.45rem clamp(0.8rem, 2vw, 1.5rem)",
-                borderBottom: "1px solid var(--border)",
-                gap: "0.55rem",
-              }}
-            >
-              <div
-                style={{
-                  width: "min(100%, 800px)",
-                  margin: "0 auto",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "0.75rem",
-                  flexWrap: "wrap",
-                }}
-              >
-                <strong style={{ fontSize: 13, color: "var(--text)" }}>
-                  AI Assistant
-                </strong>
-                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  Selected: {selectedObjectIds.length} • ask naturally (/help)
-                </span>
-              </div>
-            </div>
-
-            <div
-              style={{
-                flex: 1,
-                minHeight: 0,
-                padding: "0.6rem clamp(0.8rem, 2vw, 1.5rem)",
-                background: "var(--surface-muted)",
-                overflow: "hidden",
-              }}
-            >
-              <div
-                ref={chatMessagesRef}
-                style={{
-                  height: "100%",
-                  width: "min(100%, 800px)",
-                  margin: "0 auto",
-                  overflowY: "auto",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.5rem",
-                  fontSize: 13,
-                }}
-              >
-                {chatMessages.length === 0 ? (
-                  isAiSubmitting ? (
-                    <div
-                      style={{
-                        color: "var(--text-muted)",
-                        lineHeight: 1.45,
-                        whiteSpace: "pre-wrap",
-                      }}
-                    >
-                      Thinking...
-                    </div>
-                  ) : (
-                    <span style={{ color: "var(--text-muted)", lineHeight: 1.45 }}>
-                      Ask naturally, or type /help for example commands.
-                    </span>
-                  )
-                ) : (
-                  <>
-                    {chatMessages.map((message) => (
-                      <div
-                        key={message.id}
-                        style={{
-                          display: "flex",
-                          justifyContent:
-                            message.role === "user" ? "flex-end" : "flex-start",
-                        }}
-                      >
-                        <div
-                          style={{
-                            maxWidth: "min(88%, 700px)",
-                            border: "1px solid var(--border)",
-                            borderRadius: 10,
-                            padding: "0.5rem 0.65rem",
-                            lineHeight: 1.45,
-                            whiteSpace: "pre-wrap",
-                            background:
-                              message.role === "user"
-                                ? "var(--chat-user-bubble)"
-                                : "var(--chat-ai-bubble)",
-                            color:
-                              message.role === "user"
-                                ? "var(--text)"
-                                : "var(--text)",
-                          }}
-                        >
-                          {message.text}
-                        </div>
-                      </div>
-                    ))}
-                    {isAiSubmitting ? (
-                      <div
-                        style={{
-                          color: "var(--text-muted)",
-                          lineHeight: 1.45,
-                          whiteSpace: "pre-wrap",
-                        }}
-                      >
-                        Thinking...
-                      </div>
-                    ) : null}
-                  </>
-                )}
-              </div>
-            </div>
-
-            <form
-              onSubmit={handleAiChatSubmit}
-              style={{
-                display: "grid",
-                padding: "0.55rem clamp(0.8rem, 2vw, 1.5rem)",
-                borderTop: "1px solid var(--border)",
-              }}
-            >
-              <div
-                style={{
-                  width: "min(100%, 800px)",
-                  margin: "0 auto",
-                  display: "flex",
-                  gap: "0.5rem",
-                  alignItems: "center",
-                }}
-              >
-                <input
-                  value={chatInput}
-                  onChange={handleChatInputChange}
-                  onKeyDown={(event) =>
-                    handleChatInputKeyDown(event, isAiSubmitting)
-                  }
-                  disabled={isAiSubmitting}
-                  placeholder="Ask the AI assistant to update this board..."
-                  maxLength={500}
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                    padding: "0.48rem 0.58rem",
-                    border: "1px solid var(--input-border)",
-                    borderRadius: 8,
-                    background: "var(--input-bg)",
-                    color: "var(--text)",
-                  }}
-                />
-                <button
-                  type="submit"
-                  disabled={isAiSubmitting || chatInput.trim().length === 0}
-                >
-                  {isAiSubmitting ? "Thinking..." : "Send"}
-                </button>
-              </div>
-            </form>
-          </>
-        )}
-      </footer>
+        onSubmit={handleAiChatSubmit}
+        onInputChange={handleChatInputChange}
+        onInputKeyDown={handleAiChatInputKeyDown}
+      />
     </section>
   );
 }

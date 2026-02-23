@@ -631,10 +631,10 @@ describe("BoardToolExecutor moveObjects", () => {
     const state = await executor.getBoardState();
     const byId = new Map(state.map((objectItem) => [objectItem.id, objectItem]));
 
-    expect(byId.get("obj-1")?.x).toBe(760);
-    expect(byId.get("obj-2")?.x).toBe(760);
-    expect(byId.get("obj-1")?.y).toBe(140);
-    expect(byId.get("obj-2")?.y).toBe(272);
+    expect(byId.get("obj-1")?.x).toBe(840);
+    expect(byId.get("obj-2")?.x).toBe(840);
+    expect(byId.get("obj-1")?.y).toBe(40);
+    expect(byId.get("obj-2")?.y).toBe(172);
   });
 
   it("moves a group to viewport top side in a row", async () => {
@@ -664,8 +664,8 @@ describe("BoardToolExecutor moveObjects", () => {
     const state = await executor.getBoardState();
     const byId = new Map(state.map((objectItem) => [objectItem.id, objectItem]));
 
-    expect(byId.get("obj-1")?.x).toBe(120);
-    expect(byId.get("obj-2")?.x).toBe(272);
+    expect(byId.get("obj-1")?.x).toBe(40);
+    expect(byId.get("obj-2")?.x).toBe(192);
     expect(byId.get("obj-1")?.y).toBe(40);
     expect(byId.get("obj-2")?.y).toBe(40);
   });

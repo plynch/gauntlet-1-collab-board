@@ -13,7 +13,6 @@ import {
   collection,
   deleteDoc,
   doc,
-  onSnapshot,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -34,21 +33,15 @@ import {
   getDefaultObjectColor,
   getDefaultObjectSize,
   getMinimumObjectSize,
-  getRenderLayerRank,
   isBackgroundContainerType,
   isConnectableShapeKind,
   isConnectorKind,
   isLabelEditableObjectType,
   LINE_MIN_LENGTH,
 } from "@/features/boards/components/realtime-canvas/board-object-helpers";
-import {
-  hashToColor,
-  toBoardObject,
-  toPresenceUser,
-} from "@/features/boards/components/realtime-canvas/board-doc-parsers";
+import { hashToColor } from "@/features/boards/components/realtime-canvas/board-doc-parsers";
 import {
   AI_FOOTER_DEFAULT_HEIGHT,
-  AI_FOOTER_HEIGHT_STORAGE_KEY,
   clampAiFooterHeight,
 } from "@/features/boards/components/realtime-canvas/ai-footer-config";
 import { toBoardErrorMessage } from "@/features/boards/components/realtime-canvas/board-error";
@@ -96,16 +89,13 @@ import {
   PANEL_SEPARATOR_COLOR,
   PANEL_SEPARATOR_WIDTH,
   POSITION_WRITE_EPSILON,
-  PRESENCE_HEARTBEAT_MS,
   PRESENCE_TTL_MS,
   RESIZE_THROTTLE_MS,
   RIGHT_PANEL_WIDTH,
   ROTATE_THROTTLE_MS,
-  SNAP_TO_GRID_STORAGE_KEY,
   STICKY_TEXT_SYNC_THROTTLE_MS,
   SWOT_SECTION_COLORS,
   SWOT_TEMPLATE_TITLE,
-  WRITE_METRICS_LOG_INTERVAL_MS,
 } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-config";
 import type {
   AiFooterResizeState,
@@ -136,6 +126,7 @@ import { LeftToolsPanel } from "@/features/boards/components/realtime-canvas/leg
 import { RightPresencePanel } from "@/features/boards/components/realtime-canvas/legacy/right-presence-panel";
 import { StageSurface } from "@/features/boards/components/realtime-canvas/legacy/stage-surface";
 import { useBoardStageInteractions } from "@/features/boards/components/realtime-canvas/legacy/use-board-stage-interactions";
+import { useBoardStageWindowPointerEvents } from "@/features/boards/components/realtime-canvas/legacy/use-board-stage-window-pointer-events";
 import {
   DEFAULT_SWOT_SECTION_TITLES,
   getDefaultSectionTitles,
@@ -159,12 +150,15 @@ import {
   useAiChatState,
 } from "@/features/boards/components/realtime-canvas/use-ai-chat-state";
 import {
+  useRealtimeBoardCanvasSubscriptionSync,
+} from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-subscription-sync";
+import {
   createRealtimeWriteMetrics,
-  isWriteMetricsDebugEnabled,
 } from "@/features/boards/lib/realtime-write-metrics";
 import { useBoardZoomControls } from "@/features/boards/components/realtime-canvas/legacy/use-board-zoom-controls";
 import { useTheme } from "@/features/theme/use-theme";
 import { getFirebaseClientDb } from "@/lib/firebase/client";
+import { useRealtimeBoardCanvasRuntimeSync } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-runtime-sync";
 
 export default function RealtimeBoardCanvas({
   boardId,
@@ -291,484 +285,62 @@ export default function RealtimeBoardCanvas({
   );
   const snapToGridEnabledRef = useRef(isSnapToGridEnabled);
 
-  useEffect(() => {
-    viewportRef.current = viewport;
-  }, [viewport]);
-
-  useEffect(() => {
-    canEditRef.current = canEdit;
-  }, [canEdit]);
-
-  useEffect(() => {
-    snapToGridEnabledRef.current = isSnapToGridEnabled;
-  }, [isSnapToGridEnabled]);
-
-  const clearStickyTextHoldDrag = useCallback(() => {
-    const holdState = stickyTextHoldDragRef.current;
-    if (!holdState) {
-      return;
-    }
-
-    if (holdState.timerId !== null) {
-      window.clearTimeout(holdState.timerId);
-    }
-
-    stickyTextHoldDragRef.current = null;
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      clearStickyTextHoldDrag();
-    };
-  }, [clearStickyTextHoldDrag]);
-
-  useEffect(() => {
-    objectsByIdRef.current = new Map(objects.map((item) => [item.id, item]));
-
-    const objectIds = new Set(objects.map((item) => item.id));
-    [
-      lastPositionWriteByIdRef.current,
-      lastGeometryWriteByIdRef.current,
-      lastStickyWriteByIdRef.current,
-    ].forEach((cache) => {
-      Array.from(cache.keys()).forEach((objectId) => {
-        if (!objectIds.has(objectId)) {
-          cache.delete(objectId);
-        }
-      });
-    });
-
-    const removedGridDraftIds = Object.keys(
-      gridContentDraftByIdRef.current,
-    ).filter((objectId) => !objectIds.has(objectId));
-    if (removedGridDraftIds.length > 0) {
-      setGridContentDraftById((previous) => {
-        const next = { ...previous };
-        removedGridDraftIds.forEach((objectId) => {
-          delete next[objectId];
-        });
-        return next;
-      });
-      removedGridDraftIds.forEach((objectId) => {
-        const timerId = gridContentSyncTimerByIdRef.current.get(objectId);
-        if (timerId !== undefined) {
-          window.clearTimeout(timerId);
-          gridContentSyncTimerByIdRef.current.delete(objectId);
-        }
-      });
-    }
-  }, [objects]);
-
-  useEffect(() => {
-    draftGeometryByIdRef.current = draftGeometryById;
-  }, [draftGeometryById]);
-
-  useEffect(() => {
-    draftConnectorByIdRef.current = draftConnectorById;
-  }, [draftConnectorById]);
-
-  useEffect(() => {
-    gridContentDraftByIdRef.current = gridContentDraftById;
-  }, [gridContentDraftById]);
-
-  useEffect(() => {
-    selectedObjectIdsRef.current = new Set(selectedObjectIds);
-  }, [selectedObjectIds]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const savedHeight = window.localStorage.getItem(
-      AI_FOOTER_HEIGHT_STORAGE_KEY,
-    );
-    if (!savedHeight) {
-      return;
-    }
-
-    const parsedHeight = Number(savedHeight);
-    if (!Number.isFinite(parsedHeight)) {
-      return;
-    }
-
-    setAiFooterHeight(clampAiFooterHeight(parsedHeight));
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const savedSnapToGrid = window.localStorage.getItem(
-      SNAP_TO_GRID_STORAGE_KEY,
-    );
-    if (savedSnapToGrid === null) {
-      return;
-    }
-
-    setIsSnapToGridEnabled(savedSnapToGrid !== "0");
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    window.localStorage.setItem(
-      AI_FOOTER_HEIGHT_STORAGE_KEY,
-      String(aiFooterHeight),
-    );
-  }, [aiFooterHeight]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    window.localStorage.setItem(
-      SNAP_TO_GRID_STORAGE_KEY,
-      isSnapToGridEnabled ? "1" : "0",
-    );
-  }, [isSnapToGridEnabled]);
-
-  useEffect(() => {
-    const element = chatMessagesRef.current;
-    if (!element || isAiFooterCollapsed) {
-      return;
-    }
-
-    element.scrollTop = element.scrollHeight;
-  }, [chatMessages, isAiFooterCollapsed, isAiSubmitting]);
-
-  useEffect(() => {
-    if (
-      typeof window === "undefined" ||
-      !isAiFooterCollapsed ||
-      hasAiDrawerBeenInteracted
-    ) {
-      setIsAiDrawerNudgeActive(false);
-      return;
-    }
-
-    let nudgeCount = 0;
-    let pulseTimeoutId: number | null = null;
-    const triggerPulse = () => {
-      setIsAiDrawerNudgeActive(true);
-      pulseTimeoutId = window.setTimeout(() => {
-        setIsAiDrawerNudgeActive(false);
-      }, 380);
-    };
-
-    triggerPulse();
-    const intervalId = window.setInterval(() => {
-      nudgeCount += 1;
-      if (nudgeCount >= 6) {
-        window.clearInterval(intervalId);
-        return;
-      }
-      triggerPulse();
-    }, 2_800);
-
-    return () => {
-      window.clearInterval(intervalId);
-      if (pulseTimeoutId !== null) {
-        window.clearTimeout(pulseTimeoutId);
-      }
-      setIsAiDrawerNudgeActive(false);
-    };
-  }, [hasAiDrawerBeenInteracted, isAiFooterCollapsed]);
-
-  useEffect(() => {
-    if (
-      process.env.NODE_ENV === "production" ||
-      !isWriteMetricsDebugEnabled()
-    ) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      const snapshot = writeMetricsRef.current.snapshot();
-      console.info(`[realtime-write-metrics][board:${boardId}]`, snapshot);
-    }, WRITE_METRICS_LOG_INTERVAL_MS);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [boardId]);
-
-  useEffect(() => {
-    const stageElement = stageRef.current;
-    if (!stageElement) {
-      return;
-    }
-
-        const syncStageSize = () => {
-      setStageSize({
-        width: stageElement.clientWidth,
-        height: stageElement.clientHeight,
-      });
-    };
-
-    syncStageSize();
-
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", syncStageSize);
-      return () => {
-        window.removeEventListener("resize", syncStageSize);
-      };
-    }
-
-    const resizeObserver = new ResizeObserver(() => {
-      syncStageSize();
-    });
-    resizeObserver.observe(stageElement);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, []);
-
-  useEffect(() => {
-    const syncStates = stickyTextSyncStateRef.current;
-    const gridSyncTimers = gridContentSyncTimerByIdRef.current;
-
-    return () => {
-      syncStates.forEach((syncState) => {
-        if (syncState.timerId !== null) {
-          window.clearTimeout(syncState.timerId);
-        }
-      });
-      syncStates.clear();
-      gridSyncTimers.forEach((timerId) => {
-        window.clearTimeout(timerId);
-      });
-      gridSyncTimers.clear();
-    };
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (boardStatusTimerRef.current !== null) {
-        window.clearTimeout(boardStatusTimerRef.current);
-        boardStatusTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-        const refreshIdToken = async () => {
-      try {
-        const token = await user.getIdToken();
-        if (!cancelled) {
-          idTokenRef.current = token;
-        }
-      } catch {
-        if (!cancelled) {
-          idTokenRef.current = null;
-        }
-      }
-    };
-
-    void refreshIdToken();
-    const refreshInterval = window.setInterval(() => {
-      void refreshIdToken();
-    }, 10 * 60_000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(refreshInterval);
-    };
-  }, [user]);
-
-  const pushPresencePatchToApi = useCallback(
-    (
-      payload: {
-        active: boolean;
-        cursorX: number | null;
-        cursorY: number | null;
-      },
-      keepalive: boolean,
-    ) => {
-      const idToken = idTokenRef.current;
-      if (!idToken) {
-        return;
-      }
-
-      void fetch(`/api/boards/${boardId}/presence`, {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${idToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-        keepalive,
-      }).catch(() => {
-        // Best-effort fallback for tab close/navigation transitions.
-      });
+  const { clearStickyTextHoldDrag } = useRealtimeBoardCanvasRuntimeSync({
+    boardId,
+    canEdit,
+    isSnapToGridEnabled,
+    viewport,
+    objects,
+    draftGeometryById,
+    draftConnectorById,
+    selectedObjectIds,
+    gridContentDraftById,
+    setGridContentDraftById,
+    chatMessagesRef,
+    chatMessages,
+    hasAiDrawerBeenInteracted,
+    isAiFooterCollapsed,
+    isAiSubmitting,
+    setIsAiDrawerNudgeActive,
+    aiFooterHeight,
+    setAiFooterHeight,
+    setIsSnapToGridEnabled,
+    stickyTextSyncStateRef,
+    stageRef,
+    setStageSize,
+    writeMetricsRef,
+    refs: {
+      viewportRef,
+      canEditRef,
+      snapToGridEnabledRef,
+      objectsByIdRef,
+      lastPositionWriteByIdRef,
+      lastGeometryWriteByIdRef,
+      lastStickyWriteByIdRef,
+      draftGeometryByIdRef,
+      draftConnectorByIdRef,
+      gridContentDraftByIdRef,
+      gridContentSyncTimerByIdRef,
+      selectedObjectIdsRef,
+      stickyTextHoldDragRef,
+      boardStatusTimerRef,
     },
-    [boardId],
-  );
+  });
 
-  const markPresenceInactive = useCallback(
-    (keepalive: boolean) => {
-      lastCursorWriteRef.current = null;
-
-      const payload = {
-        active: false,
-        cursorX: null,
-        cursorY: null,
-      };
-
-      void setDoc(
-        selfPresenceRef,
-        {
-          ...payload,
-          lastSeenAtMs: Date.now(),
-          lastSeenAt: serverTimestamp(),
-        },
-        { merge: true },
-      ).catch(() => {
-        // Ignore write failures during navigation/tab close.
-      });
-
-      pushPresencePatchToApi(payload, keepalive);
-    },
-    [pushPresencePatchToApi, selfPresenceRef],
-  );
-
-  useEffect(() => {
-    const unsubscribe = onSnapshot(
-      objectsCollectionRef,
-      (snapshot) => {
-        const nextObjects: BoardObject[] = [];
-        snapshot.docs.forEach((documentSnapshot) => {
-          const parsed = toBoardObject(
-            documentSnapshot.id,
-            documentSnapshot.data() as Record<string, unknown>,
-            {
-              gridContainerMaxRows: GRID_CONTAINER_MAX_ROWS,
-              gridContainerMaxCols: GRID_CONTAINER_MAX_COLS,
-              gridContainerDefaultGap: GRID_CONTAINER_DEFAULT_GAP,
-            },
-          );
-          if (parsed) {
-            nextObjects.push(parsed);
-          }
-        });
-
-        nextObjects.sort((left, right) => {
-          const leftRank = getRenderLayerRank(left.type);
-          const rightRank = getRenderLayerRank(right.type);
-          if (leftRank !== rightRank) {
-            return leftRank - rightRank;
-          }
-
-          if (left.zIndex !== right.zIndex) {
-            return left.zIndex - right.zIndex;
-          }
-
-          return left.id.localeCompare(right.id);
-        });
-
-        const nextObjectIds = new Set(
-          nextObjects.map((objectItem) => objectItem.id),
-        );
-        setSelectedObjectIds((previous) =>
-          previous.filter((objectId) => nextObjectIds.has(objectId)),
-        );
-
-        setObjects(nextObjects);
-      },
-      (error) => {
-        console.error("Failed to sync board objects", error);
-        setBoardError(
-          toBoardErrorMessage(error, "Failed to sync board objects."),
-        );
-      },
-    );
-
-    return unsubscribe;
-  }, [objectsCollectionRef]);
-
-  useEffect(() => {
-    const unsubscribe = onSnapshot(
-      presenceCollectionRef,
-      (snapshot) => {
-        const users = snapshot.docs.map((documentSnapshot) =>
-          toPresenceUser(
-            documentSnapshot.id,
-            documentSnapshot.data({
-              serverTimestamps: "estimate",
-            }) as Record<string, unknown>,
-          ),
-        );
-        setPresenceUsers(users);
-      },
-      (error) => {
-        console.error("Failed to sync presence", error);
-      },
-    );
-
-    return unsubscribe;
-  }, [presenceCollectionRef]);
-
-  useEffect(() => {
-        const setPresenceState = async (
-      cursor: BoardPoint | null,
-      active: boolean,
-    ) => {
-      await setDoc(
-        selfPresenceRef,
-        {
-          uid: user.uid,
-          displayName: user.displayName ?? null,
-          email: user.email ?? null,
-          color: boardColor,
-          cursorX: cursor?.x ?? null,
-          cursorY: cursor?.y ?? null,
-          active,
-          lastSeenAtMs: Date.now(),
-          lastSeenAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
-    };
-
-    void setPresenceState(null, true);
-
-    const heartbeatInterval = window.setInterval(() => {
-      void setPresenceState(null, true);
-    }, PRESENCE_HEARTBEAT_MS);
-
-    return () => {
-      window.clearInterval(heartbeatInterval);
-      markPresenceInactive(false);
-    };
-  }, [
+  useRealtimeBoardCanvasSubscriptionSync({
+    boardId,
+    user,
     boardColor,
-    markPresenceInactive,
+    objectsCollectionRef,
+    presenceCollectionRef,
     selfPresenceRef,
-    user.displayName,
-    user.email,
-    user.uid,
-  ]);
-
-  useEffect(() => {
-        const handlePageHide = () => {
-      markPresenceInactive(true);
-    };
-
-    window.addEventListener("pagehide", handlePageHide);
-    window.addEventListener("beforeunload", handlePageHide);
-
-    return () => {
-      window.removeEventListener("pagehide", handlePageHide);
-      window.removeEventListener("beforeunload", handlePageHide);
-    };
-  }, [markPresenceInactive]);
+    setSelectedObjectIds,
+    setObjects,
+    setPresenceUsers,
+    setBoardError,
+    lastCursorWriteRef,
+    idTokenRef,
+  });
 
   const getCurrentObjectGeometry = useCallback(
     (objectId: string): ObjectGeometry | null => {
@@ -1555,708 +1127,46 @@ export default function RealtimeBoardCanvas({
     [],
   );
 
-  useEffect(() => {
-        const handleWindowPointerMove = (event: PointerEvent) => {
-      const aiFooterResizeState = aiFooterResizeStateRef.current;
-      if (aiFooterResizeState) {
-        const deltaY = aiFooterResizeState.startClientY - event.clientY;
-        const nextHeight = clampAiFooterHeight(
-          aiFooterResizeState.initialHeight + deltaY,
-        );
-        setAiFooterHeight(nextHeight);
-        return;
-      }
-
-      const scale = viewportRef.current.scale;
-      const cornerResizeState = cornerResizeStateRef.current;
-      if (cornerResizeState) {
-        const nextGeometry = getResizedGeometry(
-          cornerResizeState,
-          event.clientX,
-          event.clientY,
-          scale,
-        );
-
-        setDraftGeometry(cornerResizeState.objectId, nextGeometry);
-
-        const now = Date.now();
-        if (
-          canEditRef.current &&
-          now - cornerResizeState.lastSentAt >= RESIZE_THROTTLE_MS
-        ) {
-          cornerResizeState.lastSentAt = now;
-          void updateObjectGeometry(cornerResizeState.objectId, nextGeometry, {
-            includeUpdatedAt: false,
-          });
-        }
-        return;
-      }
-
-      const connectorEndpointDragState = connectorEndpointDragStateRef.current;
-      if (connectorEndpointDragState) {
-        const stageElement = stageRef.current;
-        if (!stageElement) {
-          return;
-        }
-
-        const rect = stageElement.getBoundingClientRect();
-        const movingPoint = {
-          x: (event.clientX - rect.left - viewportRef.current.x) / scale,
-          y: (event.clientY - rect.top - viewportRef.current.y) / scale,
-        };
-
-        const connectorObject = objectsByIdRef.current.get(
-          connectorEndpointDragState.objectId,
-        );
-        if (!connectorObject || !isConnectorKind(connectorObject.type)) {
-          return;
-        }
-
-        const currentDraft =
-          draftConnectorByIdRef.current[connectorObject.id] ??
-          getConnectorDraftForObject(connectorObject);
-        if (!currentDraft) {
-          return;
-        }
-
-        const snapThreshold =
-          CONNECTOR_SNAP_DISTANCE_PX / Math.max(viewportRef.current.scale, 0.1);
-        const anchorCandidates = getConnectableAnchorPoints();
-        const nearestAnchor = anchorCandidates.reduce<{
-          objectId: string;
-          anchor: ConnectorAnchor;
-          x: number;
-          y: number;
-          distance: number;
-        } | null>((closest, candidate) => {
-          const distance = Math.hypot(
-            candidate.x - movingPoint.x,
-            candidate.y - movingPoint.y,
-          );
-          if (distance > snapThreshold) {
-            return closest;
-          }
-
-          if (!closest || distance < closest.distance) {
-            return {
-              ...candidate,
-              distance,
-            };
-          }
-
-          return closest;
-        }, null);
-
-        const endpointPatch = nearestAnchor
-          ? {
-              objectId: nearestAnchor.objectId,
-              anchor: nearestAnchor.anchor,
-              x: nearestAnchor.x,
-              y: nearestAnchor.y,
-            }
-          : {
-              objectId: null,
-              anchor: null,
-              x: movingPoint.x,
-              y: movingPoint.y,
-            };
-
-        const nextDraft: ConnectorDraft =
-          connectorEndpointDragState.endpoint === "from"
-            ? {
-                ...currentDraft,
-                fromObjectId: endpointPatch.objectId,
-                fromAnchor: endpointPatch.anchor,
-                fromX: endpointPatch.x,
-                fromY: endpointPatch.y,
-              }
-            : {
-                ...currentDraft,
-                toObjectId: endpointPatch.objectId,
-                toAnchor: endpointPatch.anchor,
-                toX: endpointPatch.x,
-                toY: endpointPatch.y,
-              };
-
-        setDraftConnector(connectorObject.id, nextDraft);
-
-        const now = Date.now();
-        if (
-          canEditRef.current &&
-          now - connectorEndpointDragState.lastSentAt >= RESIZE_THROTTLE_MS
-        ) {
-          connectorEndpointDragState.lastSentAt = now;
-          void updateConnectorDraft(connectorObject.id, nextDraft, {
-            includeUpdatedAt: false,
-          });
-        }
-        return;
-      }
-
-      const lineEndpointResizeState = lineEndpointResizeStateRef.current;
-      if (lineEndpointResizeState) {
-        const stageElement = stageRef.current;
-        if (!stageElement) {
-          return;
-        }
-
-        const rect = stageElement.getBoundingClientRect();
-        const movingPoint = {
-          x: (event.clientX - rect.left - viewportRef.current.x) / scale,
-          y: (event.clientY - rect.top - viewportRef.current.y) / scale,
-        };
-        const nextMovingPoint =
-          snapToGridEnabledRef.current && isSnapEligibleObjectType("line")
-            ? {
-                x: snapToGrid(movingPoint.x),
-                y: snapToGrid(movingPoint.y),
-              }
-            : movingPoint;
-
-        const nextGeometry = getLineGeometryFromEndpointDrag(
-          lineEndpointResizeState,
-          nextMovingPoint,
-        );
-
-        setDraftGeometry(lineEndpointResizeState.objectId, nextGeometry);
-
-        const now = Date.now();
-        if (
-          canEditRef.current &&
-          now - lineEndpointResizeState.lastSentAt >= RESIZE_THROTTLE_MS
-        ) {
-          lineEndpointResizeState.lastSentAt = now;
-          void updateObjectGeometry(
-            lineEndpointResizeState.objectId,
-            nextGeometry,
-            {
-              includeUpdatedAt: false,
-            },
-          );
-        }
-        return;
-      }
-
-      const rotateState = rotateStateRef.current;
-      if (rotateState) {
-        const stageElement = stageRef.current;
-        if (!stageElement) {
-          return;
-        }
-
-        const rect = stageElement.getBoundingClientRect();
-        const pointer = {
-          x: (event.clientX - rect.left - viewportRef.current.x) / scale,
-          y: (event.clientY - rect.top - viewportRef.current.y) / scale,
-        };
-
-        const pointerAngleDeg = toDegrees(
-          Math.atan2(
-            pointer.y - rotateState.centerPoint.y,
-            pointer.x - rotateState.centerPoint.x,
-          ),
-        );
-        const deltaAngle = pointerAngleDeg - rotateState.initialPointerAngleDeg;
-        let nextRotationDeg = rotateState.initialRotationDeg + deltaAngle;
-
-        if (event.shiftKey) {
-          nextRotationDeg = Math.round(nextRotationDeg / 15) * 15;
-        }
-
-        const normalizedRotationDeg = ((nextRotationDeg % 360) + 360) % 360;
-
-        const geometry = getCurrentObjectGeometry(rotateState.objectId);
-        if (!geometry) {
-          return;
-        }
-
-        const nextGeometry: ObjectGeometry = {
-          ...geometry,
-          rotationDeg: normalizedRotationDeg,
-        };
-        setDraftGeometry(rotateState.objectId, nextGeometry);
-
-        const now = Date.now();
-        if (
-          canEditRef.current &&
-          now - rotateState.lastSentAt >= ROTATE_THROTTLE_MS
-        ) {
-          rotateState.lastSentAt = now;
-          void updateObjectGeometry(rotateState.objectId, nextGeometry, {
-            includeUpdatedAt: false,
-          });
-        }
-        return;
-      }
-
-      const marqueeSelectionState = marqueeSelectionStateRef.current;
-      if (marqueeSelectionState) {
-        const stageElement = stageRef.current;
-        if (!stageElement) {
-          return;
-        }
-
-        const rect = stageElement.getBoundingClientRect();
-        const nextPoint = {
-          x: (event.clientX - rect.left - viewportRef.current.x) / scale,
-          y: (event.clientY - rect.top - viewportRef.current.y) / scale,
-        };
-
-        const nextMarqueeState: MarqueeSelectionState = {
-          ...marqueeSelectionState,
-          currentPoint: nextPoint,
-        };
-
-        marqueeSelectionStateRef.current = nextMarqueeState;
-        setMarqueeSelectionState(nextMarqueeState);
-        return;
-      }
-
-      const panState = panStateRef.current;
-      if (panState) {
-        const nextX =
-          panState.initialX + (event.clientX - panState.startClientX);
-        const nextY =
-          panState.initialY + (event.clientY - panState.startClientY);
-        setViewport((previous) => ({
-          x: nextX,
-          y: nextY,
-          scale: previous.scale,
-        }));
-      }
-
-      const dragState = dragStateRef.current;
-      if (dragState) {
-        const pointerDeltaX = event.clientX - dragState.startClientX;
-        const pointerDeltaY = event.clientY - dragState.startClientY;
-        if (!dragState.hasMoved) {
-          dragState.hasMoved =
-            Math.hypot(pointerDeltaX, pointerDeltaY) >= DRAG_CLICK_SLOP_PX;
-        }
-
-        if (!dragState.hasMoved) {
-          return;
-        }
-
-        const deltaX = (event.clientX - dragState.startClientX) / scale;
-        const deltaY = (event.clientY - dragState.startClientY) / scale;
-
-        const nextPositionsById: Record<string, BoardPoint> = {};
-        const draggedContainerIds: string[] = [];
-
-        dragState.objectIds.forEach((objectId) => {
-          const initialGeometry = dragState.initialGeometries[objectId];
-          const currentGeometry = getCurrentObjectGeometry(objectId);
-          const objectItem = objectsByIdRef.current.get(objectId);
-          if (!initialGeometry || !currentGeometry) {
-            return;
-          }
-
-          let nextX = initialGeometry.x + deltaX;
-          let nextY = initialGeometry.y + deltaY;
-
-          if (
-            snapToGridEnabledRef.current &&
-            objectItem &&
-            isSnapEligibleObjectType(objectItem.type)
-          ) {
-            nextX = snapToGrid(nextX);
-            nextY = snapToGrid(nextY);
-          }
-
-          nextPositionsById[objectId] = {
-            x: nextX,
-            y: nextY,
-          };
-
-          setDraftGeometry(objectId, {
-            ...currentGeometry,
-            x: nextX,
-            y: nextY,
-          });
-
-          if (objectItem?.type === "gridContainer") {
-            draggedContainerIds.push(objectId);
-          }
-        });
-
-        draggedContainerIds.forEach((containerId) => {
-          const containerItem = objectsByIdRef.current.get(containerId);
-          const nextPosition = nextPositionsById[containerId];
-          if (
-            !containerItem ||
-            containerItem.type !== "gridContainer" ||
-            !nextPosition
-          ) {
-            return;
-          }
-
-          const nextContainerGeometry: ObjectGeometry = {
-            x: nextPosition.x,
-            y: nextPosition.y,
-            width: containerItem.width,
-            height: containerItem.height,
-            rotationDeg: containerItem.rotationDeg,
-          };
-          const rows = Math.max(1, containerItem.gridRows ?? 2);
-          const cols = Math.max(1, containerItem.gridCols ?? 2);
-          const gap = Math.max(
-            0,
-            containerItem.gridGap ?? GRID_CONTAINER_DEFAULT_GAP,
-          );
-          const childUpdates = getSectionAnchoredObjectUpdatesForContainer(
-            containerId,
-            nextContainerGeometry,
-            rows,
-            cols,
-            gap,
-            {
-              clampToSectionBounds: false,
-              includeObjectsInNextBounds: false,
-            },
-          );
-          Object.entries(childUpdates.positionByObjectId).forEach(
-            ([childId, childPosition]) => {
-              if (childId in nextPositionsById) {
-                return;
-              }
-
-              nextPositionsById[childId] = childPosition;
-              const currentChildGeometry = getCurrentObjectGeometry(childId);
-              if (!currentChildGeometry) {
-                return;
-              }
-              setDraftGeometry(childId, {
-                ...currentChildGeometry,
-                x: childPosition.x,
-                y: childPosition.y,
-              });
-            },
-          );
-        });
-
-        const now = Date.now();
-        const dragThrottleMs =
-          draggedContainerIds.length > 0
-            ? CONTAINER_DRAG_THROTTLE_MS
-            : DRAG_THROTTLE_MS;
-        if (
-          canEditRef.current &&
-          now - dragState.lastSentAt >= dragThrottleMs
-        ) {
-          dragState.lastSentAt = now;
-          void updateObjectPositionsBatch(nextPositionsById, {
-            includeUpdatedAt: false,
-          });
-        }
-      }
-    };
-
-        const handleWindowPointerUp = (event: PointerEvent) => {
-      clearStickyTextHoldDrag();
-
-      if (aiFooterResizeStateRef.current) {
-        aiFooterResizeStateRef.current = null;
-        setIsAiFooterResizing(false);
-        return;
-      }
-
-      const cornerResizeState = cornerResizeStateRef.current;
-      if (cornerResizeState) {
-        cornerResizeStateRef.current = null;
-        const finalGeometry =
-          draftGeometryByIdRef.current[cornerResizeState.objectId];
-        const resizedObject = objectsByIdRef.current.get(
-          cornerResizeState.objectId,
-        );
-        clearDraftGeometry(cornerResizeState.objectId);
-
-        if (finalGeometry && canEditRef.current) {
-          void (async () => {
-            await updateObjectGeometry(
-              cornerResizeState.objectId,
-              finalGeometry,
-              {
-                includeUpdatedAt: true,
-                force: true,
-              },
-            );
-
-            if (resizedObject?.type === "gridContainer") {
-              const rows = Math.max(1, resizedObject.gridRows ?? 2);
-              const cols = Math.max(1, resizedObject.gridCols ?? 2);
-              const gap = Math.max(
-                0,
-                resizedObject.gridGap ?? GRID_CONTAINER_DEFAULT_GAP,
-              );
-              const childUpdates = getSectionAnchoredObjectUpdatesForContainer(
-                resizedObject.id,
-                finalGeometry,
-                rows,
-                cols,
-                gap,
-              );
-              const childIds = Object.keys(childUpdates.positionByObjectId);
-              if (childIds.length > 0) {
-                const membershipByObjectId =
-                  buildContainerMembershipPatchesForPositions(
-                    childUpdates.positionByObjectId,
-                    childUpdates.membershipByObjectId,
-                  );
-                await updateObjectPositionsBatch(
-                  childUpdates.positionByObjectId,
-                  {
-                    includeUpdatedAt: true,
-                    force: true,
-                    containerMembershipById: membershipByObjectId,
-                  },
-                );
-              }
-            }
-          })();
-        }
-        return;
-      }
-
-      const lineEndpointResizeState = lineEndpointResizeStateRef.current;
-      if (lineEndpointResizeState) {
-        lineEndpointResizeStateRef.current = null;
-        const finalGeometry =
-          draftGeometryByIdRef.current[lineEndpointResizeState.objectId];
-        clearDraftGeometry(lineEndpointResizeState.objectId);
-
-        if (finalGeometry && canEditRef.current) {
-          void updateObjectGeometry(
-            lineEndpointResizeState.objectId,
-            finalGeometry,
-            {
-              includeUpdatedAt: true,
-              force: true,
-            },
-          );
-        }
-        return;
-      }
-
-      const connectorEndpointDragState = connectorEndpointDragStateRef.current;
-      if (connectorEndpointDragState) {
-        connectorEndpointDragStateRef.current = null;
-        const finalDraft =
-          draftConnectorByIdRef.current[connectorEndpointDragState.objectId];
-        clearDraftConnector(connectorEndpointDragState.objectId);
-
-        if (finalDraft && canEditRef.current) {
-          void updateConnectorDraft(
-            connectorEndpointDragState.objectId,
-            finalDraft,
-            {
-              includeUpdatedAt: true,
-            },
-          );
-        }
-        return;
-      }
-
-      const rotateState = rotateStateRef.current;
-      if (rotateState) {
-        rotateStateRef.current = null;
-        const finalGeometry =
-          draftGeometryByIdRef.current[rotateState.objectId];
-        clearDraftGeometry(rotateState.objectId);
-
-        if (finalGeometry && canEditRef.current) {
-          void updateObjectGeometry(rotateState.objectId, finalGeometry, {
-            includeUpdatedAt: true,
-            force: true,
-          });
-        }
-        return;
-      }
-
-      const marqueeSelectionState = marqueeSelectionStateRef.current;
-      if (marqueeSelectionState) {
-        marqueeSelectionStateRef.current = null;
-        setMarqueeSelectionState(null);
-
-        const rect = toNormalizedRect(
-          marqueeSelectionState.startPoint,
-          marqueeSelectionState.currentPoint,
-        );
-        const intersectingObjectIds = getObjectsIntersectingRect(rect);
-
-        if (marqueeSelectionState.mode === "add") {
-          setSelectedObjectIds((previous) => {
-            const next = new Set(previous);
-            intersectingObjectIds.forEach((objectId) => next.add(objectId));
-            return Array.from(next);
-          });
-        } else {
-          const removeSet = new Set(intersectingObjectIds);
-          setSelectedObjectIds((previous) =>
-            previous.filter((objectId) => !removeSet.has(objectId)),
-          );
-        }
-        return;
-      }
-
-      if (panStateRef.current) {
-        panStateRef.current = null;
-      }
-
-      const dragState = dragStateRef.current;
-      if (!dragState) {
-        return;
-      }
-
-      const scale = viewportRef.current.scale;
-      const deltaX = (event.clientX - dragState.startClientX) / scale;
-      const deltaY = (event.clientY - dragState.startClientY) / scale;
-
-      dragStateRef.current = null;
-      setIsObjectDragging(false);
-
-      if (!dragState.hasMoved) {
-        dragState.objectIds.forEach((objectId) => {
-          clearDraftGeometry(objectId);
-        });
-
-        if (dragState.collapseToObjectIdOnClick) {
-          setSelectedObjectIds([dragState.collapseToObjectIdOnClick]);
-        }
-        return;
-      }
-
-      if (canEditRef.current) {
-        const nextPositionsById: Record<string, BoardPoint> = {};
-        const seedMembershipByObjectId: Record<
-          string,
-          ContainerMembershipPatch
-        > = {};
-        dragState.objectIds.forEach((objectId) => {
-          const initialGeometry = dragState.initialGeometries[objectId];
-          const objectItem = objectsByIdRef.current.get(objectId);
-          if (!initialGeometry) {
-            return;
-          }
-
-          clearDraftGeometry(objectId);
-          let nextX = initialGeometry.x + deltaX;
-          let nextY = initialGeometry.y + deltaY;
-          if (
-            snapToGridEnabledRef.current &&
-            objectItem &&
-            isSnapEligibleObjectType(objectItem.type)
-          ) {
-            nextX = snapToGrid(nextX);
-            nextY = snapToGrid(nextY);
-          }
-          nextPositionsById[objectId] = {
-            x: nextX,
-            y: nextY,
-          };
-        });
-
-        dragState.objectIds.forEach((objectId) => {
-          const objectItem = objectsByIdRef.current.get(objectId);
-          if (!objectItem || objectItem.type !== "gridContainer") {
-            return;
-          }
-
-          const nextPosition = nextPositionsById[objectId];
-          if (!nextPosition) {
-            return;
-          }
-
-          const nextContainerGeometry: ObjectGeometry = {
-            x: nextPosition.x,
-            y: nextPosition.y,
-            width: objectItem.width,
-            height: objectItem.height,
-            rotationDeg: objectItem.rotationDeg,
-          };
-          const rows = Math.max(1, objectItem.gridRows ?? 2);
-          const cols = Math.max(1, objectItem.gridCols ?? 2);
-          const gap = Math.max(
-            0,
-            objectItem.gridGap ?? GRID_CONTAINER_DEFAULT_GAP,
-          );
-          const childUpdates = getSectionAnchoredObjectUpdatesForContainer(
-            objectId,
-            nextContainerGeometry,
-            rows,
-            cols,
-            gap,
-            {
-              // Keep existing child placement stable during container drags.
-              clampToSectionBounds: false,
-              // Do not pull in unrelated objects just because the container moved over them.
-              includeObjectsInNextBounds: false,
-            },
-          );
-
-          Object.entries(childUpdates.positionByObjectId).forEach(
-            ([childId, childPosition]) => {
-              if (!(childId in nextPositionsById)) {
-                nextPositionsById[childId] = childPosition;
-              }
-            },
-          );
-          Object.entries(childUpdates.membershipByObjectId).forEach(
-            ([childId, patch]) => {
-              if (!(childId in seedMembershipByObjectId)) {
-                seedMembershipByObjectId[childId] = patch;
-              }
-            },
-          );
-        });
-
-        const membershipByObjectId =
-          buildContainerMembershipPatchesForPositions(
-            nextPositionsById,
-            seedMembershipByObjectId,
-          );
-
-        Object.keys(nextPositionsById).forEach((objectId) => {
-          clearDraftGeometry(objectId);
-        });
-
-        void updateObjectPositionsBatch(nextPositionsById, {
-          includeUpdatedAt: true,
-          force: true,
-          containerMembershipById: membershipByObjectId,
-        });
-      } else {
-        dragState.objectIds.forEach((objectId) => {
-          clearDraftGeometry(objectId);
-        });
-      }
-    };
-
-    window.addEventListener("pointermove", handleWindowPointerMove);
-    window.addEventListener("pointerup", handleWindowPointerUp);
-
-    return () => {
-      window.removeEventListener("pointermove", handleWindowPointerMove);
-      window.removeEventListener("pointerup", handleWindowPointerUp);
-    };
-  }, [
-    clearStickyTextHoldDrag,
-    clearDraftConnector,
-    clearDraftGeometry,
-    getConnectableAnchorPoints,
-    getConnectorDraftForObject,
-    getObjectsIntersectingRect,
-    getCurrentObjectGeometry,
-    getLineGeometryFromEndpointDrag,
-    getResizedGeometry,
+  useBoardStageWindowPointerEvents({
+    aiFooterResizeStateRef,
+    cornerResizeStateRef,
+    connectorEndpointDragStateRef,
+    dragStateRef,
+    lineEndpointResizeStateRef,
+    marqueeSelectionStateRef,
+    objectsByIdRef,
+    panStateRef,
+    rotateStateRef,
+    stageRef,
+    snapToGridEnabledRef,
+    canEditRef,
+    draftConnectorByIdRef,
+    draftGeometryByIdRef,
     setDraftConnector,
     setDraftGeometry,
-    buildContainerMembershipPatchesForPositions,
-    getSectionAnchoredObjectUpdatesForContainer,
-    updateConnectorDraft,
+    setSelectedObjectIds,
+    setIsObjectDragging,
+    setMarqueeSelectionState,
+    setIsAiFooterResizing,
+    setAiFooterHeight,
     updateObjectGeometry,
     updateObjectPositionsBatch,
-  ]);
+    updateConnectorDraft,
+    clearDraftConnector,
+    clearDraftGeometry,
+    clearStickyTextHoldDrag,
+    setViewport,
+    getCurrentObjectGeometry,
+    getConnectorDraftForObject,
+    getConnectableAnchorPoints,
+    getLineGeometryFromEndpointDrag,
+    getResizedGeometry,
+    getObjectsIntersectingRect,
+    getSectionAnchoredObjectUpdatesForContainer,
+    buildContainerMembershipPatchesForPositions,
+    viewportRef,
+    clampAiFooterHeight: clampAiFooterHeight,
+  });
 
   const updateCursor = useCallback(
     async (cursor: BoardPoint | null, options: { force?: boolean } = {}) => {

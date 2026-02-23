@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 
 const MAX_LINES = 300;
 
@@ -9,27 +9,32 @@ const SOURCE_EXTENSIONS = [".ts", ".tsx"];
 const EXCLUDED_PATH_SEGMENTS = ["/e2e/"];
 const EXCLUDED_NAME_PATTERNS = [".test.", ".stories."];
 
-function isScopedSourceFile(filePath) {
-  const normalized = `/${filePath}`;
-  const hasExtension = SOURCE_EXTENSIONS.some((extension) =>
-    normalized.endsWith(extension),
-  );
-  if (!hasExtension) {
-    return false;
+function collectSourceFiles(directory) {
+  const entries = readdirSync(directory);
+  const files = [];
+  for (const entry of entries) {
+    const fullPath = join(directory, entry);
+    const stats = statSync(fullPath);
+    if (stats.isDirectory()) {
+      if (entry === "node_modules" || entry.startsWith(".")) {
+        continue;
+      }
+      files.push(...collectSourceFiles(fullPath));
+      continue;
+    }
+    if (!SOURCE_EXTENSIONS.some((extension) => fullPath.endsWith(extension))) {
+      continue;
+    }
+    const normalized = `/${fullPath}`;
+    if (
+      EXCLUDED_PATH_SEGMENTS.some((segment) => normalized.includes(segment)) ||
+      EXCLUDED_NAME_PATTERNS.some((pattern) => normalized.includes(pattern))
+    ) {
+      continue;
+    }
+    files.push(fullPath);
   }
-
-  if (!normalized.startsWith("/src/")) {
-    return false;
-  }
-
-  if (
-    EXCLUDED_PATH_SEGMENTS.some((segment) => normalized.includes(segment)) ||
-    EXCLUDED_NAME_PATTERNS.some((pattern) => normalized.includes(pattern))
-  ) {
-    return false;
-  }
-
-  return true;
+  return files;
 }
 
 function countLines(filePath) {
@@ -43,12 +48,7 @@ function countLines(filePath) {
 }
 
 function main() {
-  const fileListRaw = execSync("git ls-files", { encoding: "utf8" });
-  const files = fileListRaw
-    .split("\n")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0)
-    .filter(isScopedSourceFile);
+  const files = collectSourceFiles("src");
 
   const offenders = files
     .map((filePath) => ({

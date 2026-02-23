@@ -64,27 +64,15 @@ import {
   type ResolvedConnectorEndpoint,
 } from "@/features/boards/components/realtime-canvas/legacy/legacy-canvas-geometry";
 import {
-  COLLAPSED_PANEL_WIDTH,
   CONNECTOR_HIT_PADDING,
-  CONNECTOR_SNAP_DISTANCE_PX,
-  CONTAINER_DRAG_THROTTLE_MS,
   CURSOR_MIN_MOVE_DISTANCE,
-  DRAG_CLICK_SLOP_PX,
-  DRAG_THROTTLE_MS,
   GRID_CONTAINER_DEFAULT_GAP,
   GRID_CONTAINER_MAX_COLS,
   GRID_CONTAINER_MAX_ROWS,
   INITIAL_VIEWPORT,
-  LEFT_PANEL_WIDTH,
   OBJECT_LABEL_MAX_LENGTH,
   OBJECT_SPAWN_STEP_PX,
-  PANEL_COLLAPSE_ANIMATION,
-  PANEL_SEPARATOR_COLOR,
-  PANEL_SEPARATOR_WIDTH,
   PRESENCE_TTL_MS,
-  RESIZE_THROTTLE_MS,
-  RIGHT_PANEL_WIDTH,
-  ROTATE_THROTTLE_MS,
   SWOT_SECTION_COLORS,
   SWOT_TEMPLATE_TITLE,
 } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-config";
@@ -110,13 +98,9 @@ import { useFpsMeter } from "@/features/boards/components/realtime-canvas/legacy
 import { useObjectTemplateActions } from "@/features/boards/components/realtime-canvas/legacy/use-object-template-actions";
 import { useBoardSelectionActions } from "@/features/boards/components/realtime-canvas/legacy/use-board-selection-actions";
 import { useAiCommandSubmit } from "@/features/boards/components/realtime-canvas/legacy/use-ai-command-submit";
-import { AiAssistantFooter } from "@/features/boards/components/realtime-canvas/legacy/ai-assistant-footer";
-import { LeftToolsPanel } from "@/features/boards/components/realtime-canvas/legacy/left-tools-panel";
-import { RightPresencePanel } from "@/features/boards/components/realtime-canvas/legacy/right-presence-panel";
-import { StageSurface } from "@/features/boards/components/realtime-canvas/legacy/stage-surface";
 import { useBoardStageInteractions } from "@/features/boards/components/realtime-canvas/legacy/use-board-stage-interactions";
 import { useBoardStageWindowPointerEvents } from "@/features/boards/components/realtime-canvas/legacy/use-board-stage-window-pointer-events";
-import { LeftToolsPanelControls } from "@/features/boards/components/realtime-canvas/legacy/left-tools-panel-controls";
+import { RealtimeBoardCanvasLayout } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-layout";
 import {
   DEFAULT_SWOT_SECTION_TITLES,
   getDefaultSectionTitles,
@@ -1580,173 +1564,121 @@ export default function RealtimeBoardCanvas({
   const gridAxisLabels = useGridAxisLabels(stageSize, viewport);
 
   return (
-    <section
-      style={{
-        height: "100%",
-        minHeight: 0,
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-        background: "var(--surface)",
-        color: "var(--text)",
+    <RealtimeBoardCanvasLayout
+      isLeftPanelCollapsed={isLeftPanelCollapsed}
+      isRightPanelCollapsed={isRightPanelCollapsed}
+      canEdit={canEdit}
+      isAiSubmitting={isAiSubmitting}
+      isSwotTemplateCreating={isSwotTemplateCreating}
+      hasDeletableSelection={hasDeletableSelection}
+      selectedObjectCount={selectedObjectCount}
+      resolvedTheme={resolvedTheme}
+      onLeftCollapse={() => setIsLeftPanelCollapsed(true)}
+      onLeftExpand={() => setIsLeftPanelCollapsed(false)}
+      onToolButtonClick={handleToolButtonClick}
+      onCreateSwot={handleCreateSwotButtonClick}
+      onDuplicate={() => {
+        void duplicateSelectedObjects();
       }}
-    >
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          minWidth: 0,
-          display: "grid",
-          gridTemplateColumns: `${isLeftPanelCollapsed ? COLLAPSED_PANEL_WIDTH : LEFT_PANEL_WIDTH}px ${PANEL_SEPARATOR_WIDTH}px minmax(0, 1fr) ${PANEL_SEPARATOR_WIDTH}px ${isRightPanelCollapsed ? COLLAPSED_PANEL_WIDTH : RIGHT_PANEL_WIDTH}px`,
-          transition: `grid-template-columns ${PANEL_COLLAPSE_ANIMATION}`,
-        }}
-      >
-        <LeftToolsPanel
-          isCollapsed={isLeftPanelCollapsed}
-          canEdit={canEdit}
-          isAiSubmitting={isAiSubmitting}
-          isSwotTemplateCreating={isSwotTemplateCreating}
-          hasDeletableSelection={hasDeletableSelection}
-          selectedObjectCount={selectedObjectCount}
-          resolvedTheme={resolvedTheme}
-          onCollapse={() => setIsLeftPanelCollapsed(true)}
-          onExpand={() => setIsLeftPanelCollapsed(false)}
-          onToolButtonClick={handleToolButtonClick}
-          onCreateSwot={handleCreateSwotButtonClick}
-          onDuplicate={() => {
-            void duplicateSelectedObjects();
-          }}
-          onDelete={handleDeleteButtonClick}
-        >
-          <LeftToolsPanelControls
-            zoomSliderMin={ZOOM_SLIDER_MIN_PERCENT}
-            zoomSliderMax={ZOOM_SLIDER_MAX_PERCENT}
-            zoomSliderValue={zoomSliderValue}
-            zoomPercent={zoomPercent}
-            selectedObjectCount={selectedObjectCount}
-            isSnapToGridEnabled={isSnapToGridEnabled}
-            cursorBoardPosition={cursorBoardPosition}
-            boardError={boardError}
-            boardStatusMessage={boardStatusMessage}
-            onResetView={() => setViewport(INITIAL_VIEWPORT)}
-            onNudgeZoomOut={() => nudgeZoom("out")}
-            onNudgeZoomIn={() => nudgeZoom("in")}
-            onZoomSliderChange={zoomAtStageCenter}
-            onSnapToGridToggle={setIsSnapToGridEnabled}
-          />
-        </LeftToolsPanel>
-
-        <div
-          style={{
-            background: PANEL_SEPARATOR_COLOR,
-            boxShadow: "inset 0 0 0 1px rgba(15, 23, 42, 0.14)",
-          }}
-        />
-
-        <div
-          style={{
-            minWidth: 0,
-            minHeight: 0,
-            position: "relative",
-          }}
-        >
-          <StageSurface
-            stageRef={stageRef}
-            selectionHudRef={selectionHudRef}
-            stageSize={stageSize}
-            viewport={viewport}
-            gridAxisLabels={gridAxisLabels}
-            canEdit={canEdit}
-            isObjectDragging={isObjectDragging}
-            objects={objects}
-            draftGeometryById={draftGeometryById}
-            textDrafts={textDrafts}
-            selectedObjectIds={selectedObjectIds}
-            connectorRoutesById={connectorRoutesById}
-            resolvedTheme={resolvedTheme}
-            connectorEndpointDragObjectId={
-              connectorEndpointDragStateRef.current?.objectId ?? null
-            }
-            shouldShowConnectorAnchors={shouldShowConnectorAnchors}
-            connectorAnchorPoints={connectorAnchorPoints}
-            marqueeRect={marqueeRect}
-            remoteCursors={remoteCursors}
-            fps={fps}
-            fpsTone={fpsTone}
-            fpsTarget={fpsTarget}
-            canShowSelectionHud={canShowSelectionHud}
-            selectionHudPosition={selectionHudPosition}
-            canColorSelection={canColorSelection}
-            selectedColor={selectedColor}
-            canResetSelectionRotation={canResetSelectionRotation}
-            canEditSelectedLabel={canEditSelectedLabel}
-            selectionLabelDraft={selectionLabelDraft}
-            singleSelectedObject={singleSelectedObject}
-            stickyTextHoldDragRef={stickyTextHoldDragRef}
-            handleStagePointerDown={handleStagePointerDown}
-            handleStagePointerMove={handleStagePointerMove}
-            handleStagePointerLeave={handleStagePointerLeave}
-            setSelectionLabelDraft={setSelectionLabelDraft}
-            saveSelectedObjectsColor={saveSelectedObjectsColor}
-            resetSelectedObjectsRotation={resetSelectedObjectsRotation}
-            commitSelectionLabelDraft={commitSelectionLabelDraft}
-            persistObjectLabelText={persistObjectLabelText}
-            shouldPreserveGroupSelection={shouldPreserveGroupSelection}
-            selectSingleObject={selectSingleObject}
-            toggleObjectSelection={toggleObjectSelection}
-            startObjectDrag={startObjectDrag}
-            startShapeRotate={startShapeRotate}
-            startCornerResize={startCornerResize}
-            startLineEndpointResize={startLineEndpointResize}
-            startConnectorEndpointDrag={startConnectorEndpointDrag}
-            updateGridContainerDimensions={updateGridContainerDimensions}
-            getGridDraftForObject={getGridDraftForObject}
-            queueGridContentSync={queueGridContentSync}
-            saveGridContainerCellColors={saveGridContainerCellColors}
-            clearStickyTextHoldDrag={clearStickyTextHoldDrag}
-            setTextDrafts={setTextDrafts}
-            queueStickyTextSync={queueStickyTextSync}
-            flushStickyTextSync={flushStickyTextSync}
-            handleWheel={handleWheel}
-            onWheelCapture={handleStageWheelCapture}
-          />
-        </div>
-
-        <div
-          style={{
-            background: PANEL_SEPARATOR_COLOR,
-            boxShadow: "inset 0 0 0 1px rgba(15, 23, 42, 0.14)",
-          }}
-        />
-
-        <RightPresencePanel
-          isCollapsed={isRightPanelCollapsed}
-          onlineUsers={onlineUsers}
-          onCollapse={() => setIsRightPanelCollapsed(true)}
-          onExpand={() => setIsRightPanelCollapsed(false)}
-        />
-      </div>
-
-      <AiAssistantFooter
-        isCollapsed={isAiFooterCollapsed}
-        isResizing={isAiFooterResizing}
-        isDrawerNudgeActive={isAiDrawerNudgeActive}
-        height={aiFooterHeight}
-        selectedCount={selectedObjectIds.length}
-        chatMessages={chatMessages}
-        isSubmitting={isAiSubmitting}
-        chatInput={chatInput}
-        chatMessagesRef={chatMessagesRef}
-        onResizeStart={handleAiFooterResizeStart}
-        onToggleCollapsed={() => {
+      onDelete={handleDeleteButtonClick}
+      leftControlsProps={{
+        zoomSliderMin: ZOOM_SLIDER_MIN_PERCENT,
+        zoomSliderMax: ZOOM_SLIDER_MAX_PERCENT,
+        zoomSliderValue,
+        zoomPercent,
+        selectedObjectCount,
+        isSnapToGridEnabled,
+        cursorBoardPosition,
+        boardError,
+        boardStatusMessage,
+        onResetView: () => setViewport(INITIAL_VIEWPORT),
+        onNudgeZoomOut: () => nudgeZoom("out"),
+        onNudgeZoomIn: () => nudgeZoom("in"),
+        onZoomSliderChange: zoomAtStageCenter,
+        onSnapToGridToggle: setIsSnapToGridEnabled,
+      }}
+      stageSurfaceProps={{
+        stageRef,
+        selectionHudRef,
+        stageSize,
+        viewport,
+        gridAxisLabels,
+        canEdit,
+        isObjectDragging,
+        objects,
+        draftGeometryById,
+        textDrafts,
+        selectedObjectIds,
+        connectorRoutesById,
+        resolvedTheme,
+        connectorEndpointDragObjectId:
+          connectorEndpointDragStateRef.current?.objectId ?? null,
+        shouldShowConnectorAnchors,
+        connectorAnchorPoints,
+        marqueeRect,
+        remoteCursors,
+        fps,
+        fpsTone,
+        fpsTarget,
+        canShowSelectionHud,
+        selectionHudPosition,
+        canColorSelection,
+        selectedColor,
+        canResetSelectionRotation,
+        canEditSelectedLabel,
+        selectionLabelDraft,
+        singleSelectedObject,
+        stickyTextHoldDragRef,
+        handleStagePointerDown,
+        handleStagePointerMove,
+        handleStagePointerLeave,
+        setSelectionLabelDraft,
+        saveSelectedObjectsColor,
+        resetSelectedObjectsRotation,
+        commitSelectionLabelDraft,
+        persistObjectLabelText,
+        shouldPreserveGroupSelection,
+        selectSingleObject,
+        toggleObjectSelection,
+        startObjectDrag,
+        startShapeRotate,
+        startCornerResize,
+        startLineEndpointResize,
+        startConnectorEndpointDrag,
+        updateGridContainerDimensions,
+        getGridDraftForObject,
+        queueGridContentSync,
+        saveGridContainerCellColors,
+        clearStickyTextHoldDrag,
+        setTextDrafts,
+        queueStickyTextSync,
+        flushStickyTextSync,
+        handleWheel,
+        onWheelCapture: handleStageWheelCapture,
+      }}
+      onlineUsers={onlineUsers}
+      onRightCollapse={() => setIsRightPanelCollapsed(true)}
+      onRightExpand={() => setIsRightPanelCollapsed(false)}
+      aiFooterProps={{
+        isCollapsed: isAiFooterCollapsed,
+        isResizing: isAiFooterResizing,
+        isDrawerNudgeActive: isAiDrawerNudgeActive,
+        height: aiFooterHeight,
+        selectedCount: selectedObjectIds.length,
+        chatMessages,
+        isSubmitting: isAiSubmitting,
+        chatInput,
+        chatMessagesRef,
+        onResizeStart: handleAiFooterResizeStart,
+        onToggleCollapsed: () => {
           setHasAiDrawerBeenInteracted(true);
           setIsAiFooterResizing(false);
           setIsAiFooterCollapsed((previous) => !previous);
-        }}
-        onSubmit={handleAiChatSubmit}
-        onInputChange={handleChatInputChange}
-        onInputKeyDown={handleAiChatInputKeyDown}
-      />
-    </section>
+        },
+        onSubmit: handleAiChatSubmit,
+        onInputChange: handleChatInputChange,
+        onInputKeyDown: handleAiChatInputKeyDown,
+      }}
+    />
   );
 }

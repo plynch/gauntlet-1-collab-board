@@ -38,13 +38,10 @@ import {
 } from "@/features/boards/components/realtime-canvas/ai-footer-config";
 import { toBoardErrorMessage } from "@/features/boards/components/realtime-canvas/board-error";
 import {
-  CONNECTOR_ANCHORS,
   CONNECTOR_MIN_SEGMENT_SIZE,
   getAnchorDirectionForGeometry,
   getAnchorPointForGeometry,
-  getConnectorHitBounds,
   getDistance,
-  getObjectVisualBounds,
   hasMeaningfulRotation,
   isSnapEligibleObjectType,
   roundToStep,
@@ -57,7 +54,6 @@ import {
   type ResolvedConnectorEndpoint,
 } from "@/features/boards/components/realtime-canvas/legacy/legacy-canvas-geometry";
 import {
-  CONNECTOR_HIT_PADDING,
   CURSOR_MIN_MOVE_DISTANCE,
   GRID_CONTAINER_DEFAULT_GAP,
   GRID_CONTAINER_MAX_COLS,
@@ -118,6 +114,7 @@ import { getFirebaseClientDb } from "@/lib/firebase/client";
 import { useRealtimeBoardCanvasRuntimeSync } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-runtime-sync";
 import { useGridAxisLabels } from "@/features/boards/components/realtime-canvas/legacy/use-grid-axis-labels";
 import { useGridDimensionUpdates } from "@/features/boards/components/realtime-canvas/legacy/use-grid-dimension-updates";
+import { useSelectionGeometryActions } from "@/features/boards/components/realtime-canvas/legacy/use-selection-geometry-actions";
 import { useSelectionUiState } from "@/features/boards/components/realtime-canvas/legacy/use-selection-ui-state";
 import { useGridContentSync } from "@/features/boards/components/realtime-canvas/legacy/use-grid-content-sync";
 import { useObjectWriteActions } from "@/features/boards/components/realtime-canvas/legacy/use-object-write-actions";
@@ -559,97 +556,14 @@ export default function RealtimeBoardCanvas({
     resolveConnectorEndpoint,
   });
 
-  const getObjectSelectionBounds = useCallback(
-    (objectItem: BoardObject) => {
-      if (isConnectorKind(objectItem.type)) {
-        const resolved = getResolvedConnectorEndpoints(objectItem);
-        if (resolved) {
-          return getConnectorHitBounds(
-            resolved.from,
-            resolved.to,
-            CONNECTOR_HIT_PADDING,
-          );
-        }
-      }
-
-      const geometry = getCurrentObjectGeometry(objectItem.id);
-      if (!geometry) {
-        return {
-          left: objectItem.x,
-          right: objectItem.x + objectItem.width,
-          top: objectItem.y,
-          bottom: objectItem.y + objectItem.height,
-        };
-      }
-
-      return getObjectVisualBounds(objectItem.type, geometry);
-    },
-    [getCurrentObjectGeometry, getResolvedConnectorEndpoints],
-  );
-
-  const getObjectsIntersectingRect = useCallback(
-    (rect: {
-      left: number;
-      right: number;
-      top: number;
-      bottom: number;
-    }): string[] => {
-      const intersectingObjectIds: string[] = [];
-
-      objectsByIdRef.current.forEach((objectItem) => {
-        const bounds = getObjectSelectionBounds(objectItem);
-        const intersects =
-          bounds.right >= rect.left &&
-          bounds.left <= rect.right &&
-          bounds.bottom >= rect.top &&
-          bounds.top <= rect.bottom;
-
-        if (intersects) {
-          intersectingObjectIds.push(objectItem.id);
-        }
-      });
-
-      return intersectingObjectIds;
-    },
-    [getObjectSelectionBounds],
-  );
-
-  const getConnectableAnchorPoints = useCallback(() => {
-    const anchors: Array<{
-      objectId: string;
-      anchor: ConnectorAnchor;
-      x: number;
-      y: number;
-    }> = [];
-
-    objectsByIdRef.current.forEach((objectItem) => {
-      if (!isConnectableShapeKind(objectItem.type)) {
-        return;
-      }
-      const connectableType = objectItem.type;
-
-      const geometry = getCurrentObjectGeometry(objectItem.id);
-      if (!geometry) {
-        return;
-      }
-
-      CONNECTOR_ANCHORS.forEach((anchor) => {
-        const point = getAnchorPointForGeometry(
-          geometry,
-          anchor,
-          connectableType,
-        );
-        anchors.push({
-          objectId: objectItem.id,
-          anchor,
-          x: point.x,
-          y: point.y,
-        });
-      });
-    });
-
-    return anchors;
-  }, [getCurrentObjectGeometry]);
+  const {
+    getObjectsIntersectingRect,
+    getConnectableAnchorPoints,
+  } = useSelectionGeometryActions({
+    objectsByIdRef,
+    getCurrentObjectGeometry,
+    getResolvedConnectorEndpoints,
+  });
 
   const getResizedGeometry = useCallback(
     (

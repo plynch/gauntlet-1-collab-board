@@ -47,9 +47,9 @@ export function SignInPrompt({ onSignIn }: { onSignIn: () => void }) {
         style={{
           height: 40,
           borderRadius: 999,
-          border: "1px solid #dadce0",
+          border: "1px solid var(--border)",
           background: "var(--surface)",
-          color: "#3c4043",
+          color: "var(--text)",
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
@@ -58,7 +58,7 @@ export function SignInPrompt({ onSignIn }: { onSignIn: () => void }) {
           fontWeight: 500,
           fontSize: 14,
           cursor: "pointer",
-          boxShadow: "0 1px 2px rgba(60,64,67,0.2)",
+          boxShadow: "0 1px 2px rgba(15,23,42,0.18)",
         }}
       >
         <GoogleBrandIcon />
@@ -97,7 +97,7 @@ export function BoardErrorAlert({
         gap: "0.4rem",
       }}
     >
-      <strong style={{ fontSize: 13, color: "#b91c1c" }}>
+      <strong style={{ fontSize: 13, color: "var(--danger-text)" }}>
         {accessDenied ? "Board access changed" : "Board sync issue"}
       </strong>
       <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{message}</span>

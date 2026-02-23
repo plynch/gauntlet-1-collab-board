@@ -112,7 +112,7 @@ export default function BoardsPage() {
               <GoogleBrandIcon />
               <span>Sign in with Google</span>
             </button>
-            {errorMessage ? <p style={{ color: "#b91c1c" }}>{errorMessage}</p> : null}
+            {errorMessage ? <p style={{ color: "var(--danger-text)" }}>{errorMessage}</p> : null}
           </section>
         ) : null}
 
@@ -123,7 +123,7 @@ export default function BoardsPage() {
             </h2>
 
             {combinedErrorMessage ? (
-              <p style={{ color: "#b91c1c" }}>{combinedErrorMessage}</p>
+              <p style={{ color: "var(--danger-text)" }}>{combinedErrorMessage}</p>
             ) : null}
             {boardsLoading ? <p>Loading boards...</p> : null}
             {!boardsLoading && boards.length === 0 ? (
@@ -249,9 +249,9 @@ const signInSectionStyle = {
 const signInButtonStyle = {
   height: 40,
   borderRadius: 999,
-  border: "1px solid #dadce0",
+  border: "1px solid var(--border)",
   background: "var(--surface)",
-  color: "#3c4043",
+  color: "var(--text)",
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -260,7 +260,7 @@ const signInButtonStyle = {
   fontWeight: 500,
   fontSize: 14,
   cursor: "pointer",
-  boxShadow: "0 1px 2px rgba(60,64,67,0.2)",
+  boxShadow: "0 1px 2px rgba(15,23,42,0.18)",
 } as const;
 
 const boardsListStyle = { listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "0.75rem" } as const;

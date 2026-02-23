@@ -1,5 +1,6 @@
 import type { BoardObject } from "@/features/boards/types";
 import {
+  getDefaultObjectColor,
   getReadableTextColor,
   getRenderedObjectColor,
   isConnectorKind,
@@ -18,6 +19,21 @@ import {
   getDefaultSectionTitles,
   normalizeSectionValues,
 } from "@/features/boards/components/realtime-canvas/grid-section-utils";
+
+function isThemeDefaultTextColor(color: string): boolean {
+  const normalized = color.trim().toLowerCase();
+  if (normalized.length === 0) {
+    return true;
+  }
+
+  return (
+    normalized === getDefaultObjectColor("text") ||
+    normalized === "#020617" ||
+    normalized === "#111827" ||
+    normalized === "#f8fafc" ||
+    normalized === "#ffffff"
+  );
+}
 
 type DeriveStageObjectRenderDataArgs = {
   objectItem: BoardObject;
@@ -84,11 +100,14 @@ export function deriveStageObjectRenderData({
   const isSelected = selectedObjectIds.includes(objectItem.id);
   const isSingleSelected = selectedObjectIds.length === 1 && isSelected;
   const isConnector = isConnectorKind(objectItem.type);
-  const renderedObjectColor = getRenderedObjectColor(
+  let renderedObjectColor = getRenderedObjectColor(
     objectItem.color,
     objectItem.type,
     resolvedTheme,
   );
+  if (objectItem.type === "text" && isThemeDefaultTextColor(objectItem.color)) {
+    renderedObjectColor = resolvedTheme === "dark" ? "#f8fafc" : "#0f172a";
+  }
   const objectSurfaceColor =
     resolvedTheme === "dark"
       ? "rgba(241, 245, 249, 0.58)"

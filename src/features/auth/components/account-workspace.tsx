@@ -216,10 +216,10 @@ export default function AccountWorkspace() {
             </div>
 
             {errorMessage ? (
-              <p style={{ color: "#b91c1c", margin: 0 }}>{errorMessage}</p>
+              <p style={{ color: "var(--danger-text)", margin: 0 }}>{errorMessage}</p>
             ) : null}
             {successMessage ? (
-              <p style={{ color: "#166534", margin: 0 }}>{successMessage}</p>
+              <p style={{ color: "var(--success-text)", margin: 0 }}>{successMessage}</p>
             ) : null}
           </section>
         ) : null}

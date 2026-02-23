@@ -94,7 +94,7 @@ export default function BoardSettingsWorkspace({
         ) : null}
 
         {state.combinedErrorMessage ? (
-          <p style={{ color: "#b91c1c" }}>{state.combinedErrorMessage}</p>
+          <p style={{ color: "var(--danger-text)" }}>{state.combinedErrorMessage}</p>
         ) : null}
 
         {!state.authLoading && state.user ? (

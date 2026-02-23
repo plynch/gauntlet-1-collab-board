@@ -23,6 +23,8 @@
   --input-border: #cbd5e1;
   --input-placeholder: #64748b;
   --focus-ring: rgba(56, 189, 248, 0.35);
+  --danger-text: #b91c1c;
+  --success-text: #166534;
 }
 
 :root[data-theme="dark"] {
@@ -48,6 +50,8 @@
   --input-border: #334155;
   --input-placeholder: #8da0ba;
   --focus-ring: rgba(56, 189, 248, 0.45);
+  --danger-text: #fca5a5;
+  --success-text: #86efac;
 }
 
 @layer base {

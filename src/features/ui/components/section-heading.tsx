@@ -8,7 +8,7 @@ export function SectionHeading({
 }: HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h2
-      className={cn("m-0 text-xl font-semibold text-slate-900", className)}
+      className={cn("m-0 text-xl font-semibold text-[var(--text)]", className)}
       {...props}
     />
   );

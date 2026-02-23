@@ -17,6 +17,16 @@ This document is our direct response to the external `AUDIT.md` feedback. It sum
 | `BUG-03` | No error boundary around board runtime | ✅ Resolved | Added dedicated board canvas error boundary with user recovery actions. |
 | `BUG-04` | Race condition for board create limit | ✅ Resolved | Board limit enforcement now uses a Firestore transaction. |
 
+## Latest Updates Since Prior Audit Response
+
+| Area | Status | What changed |
+|---|---|---|
+| Frame requirement signal in UI | ✅ Improved | Added a dedicated `Frame (New)` toolbox button so frame creation is visible and explicit in live demos. |
+| Side-arrangement reliability (`left/right/top/bottom`) | ✅ Improved | Added viewport-bounds normalization for side-move operations so arranged objects use visible viewport context more consistently. |
+| Free text UX | ✅ Improved | Removed the extra `TEXT` chrome label and simplified text object editing UI. |
+| Theme parity (light/dark) | ✅ Improved | Expanded tokenized theme styling so mode switching affects shared UI surfaces and default free-text color behavior. |
+| Build validation | ✅ Verified | Current main branch builds successfully with latest fixes. |
+
 ## Core Requirements Gaps: Status
 
 | Requirement Gap from Audit | Status | Notes |
@@ -25,6 +35,7 @@ This document is our direct response to the external `AUDIT.md` feedback. It sum
 | Line tool accessibility | ✅ Implemented | `line` tool is available in the left tools panel config. |
 | Duplicate operation | ✅ Implemented | Selection duplication is available via shortcut and action wiring. |
 | Copy/Paste operation | ✅ Implemented | `Cmd/Ctrl+C` and `Cmd/Ctrl+V` selection workflows are implemented with deterministic offsets. |
+| Free-form frame affordance | ✅ Implemented (UI) | Frame creation is now explicit in toolbox via a dedicated frame action (implemented as free-form rectangle-style frame for submission scope). |
 
 ## Performance Risk Mitigations Applied
 

@@ -41,12 +41,8 @@ import { useBoardAssistantActions } from "@/features/boards/components/realtime-
 import {
   useContainerMembership,
 } from "@/features/boards/components/realtime-canvas/use-container-membership";
-import {
-  useRealtimeBoardCanvasSubscriptionSync,
-} from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-subscription-sync";
 import { useTheme } from "@/features/theme/use-theme";
 import { getFirebaseClientDb } from "@/lib/firebase/client";
-import { useRealtimeBoardCanvasRuntimeSync } from "@/features/boards/components/realtime-canvas/legacy/realtime-board-canvas-runtime-sync";
 import { useGridAxisLabels } from "@/features/boards/components/realtime-canvas/legacy/use-grid-axis-labels";
 import { useGridDimensionUpdates } from "@/features/boards/components/realtime-canvas/legacy/use-grid-dimension-updates";
 import { useSelectionGeometryActions } from "@/features/boards/components/realtime-canvas/legacy/use-selection-geometry-actions";
@@ -60,6 +56,7 @@ import { useBoardRuntimeActions } from "@/features/boards/components/realtime-ca
 import { useCanvasSelectionViewState } from "@/features/boards/components/realtime-canvas/legacy/use-canvas-selection-view-state";
 import { useBoardStageActions } from "@/features/boards/components/realtime-canvas/legacy/use-board-stage-actions";
 import { useLegacyCanvasState } from "@/features/boards/components/realtime-canvas/legacy/use-legacy-canvas-state";
+import { useLegacyCanvasRealtimeSync } from "@/features/boards/components/realtime-canvas/legacy/use-legacy-canvas-realtime-sync";
 
 export default function RealtimeBoardCanvas({
   boardId,
@@ -83,18 +80,18 @@ export default function RealtimeBoardCanvas({
     writeMetricsRef, boardStatusTimerRef, snapToGridEnabledRef,
   } = refs;
   const {
-    viewport, setViewport, objects, setObjects, presenceUsers, setPresenceUsers,
+    viewport, setViewport, objects, setObjects, presenceUsers,
     textDrafts, setTextDrafts, draftGeometryById, setDraftGeometryById, draftConnectorById,
-    setDraftConnectorById, gridContentDraftById, setGridContentDraftById, selectedObjectIds,
+    setDraftConnectorById, setGridContentDraftById, selectedObjectIds,
     setSelectedObjectIds, marqueeSelectionState, setMarqueeSelectionState, boardError,
     setBoardError, boardStatusMessage, setBoardStatusMessage, isLeftPanelCollapsed,
     setIsLeftPanelCollapsed, isRightPanelCollapsed, setIsRightPanelCollapsed, isSnapToGridEnabled,
-    setIsSnapToGridEnabled, isAiFooterCollapsed, setIsAiFooterCollapsed, hasAiDrawerBeenInteracted,
-    setHasAiDrawerBeenInteracted, isAiDrawerNudgeActive, setIsAiDrawerNudgeActive,
+    setIsSnapToGridEnabled, isAiFooterCollapsed, setIsAiFooterCollapsed,
+    setHasAiDrawerBeenInteracted, isAiDrawerNudgeActive,
     isAiFooterResizing, setIsAiFooterResizing, isObjectDragging, setIsObjectDragging,
     aiFooterHeight, setAiFooterHeight, isAiSubmitting, setIsAiSubmitting,
     isSwotTemplateCreating, setIsSwotTemplateCreating, selectionLabelDraft, setSelectionLabelDraft,
-    cursorBoardPosition, setCursorBoardPosition, stageSize, setStageSize, selectionHudSize,
+    cursorBoardPosition, setCursorBoardPosition, stageSize, selectionHudSize,
     setSelectionHudSize, fps, presenceClock,
   } = state;
   const {
@@ -116,61 +113,17 @@ export default function RealtimeBoardCanvas({
     [boardId, db, user.uid],
   );
 
-  const { clearStickyTextHoldDrag } = useRealtimeBoardCanvasRuntimeSync({
-    boardId,
-    canEdit,
-    isSnapToGridEnabled,
-    viewport,
-    objects,
-    draftGeometryById,
-    draftConnectorById,
-    selectedObjectIds,
-    gridContentDraftById,
-    setGridContentDraftById,
-    chatMessagesRef,
-    chatMessages,
-    hasAiDrawerBeenInteracted,
-    isAiFooterCollapsed,
-    isAiSubmitting,
-    setIsAiDrawerNudgeActive,
-    aiFooterHeight,
-    setAiFooterHeight,
-    setIsSnapToGridEnabled,
-    stickyTextSyncStateRef,
-    stageRef,
-    setStageSize,
-    writeMetricsRef,
-    refs: {
-      viewportRef,
-      canEditRef,
-      snapToGridEnabledRef,
-      objectsByIdRef,
-      lastPositionWriteByIdRef,
-      lastGeometryWriteByIdRef,
-      lastStickyWriteByIdRef,
-      draftGeometryByIdRef,
-      draftConnectorByIdRef,
-      gridContentDraftByIdRef,
-      gridContentSyncTimerByIdRef,
-      selectedObjectIdsRef,
-      stickyTextHoldDragRef,
-      boardStatusTimerRef,
-    },
-  });
-
-  useRealtimeBoardCanvasSubscriptionSync({
+  const { clearStickyTextHoldDrag } = useLegacyCanvasRealtimeSync({
     boardId,
     user,
     boardColor,
+    canEdit,
+    refs,
+    state,
+    chat,
     objectsCollectionRef,
     presenceCollectionRef,
     selfPresenceRef,
-    setSelectedObjectIds,
-    setObjects,
-    setPresenceUsers,
-    setBoardError,
-    lastCursorWriteRef,
-    idTokenRef,
   });
 
   const {

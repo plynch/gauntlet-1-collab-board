@@ -1228,6 +1228,185 @@ describe("planDeterministicCommand", () => {
     expect(result.intent).toBe("resize-selected");
   });
 
+  it("handles golden phrasing: create a blue rectangle at position 100,200", () => {
+    const result = planDeterministicCommand({
+      message: "Create a blue rectangle at position 100,200",
+      boardState: BOARD_STATE,
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("create-rect");
+      expect(result.plan.operations[0]?.tool).toBe("createShape");
+      if (result.plan.operations[0]?.tool === "createShape") {
+        expect(result.plan.operations[0].args.type).toBe("rect");
+        expect(result.plan.operations[0].args.color).toBe("#93c5fd");
+        expect(result.plan.operations[0].args.x).toBe(100);
+        expect(result.plan.operations[0].args.y).toBe(200);
+      }
+    }
+  });
+
+  it("handles golden phrasing: add a frame called Sprint Planning", () => {
+    const result = planDeterministicCommand({
+      message: 'Add a frame called "Sprint Planning"',
+      boardState: BOARD_STATE,
+      selectedObjectIds: [],
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("create-frame");
+      expect(result.plan.operations[0]?.tool).toBe("createFrame");
+      if (result.plan.operations[0]?.tool === "createFrame") {
+        expect(result.plan.operations[0].args.title).toBe("Sprint Planning");
+      }
+    }
+  });
+
+  it("handles golden phrasing: move all pink sticky notes to the right side", () => {
+    const boardState = [
+      ...BOARD_STATE,
+      {
+        id: "pink-1",
+        type: "sticky" as const,
+        zIndex: 3,
+        x: 200,
+        y: 120,
+        width: 220,
+        height: 170,
+        rotationDeg: 0,
+        color: "#f9a8d4",
+        text: "P1",
+        updatedAt: null,
+      },
+      {
+        id: "pink-2",
+        type: "sticky" as const,
+        zIndex: 4,
+        x: 240,
+        y: 360,
+        width: 220,
+        height: 170,
+        rotationDeg: 0,
+        color: "#f9a8d4",
+        text: "P2",
+        updatedAt: null,
+      },
+    ];
+    const result = planDeterministicCommand({
+      message: "Move all the pink sticky notes to the right side",
+      boardState,
+      selectedObjectIds: [],
+      viewportBounds: {
+        left: 0,
+        top: 0,
+        width: 1200,
+        height: 800,
+      },
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("move-all");
+      expect(result.plan.operations[0]?.tool).toBe("moveObjects");
+      if (result.plan.operations[0]?.tool === "moveObjects") {
+        expect(result.plan.operations[0].args.objectIds).toEqual(["pink-1", "pink-2"]);
+        expect(result.plan.operations[0].args.toViewportSide?.side).toBe("right");
+      }
+    }
+  });
+
+  it("handles golden phrasing: arrange the pink stickies on the right side", () => {
+    const boardState = [
+      ...BOARD_STATE,
+      {
+        id: "pink-1",
+        type: "sticky" as const,
+        zIndex: 3,
+        x: 180,
+        y: 120,
+        width: 220,
+        height: 170,
+        rotationDeg: 0,
+        color: "#f9a8d4",
+        text: "P1",
+        updatedAt: null,
+      },
+      {
+        id: "pink-2",
+        type: "sticky" as const,
+        zIndex: 4,
+        x: 220,
+        y: 320,
+        width: 220,
+        height: 170,
+        rotationDeg: 0,
+        color: "#f9a8d4",
+        text: "P2",
+        updatedAt: null,
+      },
+    ];
+    const result = planDeterministicCommand({
+      message: "arrange the pink stickies on the right side",
+      boardState,
+      selectedObjectIds: [],
+      viewportBounds: {
+        left: 0,
+        top: 0,
+        width: 1200,
+        height: 800,
+      },
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("arrange-to-side");
+      expect(result.plan.operations[0]?.tool).toBe("moveObjects");
+      if (result.plan.operations[0]?.tool === "moveObjects") {
+        expect(result.plan.operations[0].args.objectIds).toEqual(["pink-1", "pink-2"]);
+        expect(result.plan.operations[0].args.toViewportSide?.side).toBe("right");
+      }
+    }
+  });
+
+  it("handles golden phrasing: space these elements evenly", () => {
+    const boardState = [
+      ...BOARD_STATE,
+      {
+        id: "obj-3",
+        type: "sticky" as const,
+        zIndex: 3,
+        x: 780,
+        y: 120,
+        width: 220,
+        height: 170,
+        rotationDeg: 0,
+        color: "#fde68a",
+        text: "Third",
+        updatedAt: null,
+      },
+    ];
+    const result = planDeterministicCommand({
+      message: "Space these elements evenly",
+      boardState,
+      selectedObjectIds: ["obj-1", "obj-2", "obj-3"],
+      viewportBounds: {
+        left: 0,
+        top: 0,
+        width: 1400,
+        height: 900,
+      },
+    });
+
+    expect(result.planned).toBe(true);
+    if (result.planned) {
+      expect(result.intent).toBe("distribute-objects");
+      expect(result.plan.operations[0]?.tool).toBe("distributeObjects");
+    }
+  });
+
   it("falls back to unsupported intent for unknown commands", () => {
     const result = planDeterministicCommand({
       message: "Tell me a joke",

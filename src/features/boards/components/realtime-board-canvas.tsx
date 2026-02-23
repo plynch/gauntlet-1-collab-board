@@ -3593,13 +3593,25 @@ export default function RealtimeBoardCanvas({
   }, []);
 
   useEffect(() => {
-    const stageElement = stageRef.current;
-    if (!stageElement) {
-      return;
-    }
+    const handleNativeWheel = (event: WheelEvent) => {
+      const stageElement = stageRef.current;
+      if (!stageElement) {
+        return;
+      }
 
-        const handleNativeWheel = (event: WheelEvent) => {
-      event.preventDefault();
+      const rect = stageElement.getBoundingClientRect();
+      const isInStageBounds =
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom;
+      if (!isInStageBounds) {
+        return;
+      }
+
+      if (event.cancelable) {
+        event.preventDefault();
+      }
       event.stopPropagation();
 
       if (event.ctrlKey || event.metaKey) {
@@ -3610,12 +3622,13 @@ export default function RealtimeBoardCanvas({
       panByWheel(event.deltaX, event.deltaY);
     };
 
-    stageElement.addEventListener("wheel", handleNativeWheel, {
+    window.addEventListener("wheel", handleNativeWheel, {
       passive: false,
+      capture: true,
     });
 
     return () => {
-      stageElement.removeEventListener("wheel", handleNativeWheel);
+      window.removeEventListener("wheel", handleNativeWheel, true);
     };
   }, [panByWheel, zoomAtPointer]);
 
@@ -4368,7 +4381,8 @@ export default function RealtimeBoardCanvas({
               backgroundSize: `${GRID_SUPER_MAJOR_SPACING * viewport.scale}px ${GRID_SUPER_MAJOR_SPACING * viewport.scale}px, ${GRID_SUPER_MAJOR_SPACING * viewport.scale}px ${GRID_SUPER_MAJOR_SPACING * viewport.scale}px, ${GRID_MAJOR_SPACING * viewport.scale}px ${GRID_MAJOR_SPACING * viewport.scale}px, ${GRID_MAJOR_SPACING * viewport.scale}px ${GRID_MAJOR_SPACING * viewport.scale}px, ${GRID_CELL_SIZE * viewport.scale}px ${GRID_CELL_SIZE * viewport.scale}px, ${GRID_CELL_SIZE * viewport.scale}px ${GRID_CELL_SIZE * viewport.scale}px`,
               backgroundPosition: `${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px`,
               touchAction: "none",
-              overscrollBehavior: "contain",
+              overscrollBehavior: "none",
+              overscrollBehaviorX: "none",
             }}
           >
             <StageAxisOverlay

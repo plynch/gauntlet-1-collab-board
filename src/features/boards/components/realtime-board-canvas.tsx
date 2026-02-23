@@ -34,19 +34,10 @@ import {
 } from "@/features/boards/components/realtime-canvas/ai-chat-content";
 import { sendBoardAiCommand } from "@/features/boards/components/realtime-canvas/ai-command-client";
 import {
-  BriefcaseIcon,
-  ClearTextIcon,
-  ColorSwatchPicker,
-  DuplicateIcon,
-  ToolIcon,
-  TrashIcon,
-} from "@/features/boards/components/realtime-canvas/canvas-controls";
-import {
   canUseSelectionHudColor,
   getDefaultObjectColor,
   getDefaultObjectSize,
   getMinimumObjectSize,
-  getObjectLabel,
   getReadableTextColor,
   getRenderLayerRank,
   getRenderedObjectColor,
@@ -108,7 +99,6 @@ import {
   BOARD_GRID_MAJOR_LINE_COLOR,
   BOARD_GRID_MINOR_LINE_COLOR,
   BOARD_GRID_SUPER_MAJOR_LINE_COLOR,
-  BOARD_TOOLS,
   COLLAPSED_PANEL_WIDTH,
   CONNECTOR_DISCONNECTED_HANDLE_SIZE,
   CONNECTOR_HANDLE_SIZE,
@@ -173,7 +163,9 @@ import { useClipboardShortcuts } from "@/features/boards/components/realtime-can
 import { useFpsMeter } from "@/features/boards/components/realtime-canvas/legacy/use-fps-meter";
 import { useObjectTemplateActions } from "@/features/boards/components/realtime-canvas/legacy/use-object-template-actions";
 import { AiAssistantFooter } from "@/features/boards/components/realtime-canvas/legacy/ai-assistant-footer";
+import { LeftToolsPanel } from "@/features/boards/components/realtime-canvas/legacy/left-tools-panel";
 import { RightPresencePanel } from "@/features/boards/components/realtime-canvas/legacy/right-presence-panel";
+import { SelectionHudPanel } from "@/features/boards/components/realtime-canvas/legacy/selection-hud-panel";
 import { StageOverlays } from "@/features/boards/components/realtime-canvas/legacy/stage-overlays";
 import { StageAxisOverlay } from "@/features/boards/components/realtime-canvas/legacy/stage-axis-overlay";
 import {
@@ -203,9 +195,6 @@ import {
   isWriteMetricsDebugEnabled,
 } from "@/features/boards/lib/realtime-write-metrics";
 import { GridContainer } from "@/features/ui/components/grid-container";
-import { Input } from "@/features/ui/components/input";
-import { IconButton } from "@/features/ui/components/icon-button";
-import { Button } from "@/features/ui/components/button";
 import { useTheme } from "@/features/theme/use-theme";
 import { getFirebaseClientDb } from "@/lib/firebase/client";
 
@@ -4223,256 +4212,23 @@ export default function RealtimeBoardCanvas({
           transition: `grid-template-columns ${PANEL_COLLAPSE_ANIMATION}`,
         }}
       >
-        <aside
-          style={{
-            minWidth: 0,
-            minHeight: 0,
-            background: "var(--surface-muted)",
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
+        <LeftToolsPanel
+          isCollapsed={isLeftPanelCollapsed}
+          canEdit={canEdit}
+          isAiSubmitting={isAiSubmitting}
+          isSwotTemplateCreating={isSwotTemplateCreating}
+          hasDeletableSelection={hasDeletableSelection}
+          selectedObjectCount={selectedObjectCount}
+          resolvedTheme={resolvedTheme}
+          onCollapse={() => setIsLeftPanelCollapsed(true)}
+          onExpand={() => setIsLeftPanelCollapsed(false)}
+          onToolButtonClick={handleToolButtonClick}
+          onCreateSwot={handleCreateSwotButtonClick}
+          onDuplicate={() => {
+            void duplicateSelectedObjects();
           }}
+          onDelete={handleDeleteButtonClick}
         >
-          {isLeftPanelCollapsed ? (
-            <div
-              style={{
-                height: "100%",
-                display: "flex",
-                flexDirection: "column",
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => setIsLeftPanelCollapsed(false)}
-                title="Expand tools panel"
-                aria-label="Expand tools panel"
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  border: "none",
-                  borderRight: "1px solid var(--border-strong)",
-                  borderRadius: 0,
-                  background: "var(--surface-subtle)",
-                  color: "var(--text)",
-                  fontWeight: 700,
-                  fontSize: 12,
-                  letterSpacing: 0.3,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "0.45rem",
-                  cursor: "pointer",
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: 16,
-                    lineHeight: 1,
-                  }}
-                >
-                  {">"}
-                </span>
-                <span
-                  style={{
-                    writingMode: "vertical-rl",
-                    transform: "rotate(180deg)",
-                  }}
-                >
-                  Tools
-                </span>
-              </button>
-            </div>
-          ) : (
-            <>
-              <div
-                style={{
-                  padding: 0,
-                  borderBottom: "1px solid var(--border)",
-                  display: "grid",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setIsLeftPanelCollapsed(true)}
-                  title="Collapse tools panel"
-                  aria-label="Collapse tools panel"
-                  style={{
-                    width: "100%",
-                    height: 30,
-                    border: "none",
-                    borderRadius: 0,
-                    borderBottom: "1px solid var(--border-strong)",
-                    background: "var(--surface-subtle)",
-                    color: "var(--text)",
-                    fontWeight: 700,
-                    fontSize: 12,
-                    letterSpacing: 0.3,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "0.45rem",
-                    cursor: "pointer",
-                    transition:
-                      "background-color 180ms ease, border-color 180ms ease, color 180ms ease",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: 16,
-                      lineHeight: 1,
-                    }}
-                  >
-                    {"<"}
-                  </span>
-                  <span>Tools</span>
-                </button>
-              </div>
-
-              <div
-                style={{
-                  minHeight: 0,
-                  overflowY: "auto",
-                  overflowX: "hidden",
-                  padding: "0.65rem",
-                  display: "grid",
-                  gap: "0.7rem",
-                  alignContent: "start",
-                }}
-              >
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(2, 42px)",
-                    justifyContent: "center",
-                    gap: "0.45rem",
-                    overflow: "visible",
-                  }}
-                >
-                  {BOARD_TOOLS.map((toolKind) => (
-                    <button
-                      key={toolKind}
-                      type="button"
-                      onClick={() => handleToolButtonClick(toolKind)}
-                      disabled={!canEdit}
-                      title={`Add ${getObjectLabel(toolKind).toLowerCase()}`}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        width: 42,
-                        minWidth: 42,
-                        maxWidth: 42,
-                        minHeight: 42,
-                        border: "1px solid var(--border)",
-                        borderRadius: 10,
-                        background: "var(--surface)",
-                        height: 42,
-                        padding: 0,
-                        lineHeight: 0,
-                        overflow: "visible",
-                      }}
-                    >
-                      <ToolIcon kind={toolKind} />
-                    </button>
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleCreateSwotButtonClick}
-                  disabled={!canEdit || isAiSubmitting || isSwotTemplateCreating}
-                  title="Create SWOT analysis"
-                  style={{
-                    width: "100%",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "0.45rem",
-                    border:
-                      !canEdit || isAiSubmitting || isSwotTemplateCreating
-                        ? "1px solid var(--border)"
-                        : resolvedTheme === "dark"
-                          ? "1px solid rgba(129, 140, 248, 0.56)"
-                          : "1px solid #c7d2fe",
-                    borderRadius: 8,
-                    background:
-                      !canEdit || isAiSubmitting || isSwotTemplateCreating
-                        ? "var(--surface-muted)"
-                        : resolvedTheme === "dark"
-                          ? "rgba(79, 70, 229, 0.24)"
-                          : "#e0e7ff",
-                    color:
-                      !canEdit || isAiSubmitting || isSwotTemplateCreating
-                        ? "var(--text-muted)"
-                        : resolvedTheme === "dark"
-                          ? "#c7d2fe"
-                          : "#312e81",
-                    height: 34,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor:
-                      !canEdit || isAiSubmitting || isSwotTemplateCreating
-                        ? "not-allowed"
-                        : "pointer",
-                    transition:
-                      "background-color 180ms ease, border-color 180ms ease, color 180ms ease",
-                  }}
-                >
-                  <BriefcaseIcon />
-                  <span>SWOT</span>
-                </button>
-
-                {hasDeletableSelection ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void duplicateSelectedObjects();
-                    }}
-                    title="Duplicate selected objects"
-                    style={{
-                      width: "100%",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "0.4rem",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      background: "var(--surface)",
-                      color: "var(--text)",
-                      height: 34,
-                      fontSize: 12,
-                    }}
-                  >
-                    <DuplicateIcon />
-                    <span>Duplicate ({selectedObjectCount})</span>
-                  </button>
-                ) : null}
-
-                {hasDeletableSelection ? (
-                  <button
-                    type="button"
-                    onClick={handleDeleteButtonClick}
-                    title="Delete selected objects"
-                    style={{
-                      width: "100%",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "0.4rem",
-                    border: "1px solid #fecaca",
-                    borderRadius: 8,
-                    background: "rgba(239, 68, 68, 0.14)",
-                    color: "#991b1b",
-                    height: 34,
-                    fontSize: 12,
-                    }}
-                  >
-                    <TrashIcon />
-                    <span>Delete ({selectedObjectCount})</span>
-                  </button>
-                ) : null}
-
                 <button
                   type="button"
                   onClick={() => setViewport(INITIAL_VIEWPORT)}
@@ -4651,10 +4407,7 @@ export default function RealtimeBoardCanvas({
                     {boardStatusMessage}
                   </p>
                 ) : null}
-              </div>
-            </>
-          )}
-        </aside>
+        </LeftToolsPanel>
 
         <div
           style={{
@@ -4700,143 +4453,22 @@ export default function RealtimeBoardCanvas({
               yLabels={gridAxisLabels.yLabels}
             />
 
-            {canShowSelectionHud && selectionHudPosition ? (
-              <div
-                ref={selectionHudRef}
-                data-selection-hud="true"
-                onPointerDown={(event) => {
-                  event.stopPropagation();
-                }}
-                onClick={(event) => {
-                  event.stopPropagation();
-                }}
-                style={{
-                  position: "absolute",
-                  left: selectionHudPosition.x,
-                  top: selectionHudPosition.y,
-                  zIndex: 45,
-                  display: "grid",
-                  gap: "0.45rem",
-                  padding: "0.4rem 0.45rem",
-                  borderRadius: 10,
-                  border: "1px solid var(--border)",
-                  background: "var(--surface)",
-                  boxShadow: "0 8px 20px rgba(0,0,0,0.14)",
-                  backdropFilter: "blur(2px)",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.45rem",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  {canColorSelection ? (
-                    <ColorSwatchPicker
-                      currentColor={selectedColor}
-                      onSelectColor={(nextColor) => {
-                        void saveSelectedObjectsColor(nextColor);
-                      }}
-                    />
-                  ) : null}
-                  {canResetSelectionRotation ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        void resetSelectedObjectsRotation();
-                      }}
-                      className="h-8 rounded-md text-xs"
-                      style={{
-                        background: "var(--surface)",
-                        color: "var(--text)",
-                        borderColor: "var(--border)",
-                      }}
-                    >
-                      Reset rotation
-                    </Button>
-                  ) : null}
-                </div>
-                {canEditSelectedLabel && singleSelectedObject ? (
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: "0.32rem",
-                      minWidth: 280,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: "var(--text-muted)",
-                        letterSpacing: "0.01em",
-                      }}
-                    >
-                      Label
-                    </span>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.4rem",
-                      }}
-                    >
-                      <Input
-                        value={selectionLabelDraft}
-                        onChange={(event) => {
-                          setSelectionLabelDraft(
-                            event.target.value.slice(0, OBJECT_LABEL_MAX_LENGTH),
-                          );
-                        }}
-                        onBlur={() => {
-                          void commitSelectionLabelDraft();
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            void commitSelectionLabelDraft();
-                            (event.currentTarget as HTMLInputElement).blur();
-                          }
-
-                          if (event.key === "Escape") {
-                            event.preventDefault();
-                            setSelectionLabelDraft(singleSelectedObject.text ?? "");
-                            (event.currentTarget as HTMLInputElement).blur();
-                          }
-                        }}
-                        placeholder="Add label"
-                        aria-label={`Label for ${getObjectLabel(singleSelectedObject.type)}`}
-                        style={{
-                          height: 32,
-                          border: "1px solid var(--input-border)",
-                          background: "var(--input-bg)",
-                          color: "var(--text)",
-                        }}
-                      />
-                      <IconButton
-                        label="Clear label"
-                        size="sm"
-                        onClick={() => {
-                          setSelectionLabelDraft("");
-                          void persistObjectLabelText(singleSelectedObject.id, "");
-                        }}
-                        disabled={(singleSelectedObject.text ?? "").length === 0}
-                        style={{
-                          border: "1px solid var(--border)",
-                          background: "var(--surface)",
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        <ClearTextIcon />
-                      </IconButton>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
+            <SelectionHudPanel
+              canShowSelectionHud={canShowSelectionHud}
+              selectionHudPosition={selectionHudPosition}
+              selectionHudRef={selectionHudRef}
+              canColorSelection={canColorSelection}
+              selectedColor={selectedColor}
+              saveSelectedObjectsColor={saveSelectedObjectsColor}
+              canResetSelectionRotation={canResetSelectionRotation}
+              resetSelectedObjectsRotation={resetSelectedObjectsRotation}
+              canEditSelectedLabel={canEditSelectedLabel}
+              singleSelectedObject={singleSelectedObject}
+              selectionLabelDraft={selectionLabelDraft}
+              setSelectionLabelDraft={setSelectionLabelDraft}
+              commitSelectionLabelDraft={commitSelectionLabelDraft}
+              persistObjectLabelText={persistObjectLabelText}
+            />
 
             <div
               style={{

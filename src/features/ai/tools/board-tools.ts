@@ -26,10 +26,6 @@ import {
   FRAME_FIT_DEFAULT_PADDING,
   FRAME_FIT_MAX_PADDING,
   FRAME_FIT_MIN_PADDING,
-  MOVE_OBJECTS_DEFAULT_PADDING,
-  MOVE_OBJECTS_MAX_PADDING,
-  MOVE_OBJECTS_MIN_PADDING,
-  VIEWPORT_SIDE_STACK_GAP,
   type BoardToolExecutorOptions,
   type LayoutAlignment,
 } from "@/features/ai/tools/board-tools/constants";
@@ -46,6 +42,14 @@ import {
   arrangeObjectsInGridTool,
   distributeObjectsTool,
 } from "@/features/ai/tools/board-tools/layout-tools";
+import {
+  changeColorTool,
+  deleteObjectsTool,
+  moveObjectTool,
+  moveObjectsTool,
+  resizeObjectTool,
+  updateTextTool,
+} from "@/features/ai/tools/board-tools/move-edit-delete-tools";
 import {
   toGridCellColors,
   toGridDimension,
@@ -555,131 +559,19 @@ export class BoardToolExecutor {
       padding?: number;
     };
   }): Promise<ExecuteToolResult> {
-    const selectedObjects = await this.resolveSelectedObjects(args.objectIds);
-    if (selectedObjects.length === 0) {
-      return { tool: "moveObjects" };
-    }
-
-    let dx = 0;
-    let dy = 0;
-    if (args.toPoint) {
-      const anchor = selectedObjects[0];
-      dx = args.toPoint.x - anchor.x;
-      dy = args.toPoint.y - anchor.y;
-    } else if (args.toViewportSide) {
-      const selectedBounds = toCombinedBounds(selectedObjects);
-      const targetBounds = this.getTargetAreaBounds(
-        args.toViewportSide.viewportBounds,
-      );
-      if (!selectedBounds || !targetBounds) {
-        return { tool: "moveObjects" };
-      }
-
-      const padding = toGridDimension(
-        args.toViewportSide.padding,
-        MOVE_OBJECTS_DEFAULT_PADDING,
-        MOVE_OBJECTS_MIN_PADDING,
-        MOVE_OBJECTS_MAX_PADDING,
-      );
-      const groupWidth = Math.max(1, selectedBounds.right - selectedBounds.left);
-      const groupHeight = Math.max(
-        1,
-        selectedBounds.bottom - selectedBounds.top,
-      );
-      const targetLeftBase =
-        args.toViewportSide.side === "left"
-          ? targetBounds.left + padding
-          : args.toViewportSide.side === "right"
-            ? targetBounds.right - groupWidth - padding
-            : selectedBounds.left;
-      const targetTopBase =
-        args.toViewportSide.side === "top"
-          ? targetBounds.top + padding
-          : args.toViewportSide.side === "bottom"
-            ? targetBounds.bottom - groupHeight - padding
-            : selectedBounds.top;
-      const minLeft = targetBounds.left;
-      const maxLeft = targetBounds.right - groupWidth;
-      const minTop = targetBounds.top;
-      const maxTop = targetBounds.bottom - groupHeight;
-      const targetLeft =
-        minLeft <= maxLeft
-          ? Math.min(maxLeft, Math.max(minLeft, targetLeftBase))
-          : targetLeftBase;
-      const targetTop =
-        minTop <= maxTop
-          ? Math.min(maxTop, Math.max(minTop, targetTopBase))
-          : targetTopBase;
-      const isLeftOrRight =
-        args.toViewportSide.side === "left" ||
-        args.toViewportSide.side === "right";
-
-      if (isLeftOrRight) {
-        const ordered = [...selectedObjects].sort(
-          (first, second) =>
-            (first.y - second.y) || (first.x - second.x),
-        );
-        const totalHeight =
-          ordered.reduce((sum, objectItem) => sum + objectItem.height, 0) +
-          Math.max(0, ordered.length - 1) * VIEWPORT_SIDE_STACK_GAP;
-        const stackHeightMaxTop = Math.max(minTop, targetBounds.bottom - totalHeight);
-        const startTop = Math.min(
-          stackHeightMaxTop,
-          Math.max(minTop, targetTop),
-        );
-        let yCursor = startTop;
-        ordered.forEach((objectItem) => {
-          objectItem.x = targetLeft;
-          objectItem.y = yCursor;
-          yCursor += objectItem.height + VIEWPORT_SIDE_STACK_GAP;
-        });
-      } else {
-        const ordered = [...selectedObjects].sort(
-          (first, second) =>
-            (first.x - second.x) || (first.y - second.y),
-        );
-        const totalWidth =
-          ordered.reduce((sum, objectItem) => sum + objectItem.width, 0) +
-          Math.max(0, ordered.length - 1) * VIEWPORT_SIDE_STACK_GAP;
-        const maxLeft = targetBounds.right - totalWidth;
-        const startLeft = Math.min(
-          maxLeft,
-          Math.max(minLeft, targetLeft),
-        );
-        let xCursor = startLeft;
-        ordered.forEach((objectItem) => {
-          objectItem.x = xCursor;
-          objectItem.y = targetTop;
-          xCursor += objectItem.width + VIEWPORT_SIDE_STACK_GAP;
-        });
-      }
-
-      return await this.updateObjectsInBatch(
-        selectedObjects.map((objectItem) => ({
-          objectId: objectItem.id,
-          payload: {
-            x: objectItem.x,
-            y: objectItem.y,
-          },
-        })),
-      ).then(() => ({ tool: "moveObjects" }));
-    } else if (args.delta) {
-      dx = args.delta.dx;
-      dy = args.delta.dy;
-    } else {
-      return { tool: "moveObjects" };
-    }
-
-    const updates = selectedObjects.map((objectItem) => ({
-      objectId: objectItem.id,
-      payload: {
-        x: objectItem.x + dx,
-        y: objectItem.y + dy,
+    return moveObjectsTool(
+      {
+        resolveSelectedObjects: this.resolveSelectedObjects.bind(this),
+        getTargetAreaBounds: this.getTargetAreaBounds.bind(this),
+        updateObjectsInBatch: this.updateObjectsInBatch.bind(this),
+        updateObject: this.updateObject.bind(this),
+        ensureLoadedObjects: this.ensureLoadedObjects.bind(this),
+        objectsById: this.objectsById,
+        db: this.db,
+        objectsCollection: this.objectsCollection,
       },
-    }));
-    await this.updateObjectsInBatch(updates);
-
-    return { tool: "moveObjects" };
+      args,
+    );
   }
 
     async moveObject(args: {
@@ -687,12 +579,19 @@ export class BoardToolExecutor {
     x: number;
     y: number;
   }): Promise<ExecuteToolResult> {
-    await this.updateObject(args.objectId, {
-      x: args.x,
-      y: args.y,
-    });
-
-    return { tool: "moveObject", objectId: args.objectId };
+    return moveObjectTool(
+      {
+        resolveSelectedObjects: this.resolveSelectedObjects.bind(this),
+        getTargetAreaBounds: this.getTargetAreaBounds.bind(this),
+        updateObjectsInBatch: this.updateObjectsInBatch.bind(this),
+        updateObject: this.updateObject.bind(this),
+        ensureLoadedObjects: this.ensureLoadedObjects.bind(this),
+        objectsById: this.objectsById,
+        db: this.db,
+        objectsCollection: this.objectsCollection,
+      },
+      args,
+    );
   }
 
     async resizeObject(args: {
@@ -700,73 +599,75 @@ export class BoardToolExecutor {
     width: number;
     height: number;
   }): Promise<ExecuteToolResult> {
-    await this.updateObject(args.objectId, {
-      width: Math.max(1, args.width),
-      height: Math.max(1, args.height),
-    });
-
-    return { tool: "resizeObject", objectId: args.objectId };
+    return resizeObjectTool(
+      {
+        resolveSelectedObjects: this.resolveSelectedObjects.bind(this),
+        getTargetAreaBounds: this.getTargetAreaBounds.bind(this),
+        updateObjectsInBatch: this.updateObjectsInBatch.bind(this),
+        updateObject: this.updateObject.bind(this),
+        ensureLoadedObjects: this.ensureLoadedObjects.bind(this),
+        objectsById: this.objectsById,
+        db: this.db,
+        objectsCollection: this.objectsCollection,
+      },
+      args,
+    );
   }
 
     async updateText(args: {
     objectId: string;
     newText: string;
   }): Promise<ExecuteToolResult> {
-    await this.updateObject(args.objectId, {
-      text: args.newText.slice(0, 1_000),
-    });
-
-    return { tool: "updateText", objectId: args.objectId };
+    return updateTextTool(
+      {
+        resolveSelectedObjects: this.resolveSelectedObjects.bind(this),
+        getTargetAreaBounds: this.getTargetAreaBounds.bind(this),
+        updateObjectsInBatch: this.updateObjectsInBatch.bind(this),
+        updateObject: this.updateObject.bind(this),
+        ensureLoadedObjects: this.ensureLoadedObjects.bind(this),
+        objectsById: this.objectsById,
+        db: this.db,
+        objectsCollection: this.objectsCollection,
+      },
+      args,
+    );
   }
 
     async changeColor(args: {
     objectId: string;
     color: string;
   }): Promise<ExecuteToolResult> {
-    await this.updateObject(args.objectId, {
-      color: args.color,
-    });
-
-    return { tool: "changeColor", objectId: args.objectId };
+    return changeColorTool(
+      {
+        resolveSelectedObjects: this.resolveSelectedObjects.bind(this),
+        getTargetAreaBounds: this.getTargetAreaBounds.bind(this),
+        updateObjectsInBatch: this.updateObjectsInBatch.bind(this),
+        updateObject: this.updateObject.bind(this),
+        ensureLoadedObjects: this.ensureLoadedObjects.bind(this),
+        objectsById: this.objectsById,
+        db: this.db,
+        objectsCollection: this.objectsCollection,
+      },
+      args,
+    );
   }
 
     async deleteObjects(args: {
     objectIds: string[];
   }): Promise<ExecuteToolResult> {
-    await this.ensureLoadedObjects();
-
-    const uniqueObjectIds = Array.from(
-      new Set(args.objectIds.map((value) => value.trim())),
-    ).filter((value) => value.length > 0);
-    const existingObjectIds = uniqueObjectIds.filter((objectId) =>
-      this.objectsById.has(objectId),
+    return deleteObjectsTool(
+      {
+        resolveSelectedObjects: this.resolveSelectedObjects.bind(this),
+        getTargetAreaBounds: this.getTargetAreaBounds.bind(this),
+        updateObjectsInBatch: this.updateObjectsInBatch.bind(this),
+        updateObject: this.updateObject.bind(this),
+        ensureLoadedObjects: this.ensureLoadedObjects.bind(this),
+        objectsById: this.objectsById,
+        db: this.db,
+        objectsCollection: this.objectsCollection,
+      },
+      args,
     );
-
-    if (existingObjectIds.length === 0) {
-      return { tool: "deleteObjects", deletedCount: 0 };
-    }
-
-    for (
-      let index = 0;
-      index < existingObjectIds.length;
-      index += DELETE_BATCH_CHUNK_SIZE
-    ) {
-      const chunk = existingObjectIds.slice(
-        index,
-        index + DELETE_BATCH_CHUNK_SIZE,
-      );
-      const batch = this.db.batch();
-      chunk.forEach((objectId) => {
-        batch.delete(this.objectsCollection.doc(objectId));
-      });
-      await batch.commit();
-    }
-
-    existingObjectIds.forEach((objectId) => {
-      this.objectsById.delete(objectId);
-    });
-
-    return { tool: "deleteObjects", deletedCount: existingObjectIds.length };
   }
 
     async fitFrameToContents(args: {

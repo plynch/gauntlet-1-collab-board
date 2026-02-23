@@ -8,7 +8,7 @@ import {
   MOVE_OBJECTS_MIN_PADDING,
   VIEWPORT_SIDE_STACK_GAP,
 } from "@/features/ai/tools/board-tools/constants";
-import { toCombinedBounds, type UpdateObjectPayload } from "@/features/ai/tools/board-tools/object-utils";
+import { type UpdateObjectPayload } from "@/features/ai/tools/board-tools/object-utils";
 import { toGridDimension } from "@/features/ai/tools/board-tools/value-utils";
 
 type ExecuteToolResultLike = {
@@ -17,6 +17,99 @@ type ExecuteToolResultLike = {
   createdObjectIds?: string[];
   deletedCount?: number;
 };
+
+type Bounds = { left: number; right: number; top: number; bottom: number };
+
+function clampPosition(
+  value: number,
+  min: number,
+  max: number,
+): number {
+  if (max < min) {
+    return min;
+  }
+  return Math.min(max, Math.max(min, value));
+}
+
+function arrangeToVerticalSide(
+  objects: BoardObjectSnapshot[],
+  side: "left" | "right",
+  bounds: Bounds,
+  padding: number,
+): void {
+  const gap = VIEWPORT_SIDE_STACK_GAP;
+  const maxWidth = Math.max(...objects.map((objectItem) => objectItem.width));
+  const maxHeight = Math.max(...objects.map((objectItem) => objectItem.height));
+  const availableHeight = Math.max(
+    maxHeight,
+    bounds.bottom - bounds.top - padding * 2,
+  );
+  const rowsPerColumn = Math.max(
+    1,
+    Math.floor((availableHeight + gap) / (maxHeight + gap)),
+  );
+
+  objects.forEach((objectItem, index) => {
+    const columnIndex = Math.floor(index / rowsPerColumn);
+    const rowIndex = index % rowsPerColumn;
+    const targetX =
+      side === "left"
+        ? bounds.left + padding + columnIndex * (maxWidth + gap)
+        : bounds.right - padding - objectItem.width - columnIndex * (maxWidth + gap);
+    const targetY = bounds.top + padding + rowIndex * (maxHeight + gap);
+
+    objectItem.x = clampPosition(
+      targetX,
+      bounds.left,
+      bounds.right - objectItem.width,
+    );
+    objectItem.y = clampPosition(
+      targetY,
+      bounds.top,
+      bounds.bottom - objectItem.height,
+    );
+  });
+}
+
+function arrangeToHorizontalSide(
+  objects: BoardObjectSnapshot[],
+  side: "top" | "bottom",
+  bounds: Bounds,
+  padding: number,
+): void {
+  const gap = VIEWPORT_SIDE_STACK_GAP;
+  const maxWidth = Math.max(...objects.map((objectItem) => objectItem.width));
+  const maxHeight = Math.max(...objects.map((objectItem) => objectItem.height));
+  const availableWidth = Math.max(
+    maxWidth,
+    bounds.right - bounds.left - padding * 2,
+  );
+  const columnsPerRow = Math.max(
+    1,
+    Math.floor((availableWidth + gap) / (maxWidth + gap)),
+  );
+
+  objects.forEach((objectItem, index) => {
+    const rowIndex = Math.floor(index / columnsPerRow);
+    const columnIndex = index % columnsPerRow;
+    const targetX = bounds.left + padding + columnIndex * (maxWidth + gap);
+    const targetY =
+      side === "top"
+        ? bounds.top + padding + rowIndex * (maxHeight + gap)
+        : bounds.bottom - padding - objectItem.height - rowIndex * (maxHeight + gap);
+
+    objectItem.x = clampPosition(
+      targetX,
+      bounds.left,
+      bounds.right - objectItem.width,
+    );
+    objectItem.y = clampPosition(
+      targetY,
+      bounds.top,
+      bounds.bottom - objectItem.height,
+    );
+  });
+}
 
 type MoveEditDeleteContext = {
   resolveSelectedObjects: (objectIds: string[]) => Promise<BoardObjectSnapshot[]>;
@@ -68,9 +161,8 @@ export async function moveObjectsTool(
     dx = args.toPoint.x - anchor.x;
     dy = args.toPoint.y - anchor.y;
   } else if (args.toViewportSide) {
-    const selectedBounds = toCombinedBounds(selectedObjects);
     const targetBounds = context.getTargetAreaBounds(args.toViewportSide.viewportBounds);
-    if (!selectedBounds || !targetBounds) {
+    if (!targetBounds) {
       return { tool: "moveObjects" };
     }
 
@@ -80,61 +172,19 @@ export async function moveObjectsTool(
       MOVE_OBJECTS_MIN_PADDING,
       MOVE_OBJECTS_MAX_PADDING,
     );
-    const groupWidth = Math.max(1, selectedBounds.right - selectedBounds.left);
-    const groupHeight = Math.max(1, selectedBounds.bottom - selectedBounds.top);
-    const targetLeftBase =
-      args.toViewportSide.side === "left"
-        ? targetBounds.left + padding
-        : args.toViewportSide.side === "right"
-          ? targetBounds.right - groupWidth - padding
-          : selectedBounds.left;
-    const targetTopBase =
-      args.toViewportSide.side === "top"
-        ? targetBounds.top + padding
-        : args.toViewportSide.side === "bottom"
-          ? targetBounds.bottom - groupHeight - padding
-          : selectedBounds.top;
-    const minLeft = targetBounds.left;
-    const maxLeft = targetBounds.right - groupWidth;
-    const minTop = targetBounds.top;
-    const maxTop = targetBounds.bottom - groupHeight;
-    const targetLeft =
-      minLeft <= maxLeft
-        ? Math.min(maxLeft, Math.max(minLeft, targetLeftBase))
-        : targetLeftBase;
-    const targetTop =
-      minTop <= maxTop
-        ? Math.min(maxTop, Math.max(minTop, targetTopBase))
-        : targetTopBase;
-    const isLeftOrRight =
-      args.toViewportSide.side === "left" || args.toViewportSide.side === "right";
-
-    if (isLeftOrRight) {
-      const ordered = [...selectedObjects].sort((first, second) => (first.y - second.y) || (first.x - second.x));
-      const totalHeight =
-        ordered.reduce((sum, objectItem) => sum + objectItem.height, 0) +
-        Math.max(0, ordered.length - 1) * VIEWPORT_SIDE_STACK_GAP;
-      const stackHeightMaxTop = Math.max(minTop, targetBounds.bottom - totalHeight);
-      const startTop = Math.min(stackHeightMaxTop, Math.max(minTop, targetTop));
-      let yCursor = startTop;
-      ordered.forEach((objectItem) => {
-        objectItem.x = targetLeft;
-        objectItem.y = yCursor;
-        yCursor += objectItem.height + VIEWPORT_SIDE_STACK_GAP;
-      });
+    if (
+      args.toViewportSide.side === "left" ||
+      args.toViewportSide.side === "right"
+    ) {
+      const ordered = [...selectedObjects].sort(
+        (first, second) => first.y - second.y || first.x - second.x,
+      );
+      arrangeToVerticalSide(ordered, args.toViewportSide.side, targetBounds, padding);
     } else {
-      const ordered = [...selectedObjects].sort((first, second) => (first.x - second.x) || (first.y - second.y));
-      const totalWidth =
-        ordered.reduce((sum, objectItem) => sum + objectItem.width, 0) +
-        Math.max(0, ordered.length - 1) * VIEWPORT_SIDE_STACK_GAP;
-      const maxRowLeft = targetBounds.right - totalWidth;
-      const startLeft = Math.min(maxRowLeft, Math.max(minLeft, targetLeft));
-      let xCursor = startLeft;
-      ordered.forEach((objectItem) => {
-        objectItem.x = xCursor;
-        objectItem.y = targetTop;
-        xCursor += objectItem.width + VIEWPORT_SIDE_STACK_GAP;
-      });
+      const ordered = [...selectedObjects].sort(
+        (first, second) => first.x - second.x || first.y - second.y,
+      );
+      arrangeToHorizontalSide(ordered, args.toViewportSide.side, targetBounds, padding);
     }
 
     await context.updateObjectsInBatch(

@@ -5,9 +5,13 @@ Real-time collaborative whiteboard with an OpenAI-powered command drawer, determ
 ## 📌 Quick Links
 
 - 🌐 Live App: [https://collab-board-backend--gauntlet-1-collab-board.us-east5.hosted.app/](https://collab-board-backend--gauntlet-1-collab-board.us-east5.hosted.app/)
+- 🚨 Audit Report (download): [AUDIT.md](https://collab-board-backend--gauntlet-1-collab-board.us-east5.hosted.app/submission/AUDIT.md)
+- 🛠 Mitigation Plan (download): [MITIGATIONS.md](https://collab-board-backend--gauntlet-1-collab-board.us-east5.hosted.app/submission/MITIGATIONS.md)
 - 📄 AI Cost Analysis Markdown (download): [Download](https://collab-board-backend--gauntlet-1-collab-board.us-east5.hosted.app/submission/AI%20Cost%20Analysis%20-%20Collabboard.md)
 - 📝 AI Development Log Markdown (download): [Download](https://collab-board-backend--gauntlet-1-collab-board.us-east5.hosted.app/submission/AI%20Development%20Log%20-%20Collabboard.md)
 - 📂 Submission files in repo:
+  - `public/submission/AUDIT.md`
+  - `public/submission/MITIGATIONS.md`
   - `public/submission/AI Cost Analysis - Collabboard.md`
   - `public/submission/AI Development Log - Collabboard.md`
   - `public/submission/AI Cost Analysis - Collabboard - Google Docs.pdf`

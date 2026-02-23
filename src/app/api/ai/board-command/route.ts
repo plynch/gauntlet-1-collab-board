@@ -45,6 +45,7 @@ import {
   listAllBoardObjectIds,
   writeAiAuditLogIfEnabled,
 } from "@/features/ai/server/board-command-plan-executor";
+import { shouldExecuteDeterministicPlan } from "@/features/ai/server/board-command-deterministic-policy";
 import {
   createHttpError,
   getAiTraceFlushTimeoutMs,
@@ -71,65 +72,6 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-const SAFE_DETERMINISTIC_INTENT_PREFIXES = [
-  "create-",
-  "move-",
-  "clear-board",
-  "delete",
-  "arrange-",
-  "align-",
-  "distribute-",
-  "fit-frame",
-  "resize-",
-  "change-color",
-  "update-text",
-  "select-",
-  "unselect",
-] as const;
-const SAFE_DETERMINISTIC_EXACT_INTENTS = new Set([
-  "create-frame",
-  "create-sticky",
-  "create-sticky-batch",
-  "create-sticky-grid",
-  "swot-template",
-  "add-swot-item",
-  "create-journey-map",
-  "create-retrospective-board",
-  "arrange-grid",
-  "clear-board",
-  "clear-board-empty",
-  "move-selected",
-  "move-all",
-  "distribute-objects",
-  "align-objects",
-  "fit-frame-to-contents",
-  "resize-selected",
-  "change-color",
-  "update-text",
-  "delete-selected",
-  "unselect",
-  "select-all",
-  "select-visible",
-]);
-function isSafeDeterministicIntent(intent: string): boolean {
-  if (SAFE_DETERMINISTIC_EXACT_INTENTS.has(intent)) {
-    return true;
-  }
-  return SAFE_DETERMINISTIC_INTENT_PREFIXES.some((prefix) =>
-    intent.startsWith(prefix),
-  );
-}
-
-function shouldExecuteDeterministicPlan(
-  plannerMode: string,
-  intent: string,
-): boolean {
-  if (plannerMode === "deterministic-only") {
-    return true;
-  }
-
-  return isSafeDeterministicIntent(intent);
-}
 
 export async function POST(request: NextRequest) {
   let activeTrace: ReturnType<typeof createAiTraceRun> | null = null;

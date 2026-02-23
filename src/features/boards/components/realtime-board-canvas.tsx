@@ -119,7 +119,6 @@ import {
   RESIZE_THROTTLE_MS,
   RIGHT_PANEL_WIDTH,
   ROTATE_THROTTLE_MS,
-  SELECTED_OBJECT_HALO,
   SNAP_TO_GRID_STORAGE_KEY,
   STICKY_TEXT_SYNC_THROTTLE_MS,
   SWOT_SECTION_COLORS,
@@ -157,7 +156,7 @@ import { ConnectorObjectArticle } from "@/features/boards/components/realtime-ca
 import { LeftToolsPanel } from "@/features/boards/components/realtime-canvas/legacy/left-tools-panel";
 import { RightPresencePanel } from "@/features/boards/components/realtime-canvas/legacy/right-presence-panel";
 import { SelectionHudPanel } from "@/features/boards/components/realtime-canvas/legacy/selection-hud-panel";
-import { ShapeSelectionOverlays } from "@/features/boards/components/realtime-canvas/legacy/shape-selection-overlays";
+import { ShapeObjectArticle } from "@/features/boards/components/realtime-canvas/legacy/shape-object-article";
 import { StickyObjectArticle } from "@/features/boards/components/realtime-canvas/legacy/sticky-object-article";
 import { StageOverlays } from "@/features/boards/components/realtime-canvas/legacy/stage-overlays";
 import { StageAxisOverlay } from "@/features/boards/components/realtime-canvas/legacy/stage-axis-overlay";
@@ -188,7 +187,6 @@ import {
   createRealtimeWriteMetrics,
   isWriteMetricsDebugEnabled,
 } from "@/features/boards/lib/realtime-write-metrics";
-import { GridContainer } from "@/features/ui/components/grid-container";
 import { useTheme } from "@/features/theme/use-theme";
 import { getFirebaseClientDb } from "@/lib/firebase/client";
 
@@ -3056,6 +3054,21 @@ export default function RealtimeBoardCanvas({
     ],
   );
 
+  const saveGridContainerCellColors = useCallback(
+    (objectId: string, nextColors: string[]) => {
+      void updateDoc(doc(db, `boards/${boardId}/objects/${objectId}`), {
+        gridCellColors: nextColors,
+        updatedAt: serverTimestamp(),
+      }).catch((error) => {
+        console.error("Failed to update grid container colors", error);
+        setBoardError(
+          toBoardErrorMessage(error, "Failed to update grid container colors."),
+        );
+      });
+    },
+    [boardId, db],
+  );
+
   const saveSelectedObjectsColor = useCallback(
     async (color: string) => {
       if (!canEditRef.current) {
@@ -4674,281 +4687,45 @@ export default function RealtimeBoardCanvas({
                 }
 
                 return (
-                  <article
+                  <ShapeObjectArticle
                     key={objectItem.id}
-                    data-board-object="true"
-                    onPointerDown={(event) => {
-                      event.stopPropagation();
-                      if (event.shiftKey) {
-                        toggleObjectSelection(objectItem.id);
-                        return;
-                      }
-
-                      if (shouldPreserveGroupSelection(objectItem.id)) {
-                        return;
-                      }
-                      selectSingleObject(objectItem.id);
-                    }}
-                    style={{
-                      position: "absolute",
-                      left: objectX,
-                      top: objectY,
-                      width: objectWidth,
-                      height: objectHeight,
-                      zIndex: 0,
-                      isolation: "isolate",
-                      overflow: "visible",
-                      boxShadow: isSelected
-                        ? objectItem.type === "line"
-                          ? "none"
-                          : SELECTED_OBJECT_HALO
-                        : "none",
-                      borderRadius:
-                        objectItem.type === "circle"
-                          ? "999px"
-                          : objectItem.type === "line" ||
-                              objectItem.type === "gridContainer" ||
-                              objectItem.type === "triangle" ||
-                              objectItem.type === "star"
-                            ? 0
-                            : 4,
-                      transform:
-                        objectItem.type === "line" ||
-                        objectItem.type === "gridContainer"
-                          ? "none"
-                          : `rotate(${objectRotationDeg}deg)`,
-                      transformOrigin: "center center",
-                      transition: hasDraftGeometry
-                        ? "none"
-                        : "left 55ms linear, top 55ms linear, width 55ms linear, height 55ms linear, transform 55ms linear",
-                    }}
-                  >
-                    <div
-                      onPointerDown={(event) =>
-                        startObjectDrag(objectItem.id, event)
-                      }
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        cursor: canEdit
-                          ? isObjectDragging
-                            ? "grabbing"
-                            : "grab"
-                          : "default",
-                        border:
-                          objectItem.type === "line" ||
-                          isPolygonShape ||
-                          isGridContainer
-                            ? "none"
-                            : `2px solid ${objectSurfaceColor}`,
-                        borderRadius:
-                          objectItem.type === "rect"
-                            ? 3
-                            : objectItem.type === "circle"
-                              ? "999px"
-                              : 0,
-                        background:
-                          objectItem.type === "line" ||
-                          isPolygonShape ||
-                          isGridContainer
-                            ? "transparent"
-                            : renderedObjectColor,
-                        boxShadow:
-                          objectItem.type === "line" ||
-                          isPolygonShape ||
-                          isGridContainer
-                            ? "none"
-                            : "0 3px 10px rgba(0,0,0,0.08)",
-                      }}
-                    >
-                      {objectItem.type === "line" ? (
-                        <div
-                          style={{
-                            width: "100%",
-                            height: 4,
-                            borderRadius: 999,
-                            background: renderedObjectColor,
-                            transform: `rotate(${objectRotationDeg}deg)`,
-                            transformOrigin: "center center",
-                          }}
-                        />
-                      ) : objectItem.type === "triangle" ? (
-                        <svg
-                          viewBox="0 0 100 100"
-                          width="100%"
-                          height="100%"
-                          aria-hidden="true"
-                          style={{ display: "block" }}
-                        >
-                          <polygon
-                            points="50,6 94,92 6,92"
-                            fill={renderedObjectColor}
-                            stroke={
-                              resolvedTheme === "dark"
-                                ? "rgba(241, 245, 249, 0.72)"
-                                : "rgba(15, 23, 42, 0.62)"
-                            }
-                            strokeWidth="5"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      ) : objectItem.type === "star" ? (
-                        <svg
-                          viewBox="0 0 100 100"
-                          width="100%"
-                          height="100%"
-                          aria-hidden="true"
-                          style={{ display: "block" }}
-                        >
-                          <polygon
-                            points="50,7 61,38 95,38 67,57 78,90 50,70 22,90 33,57 5,38 39,38"
-                            fill={renderedObjectColor}
-                            stroke={
-                              resolvedTheme === "dark"
-                                ? "rgba(241, 245, 249, 0.72)"
-                                : "rgba(15, 23, 42, 0.62)"
-                            }
-                            strokeWidth="5"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      ) : objectItem.type === "gridContainer" ? (
-                        <GridContainer
-                          rows={gridRows}
-                          cols={gridCols}
-                          gap={gridGap}
-                          minCellHeight={0}
-                          className="h-full w-full rounded-[10px] border-2 p-2 shadow-none"
-                          cellClassName="rounded-lg border-2 p-2"
-                          containerColor={renderedObjectColor}
-                          containerTitle={gridContainerTitle}
-                          cellColors={gridCellColors}
-                          sectionTitles={gridSectionTitles}
-                          chromeTone={resolvedTheme}
-                          sectionTitleTextColor={
-                            resolvedTheme === "dark"
-                              ? "rgba(241, 245, 249, 0.95)"
-                              : "#1f2937"
-                          }
-                          sectionBodyTextColor={
-                            resolvedTheme === "dark"
-                              ? "rgba(226, 232, 240, 0.95)"
-                              : "#334155"
-                          }
-                          containerTitleTextColor={
-                            resolvedTheme === "dark"
-                              ? "rgba(248, 250, 252, 0.98)"
-                              : "#0f172a"
-                          }
-                          showGridControls={isSingleSelected && canEdit}
-                          minRows={1}
-                          maxRows={GRID_CONTAINER_MAX_ROWS}
-                          minCols={1}
-                          maxCols={GRID_CONTAINER_MAX_COLS}
-                          onGridDimensionsChange={
-                            canEdit
-                              ? (nextRows, nextCols) => {
-                                  void updateGridContainerDimensions(
-                                    objectItem.id,
-                                    nextRows,
-                                    nextCols,
-                                  );
-                                }
-                              : undefined
-                          }
-                          onContainerTitleChange={
-                            canEdit
-                              ? (nextTitle) => {
-                                  const currentDraft =
-                                    getGridDraftForObject(objectItem);
-                                  queueGridContentSync(
-                                    objectItem.id,
-                                    {
-                                      ...currentDraft,
-                                      containerTitle: nextTitle.slice(0, 120),
-                                    },
-                                    { immediate: true },
-                                  );
-                                }
-                              : undefined
-                          }
-                          onSectionTitleChange={
-                            canEdit
-                              ? (sectionIndex, nextTitle) => {
-                                  const currentDraft =
-                                    getGridDraftForObject(objectItem);
-                                  const nextTitles = [
-                                    ...currentDraft.sectionTitles,
-                                  ];
-                                  nextTitles[sectionIndex] = nextTitle.slice(
-                                    0,
-                                    80,
-                                  );
-                                  queueGridContentSync(
-                                    objectItem.id,
-                                    {
-                                      ...currentDraft,
-                                      sectionTitles: nextTitles,
-                                    },
-                                    { immediate: true },
-                                  );
-                                }
-                              : undefined
-                          }
-                          onCellColorChange={
-                            canEdit
-                              ? (cellIndex, color) => {
-                                  const nextColors = Array.from(
-                                    { length: gridTotalCells },
-                                    (_, index) =>
-                                      gridCellColors[index] ?? "transparent",
-                                  );
-                                  nextColors[cellIndex] = color;
-                                  void updateDoc(
-                                    doc(
-                                      db,
-                                      `boards/${boardId}/objects/${objectItem.id}`,
-                                    ),
-                                    {
-                                      gridCellColors: nextColors,
-                                      updatedAt: serverTimestamp(),
-                                    },
-                                  ).catch((error) => {
-                                    console.error(
-                                      "Failed to update grid container colors",
-                                      error,
-                                    );
-                                    setBoardError(
-                                      toBoardErrorMessage(
-                                        error,
-                                        "Failed to update grid container colors.",
-                                      ),
-                                    );
-                                  });
-                                }
-                              : undefined
-                          }
-                          showCellColorPickers
-                        />
-                      ) : null}
-                    </div>
-                    <ShapeSelectionOverlays
-                      objectItem={objectItem}
-                      objectLabelText={objectLabelText}
-                      objectWidth={objectWidth}
-                      renderedObjectColor={renderedObjectColor}
-                      resolvedTheme={resolvedTheme}
-                      isSingleSelected={isSingleSelected}
-                      canEdit={canEdit}
-                      lineEndpointOffsets={lineEndpointOffsets}
-                      startShapeRotate={startShapeRotate}
-                      startCornerResize={startCornerResize}
-                      startLineEndpointResize={startLineEndpointResize}
-                    />
-                  </article>
+                    objectItem={objectItem}
+                    objectX={objectX}
+                    objectY={objectY}
+                    objectWidth={objectWidth}
+                    objectHeight={objectHeight}
+                    objectRotationDeg={objectRotationDeg}
+                    hasDraftGeometry={hasDraftGeometry}
+                    renderedObjectColor={renderedObjectColor}
+                    objectSurfaceColor={objectSurfaceColor}
+                    objectLabelText={objectLabelText}
+                    isSelected={isSelected}
+                    isSingleSelected={isSingleSelected}
+                    canEdit={canEdit}
+                    isObjectDragging={isObjectDragging}
+                    resolvedTheme={resolvedTheme}
+                    lineEndpointOffsets={lineEndpointOffsets}
+                    isPolygonShape={isPolygonShape}
+                    isGridContainer={isGridContainer}
+                    gridRows={gridRows}
+                    gridCols={gridCols}
+                    gridGap={gridGap}
+                    gridTotalCells={gridTotalCells}
+                    gridCellColors={gridCellColors}
+                    gridContainerTitle={gridContainerTitle}
+                    gridSectionTitles={gridSectionTitles}
+                    shouldPreserveGroupSelection={shouldPreserveGroupSelection}
+                    selectSingleObject={selectSingleObject}
+                    toggleObjectSelection={toggleObjectSelection}
+                    startObjectDrag={startObjectDrag}
+                    startShapeRotate={startShapeRotate}
+                    startCornerResize={startCornerResize}
+                    startLineEndpointResize={startLineEndpointResize}
+                    updateGridContainerDimensions={updateGridContainerDimensions}
+                    getGridDraftForObject={getGridDraftForObject}
+                    queueGridContentSync={queueGridContentSync}
+                    saveGridContainerCellColors={saveGridContainerCellColors}
+                  />
                 );
               })}
             </div>

@@ -20,7 +20,6 @@ import {
 import { getErrorReason } from "@/features/ai/server/board-command-runtime-config";
 import { BoardToolExecutor } from "@/features/ai/tools/board-tools";
 import type { BoardObjectSnapshot, TemplatePlan, ViewportBounds } from "@/features/ai/types";
-
 type AttemptOpenAiPlannerOptions = {
   message: string;
   boardState: BoardObjectSnapshot[];

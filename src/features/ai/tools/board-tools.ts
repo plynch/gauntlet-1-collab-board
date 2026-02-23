@@ -10,7 +10,12 @@ import type {
   TemplatePlan,
   ViewportBounds,
 } from "@/features/ai/types";
-import { toNearestStickyPaletteColor } from "@/features/ai/tools/board-tools/color-utils";
+import {
+  createShapeBatchTool,
+  createShapeTool,
+  createStickyBatchTool,
+  createStickyNoteTool,
+} from "@/features/ai/tools/board-tools/create-sticky-shape-tools";
 import {
   DELETE_BATCH_CHUNK_SIZE,
   FRAME_FIT_DEFAULT_PADDING,
@@ -32,21 +37,6 @@ import {
   MOVE_OBJECTS_DEFAULT_PADDING,
   MOVE_OBJECTS_MAX_PADDING,
   MOVE_OBJECTS_MIN_PADDING,
-  SHAPE_BATCH_DEFAULT_HEIGHT,
-  SHAPE_BATCH_DEFAULT_WIDTH,
-  SHAPE_BATCH_MAX_COLUMNS,
-  SHAPE_BATCH_MAX_COUNT,
-  SHAPE_BATCH_MAX_GAP,
-  SHAPE_BATCH_MIN_COLUMNS,
-  SHAPE_BATCH_MIN_COUNT,
-  SHAPE_BATCH_MIN_GAP,
-  STICKY_BATCH_DEFAULT_COLUMNS,
-  STICKY_BATCH_DEFAULT_GAP_X,
-  STICKY_BATCH_DEFAULT_GAP_Y,
-  STICKY_BATCH_MAX_COLUMNS,
-  STICKY_BATCH_MAX_COUNT,
-  STICKY_BATCH_MIN_COLUMNS,
-  STICKY_BATCH_MIN_COUNT,
   VIEWPORT_SIDE_STACK_GAP,
   type BoardToolExecutorOptions,
   type LayoutAlignment,
@@ -358,18 +348,18 @@ export class BoardToolExecutor {
     y: number;
     color: string;
   }): Promise<ExecuteToolResult> {
-    const normalizedColor = toNearestStickyPaletteColor(args.color);
-    const created = await this.createObject({
-      type: "sticky",
-      text: args.text.slice(0, 1_000),
-      x: args.x,
-      y: args.y,
-      width: 180,
-      height: 140,
-      color: normalizedColor,
-    });
-
-    return { tool: "createStickyNote", objectId: created.id };
+    return createStickyNoteTool(
+      {
+        ensureLoadedObjects: this.ensureLoadedObjects.bind(this),
+        createObject: this.createObject.bind(this),
+        db: this.db,
+        objectsCollection: this.objectsCollection,
+        objectsById: this.objectsById,
+        allocateZIndex: () => this.nextZIndex++,
+        userId: this.userId,
+      },
+      args,
+    );
   }
 
     async createStickyBatch(args: {
@@ -382,89 +372,18 @@ export class BoardToolExecutor {
     gapY?: number;
     textPrefix?: string;
   }): Promise<ExecuteToolResult> {
-    await this.ensureLoadedObjects();
-
-    const count = toGridDimension(
-      args.count,
-      STICKY_BATCH_MIN_COUNT,
-      STICKY_BATCH_MIN_COUNT,
-      STICKY_BATCH_MAX_COUNT,
+    return createStickyBatchTool(
+      {
+        ensureLoadedObjects: this.ensureLoadedObjects.bind(this),
+        createObject: this.createObject.bind(this),
+        db: this.db,
+        objectsCollection: this.objectsCollection,
+        objectsById: this.objectsById,
+        allocateZIndex: () => this.nextZIndex++,
+        userId: this.userId,
+      },
+      args,
     );
-    const columns = toGridDimension(
-      args.columns,
-      STICKY_BATCH_DEFAULT_COLUMNS,
-      STICKY_BATCH_MIN_COLUMNS,
-      STICKY_BATCH_MAX_COLUMNS,
-    );
-    const gapX = toGridDimension(
-      args.gapX,
-      STICKY_BATCH_DEFAULT_GAP_X,
-      LAYOUT_GRID_MIN_GAP,
-      LAYOUT_GRID_MAX_GAP,
-    );
-    const gapY = toGridDimension(
-      args.gapY,
-      STICKY_BATCH_DEFAULT_GAP_Y,
-      LAYOUT_GRID_MIN_GAP,
-      LAYOUT_GRID_MAX_GAP,
-    );
-    const normalizedColor = toNearestStickyPaletteColor(args.color);
-    const textPrefix = toOptionalString(args.textPrefix, 960) ?? "Sticky";
-    const createdObjectIds: string[] = [];
-
-    for (let index = 0; index < count; index += DELETE_BATCH_CHUNK_SIZE) {
-      const chunkCount = Math.min(DELETE_BATCH_CHUNK_SIZE, count - index);
-      const batch = this.db.batch();
-
-      for (let offset = 0; offset < chunkCount; offset += 1) {
-        const absoluteIndex = index + offset;
-        const row = Math.floor(absoluteIndex / columns);
-        const column = absoluteIndex % columns;
-        const x = args.originX + column * gapX;
-        const y = args.originY + row * gapY;
-        const stickyText =
-          count === 1 ? textPrefix : `${textPrefix} ${absoluteIndex + 1}`;
-        const docRef = this.objectsCollection.doc();
-        const payload = {
-          type: "sticky",
-          zIndex: this.nextZIndex++,
-          x,
-          y,
-          width: 180,
-          height: 140,
-          rotationDeg: 0,
-          color: normalizedColor,
-          text: stickyText.slice(0, 1_000),
-          createdBy: this.userId,
-          createdAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        } satisfies Record<string, unknown>;
-
-        batch.set(docRef, payload);
-        this.objectsById.set(docRef.id, {
-          id: docRef.id,
-          type: "sticky",
-          zIndex: payload.zIndex as number,
-          x: payload.x as number,
-          y: payload.y as number,
-          width: payload.width as number,
-          height: payload.height as number,
-          rotationDeg: payload.rotationDeg as number,
-          color: payload.color as string,
-          text: payload.text as string,
-          updatedAt: null,
-        });
-        createdObjectIds.push(docRef.id);
-      }
-
-      await batch.commit();
-    }
-
-    return {
-      tool: "createStickyBatch",
-      objectId: createdObjectIds[0],
-      createdObjectIds,
-    };
   }
 
     async createShape(args: {
@@ -475,22 +394,18 @@ export class BoardToolExecutor {
     height: number;
     color: string;
   }): Promise<ExecuteToolResult> {
-    if (args.type === "gridContainer" || isConnectorType(args.type)) {
-      throw new Error("createShape only supports non-connector board shapes.");
-    }
-
-    const minimumWidth = args.type === "line" ? 24 : 20;
-    const minimumHeight = args.type === "line" ? 2 : 20;
-    const created = await this.createObject({
-      type: args.type,
-      x: args.x,
-      y: args.y,
-      width: Math.max(minimumWidth, args.width),
-      height: Math.max(minimumHeight, args.height),
-      color: args.color,
-    });
-
-    return { tool: "createShape", objectId: created.id };
+    return createShapeTool(
+      {
+        ensureLoadedObjects: this.ensureLoadedObjects.bind(this),
+        createObject: this.createObject.bind(this),
+        db: this.db,
+        objectsCollection: this.objectsCollection,
+        objectsById: this.objectsById,
+        allocateZIndex: () => this.nextZIndex++,
+        userId: this.userId,
+      },
+      args,
+    );
   }
 
     async createShapeBatch(args: {
@@ -506,77 +421,18 @@ export class BoardToolExecutor {
     gapX?: number;
     gapY?: number;
   }): Promise<ExecuteToolResult> {
-    await this.ensureLoadedObjects();
-
-    const count = toGridDimension(
-      args.count,
-      SHAPE_BATCH_MIN_COUNT,
-      SHAPE_BATCH_MIN_COUNT,
-      SHAPE_BATCH_MAX_COUNT,
+    return createShapeBatchTool(
+      {
+        ensureLoadedObjects: this.ensureLoadedObjects.bind(this),
+        createObject: this.createObject.bind(this),
+        db: this.db,
+        objectsCollection: this.objectsCollection,
+        objectsById: this.objectsById,
+        allocateZIndex: () => this.nextZIndex++,
+        userId: this.userId,
+      },
+      args,
     );
-    const columns = toGridDimension(
-      args.columns,
-      Math.min(SHAPE_BATCH_MAX_COLUMNS, Math.max(SHAPE_BATCH_MIN_COLUMNS, Math.ceil(Math.sqrt(count)))),
-      SHAPE_BATCH_MIN_COLUMNS,
-      SHAPE_BATCH_MAX_COLUMNS,
-    );
-    const minimumWidth = args.type === "line" ? 24 : 20;
-    const minimumHeight = args.type === "line" ? 2 : 20;
-    const width = Math.max(
-      minimumWidth,
-      toGridDimension(
-        args.width,
-        SHAPE_BATCH_DEFAULT_WIDTH,
-        minimumWidth,
-        2_000,
-      ),
-    );
-    const height = Math.max(
-      minimumHeight,
-      toGridDimension(
-        args.height,
-        SHAPE_BATCH_DEFAULT_HEIGHT,
-        minimumHeight,
-        2_000,
-      ),
-    );
-    const gapX = toGridDimension(
-      args.gapX,
-      Math.max(32, width + 24),
-      SHAPE_BATCH_MIN_GAP,
-      SHAPE_BATCH_MAX_GAP,
-    );
-    const gapY = toGridDimension(
-      args.gapY,
-      Math.max(32, height + 24),
-      SHAPE_BATCH_MIN_GAP,
-      SHAPE_BATCH_MAX_GAP,
-    );
-    const baseColor = toOptionalString(args.color, 32) ?? "#93c5fd";
-    const colorPool = (args.colors ?? [])
-      .map((value) => toOptionalString(value, 32))
-      .filter((value): value is string => Boolean(value));
-    const createdObjectIds: string[] = [];
-
-    for (let index = 0; index < count; index += 1) {
-      const row = Math.floor(index / columns);
-      const column = index % columns;
-      const created = await this.createObject({
-        type: args.type,
-        x: args.originX + column * (width + gapX),
-        y: args.originY + row * (height + gapY),
-        width,
-        height,
-        color: colorPool[index % colorPool.length] ?? baseColor,
-      });
-      createdObjectIds.push(created.id);
-    }
-
-    return {
-      tool: "createShapeBatch",
-      objectId: createdObjectIds[0],
-      createdObjectIds,
-    };
   }
 
     async createGridContainer(args: {

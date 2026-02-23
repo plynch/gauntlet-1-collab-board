@@ -1,6 +1,5 @@
 import {
   FieldValue,
-  Timestamp,
   type Firestore,
 } from "firebase-admin/firestore";
 
@@ -11,6 +10,68 @@ import type {
   TemplatePlan,
   ViewportBounds,
 } from "@/features/ai/types";
+import { toNearestStickyPaletteColor } from "@/features/ai/tools/board-tools/color-utils";
+import {
+  DELETE_BATCH_CHUNK_SIZE,
+  FRAME_FIT_DEFAULT_PADDING,
+  FRAME_FIT_MAX_PADDING,
+  FRAME_FIT_MIN_PADDING,
+  GRID_DEFAULT_GAP,
+  GRID_MAX_COLS,
+  GRID_MAX_GAP,
+  GRID_MAX_ROWS,
+  GRID_MIN_COLS,
+  GRID_MIN_GAP,
+  GRID_MIN_ROWS,
+  LAYOUT_GRID_DEFAULT_COLUMNS,
+  LAYOUT_GRID_DEFAULT_GAP,
+  LAYOUT_GRID_MAX_COLUMNS,
+  LAYOUT_GRID_MAX_GAP,
+  LAYOUT_GRID_MIN_COLUMNS,
+  LAYOUT_GRID_MIN_GAP,
+  MOVE_OBJECTS_DEFAULT_PADDING,
+  MOVE_OBJECTS_MAX_PADDING,
+  MOVE_OBJECTS_MIN_PADDING,
+  SHAPE_BATCH_DEFAULT_HEIGHT,
+  SHAPE_BATCH_DEFAULT_WIDTH,
+  SHAPE_BATCH_MAX_COLUMNS,
+  SHAPE_BATCH_MAX_COUNT,
+  SHAPE_BATCH_MAX_GAP,
+  SHAPE_BATCH_MIN_COLUMNS,
+  SHAPE_BATCH_MIN_COUNT,
+  SHAPE_BATCH_MIN_GAP,
+  STICKY_BATCH_DEFAULT_COLUMNS,
+  STICKY_BATCH_DEFAULT_GAP_X,
+  STICKY_BATCH_DEFAULT_GAP_Y,
+  STICKY_BATCH_MAX_COLUMNS,
+  STICKY_BATCH_MAX_COUNT,
+  STICKY_BATCH_MIN_COLUMNS,
+  STICKY_BATCH_MIN_COUNT,
+  VIEWPORT_SIDE_STACK_GAP,
+  type BoardToolExecutorOptions,
+  type LayoutAlignment,
+} from "@/features/ai/tools/board-tools/constants";
+import {
+  boundsOverlap,
+  isBackgroundContainerType,
+  isConnectorType,
+  pickAnchorsByDirection,
+  toAnchorPoint,
+  toBoardObjectDoc,
+  toCombinedBounds,
+  toObjectBounds,
+  toObjectCenter,
+  type UpdateObjectPayload,
+} from "@/features/ai/tools/board-tools/object-utils";
+import {
+  normalizeSectionValues,
+  toGridCellColors,
+  toGridDimension,
+  toNullableFiniteNumber,
+  toNumber,
+  toOptionalString,
+  toStringArray,
+} from "@/features/ai/tools/board-tools/value-utils";
 import { getFirebaseAdminDb } from "@/lib/firebase/admin";
 
 type ExecuteToolResult = {
@@ -19,447 +80,6 @@ type ExecuteToolResult = {
   createdObjectIds?: string[];
   deletedCount?: number;
 };
-
-const DELETE_BATCH_CHUNK_SIZE = 400;
-const GRID_MIN_ROWS = 1;
-const GRID_MAX_ROWS = 8;
-const GRID_MIN_COLS = 1;
-const GRID_MAX_COLS = 8;
-const GRID_MIN_GAP = 0;
-const GRID_MAX_GAP = 80;
-const GRID_DEFAULT_GAP = 2;
-const LAYOUT_GRID_MIN_COLUMNS = 1;
-const LAYOUT_GRID_MAX_COLUMNS = 8;
-const LAYOUT_GRID_DEFAULT_COLUMNS = 3;
-const LAYOUT_GRID_MIN_GAP = 0;
-const LAYOUT_GRID_MAX_GAP = 400;
-const LAYOUT_GRID_DEFAULT_GAP = 32;
-const STICKY_BATCH_MIN_COUNT = 1;
-const STICKY_BATCH_MAX_COUNT = 50;
-const STICKY_BATCH_DEFAULT_COLUMNS = 5;
-const STICKY_BATCH_MIN_COLUMNS = 1;
-const STICKY_BATCH_MAX_COLUMNS = 10;
-const STICKY_BATCH_DEFAULT_GAP_X = 240;
-const STICKY_BATCH_DEFAULT_GAP_Y = 190;
-const SHAPE_BATCH_MIN_COUNT = 1;
-const SHAPE_BATCH_MAX_COUNT = 50;
-const SHAPE_BATCH_MIN_COLUMNS = 1;
-const SHAPE_BATCH_MAX_COLUMNS = 8;
-const SHAPE_BATCH_DEFAULT_WIDTH = 220;
-const SHAPE_BATCH_DEFAULT_HEIGHT = 160;
-const SHAPE_BATCH_MIN_GAP = 0;
-const SHAPE_BATCH_MAX_GAP = 400;
-const STICKY_DEFAULT_COLOR = "#fde68a";
-const STICKY_PALETTE_COLORS = [
-  "#fde68a",
-  "#fdba74",
-  "#fca5a5",
-  "#f9a8d4",
-  "#c4b5fd",
-  "#93c5fd",
-  "#99f6e4",
-  "#86efac",
-  "#d1d5db",
-  "#d2b48c",
-] as const;
-const COLOR_KEYWORD_HEX: Record<string, string> = {
-  yellow: "#fde68a",
-  orange: "#fdba74",
-  red: "#fca5a5",
-  pink: "#f9a8d4",
-  purple: "#c4b5fd",
-  blue: "#93c5fd",
-  teal: "#99f6e4",
-  green: "#86efac",
-  gray: "#d1d5db",
-  grey: "#d1d5db",
-  tan: "#d2b48c",
-  black: "#1f2937",
-  white: "#ffffff",
-};
-const MOVE_OBJECTS_MIN_PADDING = 0;
-const MOVE_OBJECTS_MAX_PADDING = 400;
-const MOVE_OBJECTS_DEFAULT_PADDING = 0;
-const FRAME_FIT_MIN_PADDING = 0;
-const FRAME_FIT_MAX_PADDING = 240;
-const FRAME_FIT_DEFAULT_PADDING = 40;
-const VIEWPORT_SIDE_STACK_GAP = 32;
-
-type LayoutAlignment =
-  | "left"
-  | "center"
-  | "right"
-  | "top"
-  | "middle"
-  | "bottom";
-
-type BoardToolExecutorOptions = {
-  boardId: string;
-  userId: string;
-  db?: Firestore;
-};
-
-type BoardObjectDoc = {
-  type: BoardObjectToolKind;
-  zIndex: number;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  rotationDeg: number;
-  color: string;
-  text: string;
-  gridRows?: number | null;
-  gridCols?: number | null;
-  gridGap?: number | null;
-  gridCellColors?: string[] | null;
-  containerTitle?: string | null;
-  gridSectionTitles?: string[] | null;
-  gridSectionNotes?: string[] | null;
-  updatedAt: string | null;
-};
-
-function toNumber(value: unknown, fallback = 0): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
-function toStringValue(value: unknown, fallback = ""): string {
-  return typeof value === "string" ? value : fallback;
-}
-
-function toNullableFiniteNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function toGridDimension(
-  value: unknown,
-  fallback: number,
-  minimum: number,
-  maximum: number,
-): number {
-  const parsed = Math.floor(toNumber(value, fallback));
-  return Math.max(minimum, Math.min(maximum, parsed));
-}
-
-function toGridCellColors(value: unknown): string[] | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-
-  const colors = value.filter(
-    (item): item is string => typeof item === "string",
-  );
-  return colors.length > 0 ? colors : null;
-}
-
-function toStringArray(value: unknown): string[] | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-
-  const values = value
-    .filter((item): item is string => typeof item === "string")
-    .map((item) => item.trim());
-
-  return values.length > 0 ? values : null;
-}
-
-function toOptionalString(value: unknown, maxLength: number): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
-    return null;
-  }
-
-  return trimmed.slice(0, maxLength);
-}
-
-function expandHexColor(value: string): string | null {
-  const normalized = value.trim().toLowerCase();
-  const shortHexMatch = normalized.match(/^#([0-9a-f]{3})$/i);
-  if (shortHexMatch) {
-    const [r, g, b] = shortHexMatch[1].split("");
-    return `#${r}${r}${g}${g}${b}${b}`;
-  }
-
-  if (/^#[0-9a-f]{6}$/i.test(normalized)) {
-    return normalized;
-  }
-
-  return null;
-}
-
-function parseColorRgb(value: string): { r: number; g: number; b: number } | null {
-  const namedHex = COLOR_KEYWORD_HEX[value.trim().toLowerCase()];
-  const hex = expandHexColor(namedHex ?? value);
-  if (!hex) {
-    return null;
-  }
-
-  const r = Number.parseInt(hex.slice(1, 3), 16);
-  const g = Number.parseInt(hex.slice(3, 5), 16);
-  const b = Number.parseInt(hex.slice(5, 7), 16);
-  if (![r, g, b].every((channel) => Number.isFinite(channel))) {
-    return null;
-  }
-
-  return { r, g, b };
-}
-
-function isBrightYellowLike(rgb: { r: number; g: number; b: number }): boolean {
-  return rgb.r >= 220 && rgb.g >= 220 && rgb.b <= 120;
-}
-
-function toNearestStickyPaletteColor(value: unknown): string {
-  if (typeof value !== "string") {
-    return STICKY_DEFAULT_COLOR;
-  }
-
-  const normalized = value.trim().toLowerCase();
-  const exactPaletteMatch = STICKY_PALETTE_COLORS.find(
-    (paletteColor) => paletteColor === normalized,
-  );
-  if (exactPaletteMatch) {
-    return exactPaletteMatch;
-  }
-
-  const rgb = parseColorRgb(normalized);
-  if (!rgb) {
-    return STICKY_DEFAULT_COLOR;
-  }
-
-  if (isBrightYellowLike(rgb)) {
-    return "#fde68a";
-  }
-
-  let nearestColor = STICKY_DEFAULT_COLOR;
-  let nearestDistance = Number.POSITIVE_INFINITY;
-
-  STICKY_PALETTE_COLORS.forEach((paletteColor) => {
-    const paletteRgb = parseColorRgb(paletteColor);
-    if (!paletteRgb) {
-      return;
-    }
-
-    const distance =
-      (rgb.r - paletteRgb.r) ** 2 +
-      (rgb.g - paletteRgb.g) ** 2 +
-      (rgb.b - paletteRgb.b) ** 2;
-    if (distance < nearestDistance) {
-      nearestDistance = distance;
-      nearestColor = paletteColor;
-    }
-  });
-
-  return nearestColor;
-}
-
-function normalizeSectionValues(
-  values: string[] | null,
-  expectedCount: number,
-  fallback: (index: number) => string,
-  maxLength: number,
-): string[] {
-  return Array.from({ length: expectedCount }, (_, index) => {
-    const candidate = values?.[index]?.trim() ?? "";
-    if (candidate.length === 0) {
-      return fallback(index).slice(0, maxLength);
-    }
-
-    return candidate.slice(0, maxLength);
-  });
-}
-
-function isObjectKind(value: unknown): value is BoardObjectToolKind {
-  return (
-    value === "sticky" ||
-    value === "rect" ||
-    value === "circle" ||
-    value === "gridContainer" ||
-    value === "line" ||
-    value === "connectorUndirected" ||
-    value === "connectorArrow" ||
-    value === "connectorBidirectional" ||
-    value === "triangle" ||
-    value === "star"
-  );
-}
-
-function isConnectorType(value: BoardObjectToolKind): boolean {
-  return (
-    value === "connectorUndirected" ||
-    value === "connectorArrow" ||
-    value === "connectorBidirectional"
-  );
-}
-
-function isBackgroundContainerType(value: BoardObjectToolKind): boolean {
-  return value === "gridContainer";
-}
-
-function toAnchorPoint(
-  objectItem: BoardObjectSnapshot,
-  anchor: "top" | "right" | "bottom" | "left",
-): { x: number; y: number } {
-  if (anchor === "top") {
-    return {
-      x: objectItem.x + objectItem.width / 2,
-      y: objectItem.y,
-    };
-  }
-
-  if (anchor === "right") {
-    return {
-      x: objectItem.x + objectItem.width,
-      y: objectItem.y + objectItem.height / 2,
-    };
-  }
-
-  if (anchor === "bottom") {
-    return {
-      x: objectItem.x + objectItem.width / 2,
-      y: objectItem.y + objectItem.height,
-    };
-  }
-
-  return {
-    x: objectItem.x,
-    y: objectItem.y + objectItem.height / 2,
-  };
-}
-
-function pickAnchorsByDirection(
-  fromObject: BoardObjectSnapshot,
-  toObject: BoardObjectSnapshot,
-): {
-  fromAnchor: "top" | "right" | "bottom" | "left";
-  toAnchor: "top" | "right" | "bottom" | "left";
-} {
-  const fromCenter = toObjectCenter(fromObject);
-  const toCenter = toObjectCenter(toObject);
-  const dx = toCenter.x - fromCenter.x;
-  const dy = toCenter.y - fromCenter.y;
-
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return dx >= 0
-      ? { fromAnchor: "right", toAnchor: "left" }
-      : { fromAnchor: "left", toAnchor: "right" };
-  }
-
-  return dy >= 0
-    ? { fromAnchor: "bottom", toAnchor: "top" }
-    : { fromAnchor: "top", toAnchor: "bottom" };
-}
-
-function timestampToIso(value: unknown): string | null {
-  if (value instanceof Timestamp) {
-    return value.toDate().toISOString();
-  }
-
-  return null;
-}
-
-function toBoardObjectDoc(
-  id: string,
-  raw: Record<string, unknown>,
-): BoardObjectSnapshot | null {
-  const type = raw.type;
-  if (!isObjectKind(type)) {
-    return null;
-  }
-
-  return {
-    id,
-    type,
-    zIndex: toNumber(raw.zIndex, 0),
-    x: toNumber(raw.x, 0),
-    y: toNumber(raw.y, 0),
-    width: Math.max(1, toNumber(raw.width, 120)),
-    height: Math.max(1, toNumber(raw.height, 120)),
-    rotationDeg: toNumber(raw.rotationDeg, 0),
-    color: toStringValue(raw.color, "#93c5fd"),
-    text: toStringValue(raw.text, ""),
-    gridRows: toNullableFiniteNumber(raw.gridRows),
-    gridCols: toNullableFiniteNumber(raw.gridCols),
-    gridGap: toNullableFiniteNumber(raw.gridGap),
-    gridCellColors: toGridCellColors(raw.gridCellColors),
-    containerTitle: toOptionalString(raw.containerTitle, 120),
-    gridSectionTitles: toStringArray(raw.gridSectionTitles),
-    gridSectionNotes: toStringArray(raw.gridSectionNotes),
-    updatedAt: timestampToIso(raw.updatedAt),
-  };
-}
-
-function toObjectCenter(objectItem: BoardObjectSnapshot): {
-  x: number;
-  y: number;
-} {
-  return {
-    x: objectItem.x + objectItem.width / 2,
-    y: objectItem.y + objectItem.height / 2,
-  };
-}
-
-function toObjectBounds(objectItem: BoardObjectSnapshot): {
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
-} {
-  return {
-    left: objectItem.x,
-    right: objectItem.x + objectItem.width,
-    top: objectItem.y,
-    bottom: objectItem.y + objectItem.height,
-  };
-}
-
-function toCombinedBounds(objects: BoardObjectSnapshot[]): {
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
-} | null {
-  if (objects.length === 0) {
-    return null;
-  }
-
-  return {
-    left: Math.min(...objects.map((objectItem) => objectItem.x)),
-    right: Math.max(
-      ...objects.map((objectItem) => objectItem.x + objectItem.width),
-    ),
-    top: Math.min(...objects.map((objectItem) => objectItem.y)),
-    bottom: Math.max(
-      ...objects.map((objectItem) => objectItem.y + objectItem.height),
-    ),
-  };
-}
-
-function boundsOverlap(
-  leftBounds: {
-    left: number;
-    right: number;
-    top: number;
-    bottom: number;
-  },
-  rightBounds: {
-    left: number;
-    right: number;
-    top: number;
-    bottom: number;
-  },
-): boolean {
-  return !(
-    leftBounds.right < rightBounds.left ||
-    leftBounds.left > rightBounds.right ||
-    leftBounds.bottom < rightBounds.top ||
-    leftBounds.top > rightBounds.bottom
-  );
-}
 
 export class BoardToolExecutor {
   private readonly boardId: string;
@@ -615,9 +235,7 @@ export class BoardToolExecutor {
 
     private async updateObject(
     objectId: string,
-    payload: Partial<
-      Pick<BoardObjectDoc, "x" | "y" | "width" | "height" | "color" | "text">
-    >,
+    payload: UpdateObjectPayload,
   ): Promise<void> {
     await this.ensureLoadedObjects();
     const existing = this.objectsById.get(objectId);
@@ -639,9 +257,7 @@ export class BoardToolExecutor {
     private async updateObjectsInBatch(
     updates: Array<{
       objectId: string;
-      payload: Partial<
-        Pick<BoardObjectDoc, "x" | "y" | "width" | "height" | "color" | "text">
-      >;
+      payload: UpdateObjectPayload;
     }>,
   ): Promise<void> {
     await this.ensureLoadedObjects();
@@ -1364,9 +980,7 @@ export class BoardToolExecutor {
 
     const updates: Array<{
       objectId: string;
-      payload: Partial<
-        Pick<BoardObjectDoc, "x" | "y" | "width" | "height" | "color" | "text">
-      >;
+      payload: UpdateObjectPayload;
     }> = [];
     const startIndex = shouldMoveEndpoints ? 0 : 1;
     const endIndex = shouldMoveEndpoints
